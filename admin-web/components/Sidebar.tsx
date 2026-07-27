@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: HomeIcon },
@@ -15,6 +16,12 @@ const NAV_ITEMS = [
 
 export default function Sidebar({ adminName }: { adminName: string }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    router.replace('/login');
+  }
 
   return (
     <aside className="flex h-screen w-60 shrink-0 flex-col bg-sidebar text-slate-300">
@@ -46,14 +53,23 @@ export default function Sidebar({ adminName }: { adminName: string }) {
         })}
       </nav>
 
-      <div className="flex items-center gap-3 border-t border-white/10 px-4 py-4">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-700 text-sm font-semibold text-white">
-          {adminName.slice(0, 1).toUpperCase()}
+      <div className="border-t border-white/10 px-4 py-4">
+        <div className="mb-3 flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-700 text-sm font-semibold text-white">
+            {adminName.slice(0, 1).toUpperCase()}
+          </div>
+          <div>
+            <div className="text-sm font-medium text-white">{adminName}</div>
+            <div className="text-xs text-slate-400">System Administrator</div>
+          </div>
         </div>
-        <div>
-          <div className="text-sm font-medium text-white">{adminName}</div>
-          <div className="text-xs text-slate-400">System Administrator</div>
-        </div>
+        <button
+          onClick={handleSignOut}
+          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-300 hover:bg-sidebar-active/60 hover:text-white"
+        >
+          <SignOutIcon className="h-4 w-4" />
+          Sign out
+        </button>
       </div>
     </aside>
   );
@@ -111,6 +127,13 @@ function CardIcon({ className }: IconProps) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <rect x="2" y="5" width="20" height="14" rx="2" />
       <path strokeLinecap="round" d="M2 10h20" />
+    </svg>
+  );
+}
+function SignOutIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
     </svg>
   );
 }
