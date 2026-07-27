@@ -12,6 +12,7 @@ export type Employee = {
   employee_code: string;
   name: string;
   email: string | null;
+  phone: string | null;
   department: string | null;
   designation: string | null;
   branch_id: string | null;
