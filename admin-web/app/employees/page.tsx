@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
@@ -18,6 +18,49 @@ const EMPTY_FORM = {
   fingerprint_id: '',
 };
 
+const CSV_COLUMNS = ['employee_code', 'name', 'email', 'department', 'designation', 'fingerprint_id'] as const;
+
+// Minimal CSV parser: handles quoted fields ("a,b") and escaped quotes (""),
+// which covers what a spreadsheet export actually produces — no need for a
+// dependency for a 6-column import.
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"' && text[i + 1] === '"') {
+        field += '"';
+        i++;
+      } else if (c === '"') {
+        inQuotes = false;
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ',') {
+      row.push(field);
+      field = '';
+    } else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field);
+      field = '';
+      if (row.some(v => v.trim() !== '')) rows.push(row);
+      row = [];
+    } else {
+      field += c;
+    }
+  }
+  if (field !== '' || row.length) {
+    row.push(field);
+    if (row.some(v => v.trim() !== '')) rows.push(row);
+  }
+  return rows;
+}
+
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -27,6 +70,11 @@ export default function EmployeesPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ inserted: number; failed: { row: number; error: string }[] } | null>(
+    null
+  );
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function reload() {
     supabase.from('employees').select('*').order('created_at', { ascending: false }).then(({ data }) => setEmployees(data ?? []));
@@ -78,6 +126,44 @@ export default function EmployeesPage() {
     reload();
   }
 
+  async function handleCsvSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file next time
+    if (!file) return;
+
+    const text = await file.text();
+    const rows = parseCsv(text);
+    if (rows.length === 0) return;
+
+    const header = rows[0].map(h => h.trim().toLowerCase());
+    const dataRows = header[0] === 'employee_code' ? rows.slice(1) : rows;
+
+    setImporting(true);
+    setImportResult(null);
+    const failed: { row: number; error: string }[] = [];
+    let inserted = 0;
+
+    for (let i = 0; i < dataRows.length; i++) {
+      const cols = dataRows[i];
+      const record: Record<string, string | null> = {};
+      CSV_COLUMNS.forEach((col, idx) => {
+        const value = cols[idx]?.trim();
+        record[col] = value || null;
+      });
+      if (!record.employee_code || !record.name) {
+        failed.push({ row: i + 2, error: 'employee_code and name are required' });
+        continue;
+      }
+      const { error } = await supabase.from('employees').insert({ ...record, status: 'active' });
+      if (error) failed.push({ row: i + 2, error: error.message });
+      else inserted++;
+    }
+
+    setImporting(false);
+    setImportResult({ inserted, failed });
+    reload();
+  }
+
   return (
     <AppShell title="Employee Directory">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -97,13 +183,48 @@ export default function EmployeesPage() {
             </button>
           ))}
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
-        >
-          + Add Employee
-        </button>
+        <div className="flex gap-2">
+          <input ref={fileInputRef} type="file" accept=".csv" onChange={handleCsvSelected} className="hidden" />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+          >
+            {importing ? 'Importing…' : '⭱ Import CSV'}
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
+          >
+            + Add Employee
+          </button>
+        </div>
       </div>
+
+      {importResult && (
+        <div className="mb-5 rounded-lg border border-slate-200 bg-white p-4 text-sm">
+          <p className="font-medium text-ink">
+            Imported {importResult.inserted} employee{importResult.inserted === 1 ? '' : 's'}
+            {importResult.failed.length > 0 && `, ${importResult.failed.length} failed`}.
+          </p>
+          {importResult.failed.length > 0 && (
+            <ul className="mt-2 list-disc pl-5 text-critical">
+              {importResult.failed.map((f, i) => (
+                <li key={i}>
+                  Row {f.row}: {f.error}
+                </li>
+              ))}
+            </ul>
+          )}
+          <button onClick={() => setImportResult(null)} className="mt-2 text-xs text-slate-500 hover:underline">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      <p className="mb-3 text-xs text-slate-400">
+        CSV columns: employee_code, name, email, department, designation, fingerprint_id (header row optional).
+      </p>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-left text-sm">

@@ -52,6 +52,19 @@ export type AttendanceLog = {
   verification_mode: string | null;
 };
 
+export type LeaveRequest = {
+  id: string;
+  employee_id: string;
+  leave_type: 'sick' | 'casual' | 'annual' | 'unpaid';
+  start_date: string;
+  end_date: string;
+  reason: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+};
+
 export type PayrollSummary = {
   id: string;
   employee_id: string;

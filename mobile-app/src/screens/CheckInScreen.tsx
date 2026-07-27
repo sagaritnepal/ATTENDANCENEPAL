@@ -2,12 +2,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Button, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import * as Location from 'expo-location';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
 import type { PunchMethod } from '../types';
+import type { RootStackParamList } from '../../App';
 
 type Mode = 'menu' | 'qr-scan' | 'selfie';
+type Props = NativeStackScreenProps<RootStackParamList, 'CheckIn'>;
 
-export default function CheckInScreen() {
+export default function CheckInScreen({ navigation }: Props) {
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [punchType, setPunchType] = useState<'0' | '1'>('0'); // 0 = in, 1 = out
   const [mode, setMode] = useState<Mode>('menu');
@@ -121,6 +124,17 @@ export default function CheckInScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.navRow}>
+        <Text style={styles.navLink} onPress={() => navigation.navigate('History')}>
+          My Attendance
+        </Text>
+        <Text style={styles.navLink} onPress={() => navigation.navigate('Leave')}>
+          Leave
+        </Text>
+        <Text style={styles.navLink} onPress={() => supabase.auth.signOut()}>
+          Sign out
+        </Text>
+      </View>
       <View style={styles.toggleRow}>
         <Button title="Check In" onPress={() => setPunchType('0')} color={punchType === '0' ? '#2563eb' : '#999'} />
         <Button title="Check Out" onPress={() => setPunchType('1')} color={punchType === '1' ? '#2563eb' : '#999'} />
@@ -139,6 +153,8 @@ export default function CheckInScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 24, justifyContent: 'center' },
+  navRow: { position: 'absolute', top: 16, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-around' },
+  navLink: { color: '#2563eb', fontSize: 13, fontWeight: '600' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   toggleRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 32 },
   hint: { textAlign: 'center', marginBottom: 16, color: '#555' },

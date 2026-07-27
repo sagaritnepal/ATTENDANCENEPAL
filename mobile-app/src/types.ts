@@ -26,3 +26,16 @@ export type AttendanceLog = {
   selfie_url?: string | null;
   match_score?: number | null;
 };
+
+export type LeaveType = 'sick' | 'casual' | 'annual' | 'unpaid';
+
+export type LeaveRequest = {
+  id: string;
+  employee_id: string;
+  leave_type: LeaveType;
+  start_date: string;
+  end_date: string;
+  reason: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+};

@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
-import type { AttendanceLog, Device, Employee, Shift } from '@/lib/types';
+import type { AttendanceLog, Device, Employee, LeaveRequest, Shift } from '@/lib/types';
 import { dateKey, isLate, last7Days, presentEmployeeIds, WEEKDAY_LABEL } from '@/lib/metrics';
 
 const DEPT_COLORS: Record<string, string> = {
@@ -25,6 +25,7 @@ export default function DashboardPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [onLeave, setOnLeave] = useState<LeaveRequest[]>([]);
   const [feed, setFeed] = useState<FeedItem[]>([]);
 
   useEffect(() => {
@@ -34,6 +35,14 @@ export default function DashboardPage() {
     supabase.from('employees').select('*').then(({ data }) => setEmployees(data ?? []));
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
     supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
+    const today = new Date().toISOString().slice(0, 10);
+    supabase
+      .from('leave_requests')
+      .select('*')
+      .eq('status', 'approved')
+      .lte('start_date', today)
+      .gte('end_date', today)
+      .then(({ data }) => setOnLeave(data ?? []));
     supabase
       .from('attendance_logs')
       .select('*')
@@ -76,7 +85,11 @@ export default function DashboardPage() {
     return count;
   }, [activeEmployees, todayLogs, shifts]);
 
-  const absentCount = Math.max(0, activeEmployees.length - presentIds.size);
+  const onLeaveIds = useMemo(() => new Set(onLeave.map(l => l.employee_id)), [onLeave]);
+  const absentCount = Math.max(
+    0,
+    activeEmployees.length - presentIds.size - Array.from(onLeaveIds).filter(id => !presentIds.has(id)).length
+  );
   const attendancePct = activeEmployees.length ? Math.round((presentIds.size / activeEmployees.length) * 100) : 0;
 
   const trend = useMemo(() => {
@@ -102,11 +115,12 @@ export default function DashboardPage() {
 
   return (
     <AppShell title="Dashboard">
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard label="Total Employees" value={String(activeEmployees.length)} hint="Active rosters" />
         <StatCard label="Present Today" value={String(presentIds.size)} hint={`${attendancePct}% attendance`} />
         <StatCard label="Late Arrivals" value={String(lateCount)} hint="Past grace period" />
-        <StatCard label="Absent Today" value={String(absentCount)} hint="No punch recorded" />
+        <StatCard label="On Leave" value={String(onLeaveIds.size)} hint="Approved today" />
+        <StatCard label="Absent Today" value={String(absentCount)} hint="No punch, not on leave" />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">

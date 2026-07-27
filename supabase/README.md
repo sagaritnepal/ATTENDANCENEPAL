@@ -7,20 +7,24 @@
 3. Run `payroll.sql` — adds the `compute_payroll_summaries()` function.
 4. Run `seed.sql` — creates a sample branch, shift, and employee, and prints the `employee_id`
    and `qr_token_id` you'll need for the next steps.
-5. In Storage, create a public bucket named `attendance-selfies`.
-6. In Authentication, enable email/password sign-in and create your **admin** user, then:
+5. Run `003_auth_signup.sql` — auto-creates a `profiles` row (role `employee`) whenever someone
+   registers through the admin-web `/register` page, so self-service signup works end to end.
+6. Run `004_leave_management.sql` — adds `leave_requests` (employee-submitted, admin-approved)
+   and the `employees_on_leave_today` view the dashboard's "On Leave" stat reads from.
+7. In Storage, create a public bucket named `attendance-selfies`.
+8. In Authentication, enable email/password sign-in and create your **admin** user, then:
    ```sql
    insert into profiles (id, role) values ('<admin-auth-uuid>', 'admin');
    ```
-7. Create a second Authentication user for the **employee** login, then link it to the employee
+9. Create a second Authentication user for the **employee** login, then link it to the employee
    seeded in step 4 (use the `employee_id` printed by `seed.sql`):
    ```sql
    insert into profiles (id, employee_id, role)
    values ('<employee-auth-uuid>', '<employee_id-from-seed.sql>', 'employee');
    ```
-8. Copy your project URL + anon key into `../mobile-app/.env`.
-9. Copy your project URL + service role key into `../zkteco-bridge/.env` if you have physical
-   ZKTeco terminals to bridge in.
+10. Copy your project URL + anon key into `../mobile-app/.env` and `../admin-web/.env.local`.
+11. Copy your project URL + service role key into `../zkteco-bridge/.env` if you have physical
+    ZKTeco terminals to bridge in.
 
 Sign in to the mobile app with the **employee** login to test GPS/QR/selfie check-in, and with
 the **admin** login to see the live dashboard. The seeded branch is centered on Kathmandu with a
@@ -51,3 +55,11 @@ before relying on the geofence check for anything real. To test QR check-in, enc
   ```
   Once you've confirmed it works, uncomment the `cron.schedule(...)` line at the bottom of
   `schema.sql` to run it nightly via `pg_cron`.
+
+## What's in `004_leave_management.sql`
+
+- `leave_requests` — employee-submitted (sick/casual/annual/unpaid), admin-approved. RLS: an
+  employee can create/read/cancel their own pending requests; admins have full access.
+- `employees_on_leave_today` — a view listing `employee_id`s with an approved request covering
+  today, used by the admin dashboard's "On Leave" stat and to exclude on-leave employees from
+  "Absent" counts.
