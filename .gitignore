@@ -6,3 +6,5 @@ attendance.db-*
 *.env
 !.env.example
 .expo/
+.next/
+tsconfig.tsbuildinfo

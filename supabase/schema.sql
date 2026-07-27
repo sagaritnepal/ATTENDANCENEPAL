@@ -221,9 +221,6 @@ create policy "payroll_summaries: employee read own" on payroll_summaries
   );
 
 -- ---------------------------------------------------------------------------
--- Nightly payroll job (requires the pg_cron extension, enabled by default
--- on Supabase). Calls a plpgsql port of calc.js — see supabase/functions
--- for the reference logic if you'd rather run it as an Edge Function instead.
+-- Payroll calculation (compute_payroll_summaries, a plpgsql port of calc.js)
+-- lives in supabase/payroll.sql — run that file next.
 -- ---------------------------------------------------------------------------
-
--- select cron.schedule('nightly-payroll', '0 2 * * *', $$ call compute_payroll_summaries(); $$);

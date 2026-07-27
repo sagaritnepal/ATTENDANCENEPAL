@@ -9,9 +9,9 @@ biometric terminals. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design.
 | Folder | What it is |
 |---|---|
 | [`mobile-app/`](mobile-app/) | React Native (Expo) app — employee check-in (GPS/QR/selfie) + admin live dashboard. |
-| [`supabase/`](supabase/) | Postgres schema, RLS policies, and setup steps for the cloud backend. |
+| [`supabase/`](supabase/) | Postgres schema (`schema.sql`), payroll engine (`payroll.sql`), and sample data (`seed.sql`) for the cloud backend. |
 | [`zkteco-bridge/`](zkteco-bridge/) | Standalone Node worker that polls ZKTeco K40 terminals and feeds punches into Supabase, for sites keeping fixed biometric hardware. |
-| `server.js`, `db.js`, `calc.js`, `seed.js`, `public/` | The original single-process Node.js + SQLite prototype (web-only, no mobile app). Kept as a working reference and as the source for the payroll calculation logic (`calc.js`) that the Supabase nightly job should port. |
+| `server.js`, `db.js`, `calc.js`, `seed.js`, `public/` | The original single-process Node.js + SQLite prototype (web-only, no mobile app). Kept as a working reference — `supabase/payroll.sql` is a direct port of `calc.js`'s payroll logic. |
 
 ## Getting started (mobile + cloud)
 

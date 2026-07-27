@@ -74,11 +74,12 @@ token validity server-side, so a modified client can't fake presence.
 
 ## 6. Payroll & Calculation Engine
 
-Same metrics as v1 (total hours, late/early minutes, overtime), now computed by a
-`pg_cron`-scheduled Postgres function (nightly) that reads `attendance_logs` + `shifts` and
-writes `payroll_summaries`. The existing `calc.js` logic (see `calc.js` in this repo) is the
-reference implementation — it should be ported to a `plpgsql` function or a Supabase Edge
-Function calling the same algorithm, rather than rewritten from scratch.
+Same metrics as v1 (total hours, late/early minutes, overtime), computed by
+`compute_payroll_summaries()` — a `plpgsql` port of `calc.js`'s logic, in
+`supabase/payroll.sql`. It reads `attendance_logs` + `shifts` and upserts into
+`payroll_summaries`, keyed on `(employee_id, work_date)`. Runs on demand
+(`select compute_payroll_summaries(current_date);`) or nightly via a `pg_cron` schedule
+(commented out at the bottom of `schema.sql` until you've verified it manually).
 
 ## 7. Migration Notes from v1
 

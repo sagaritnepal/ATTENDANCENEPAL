@@ -1,0 +1,69 @@
+export type Branch = {
+  id: string;
+  name: string;
+  branch_code: string;
+  latitude: number;
+  longitude: number;
+  radius_meters: number;
+};
+
+export type Employee = {
+  id: string;
+  employee_code: string;
+  name: string;
+  email: string | null;
+  department: string | null;
+  designation: string | null;
+  branch_id: string | null;
+  fingerprint_id: string | null;
+  profile_photo_url: string | null;
+  status: 'active' | 'inactive';
+  created_at: string;
+};
+
+export type Device = {
+  id: string;
+  name: string;
+  branch_id: string;
+  ip_address: string;
+  port: number;
+  status: 'online' | 'offline';
+  last_sync: string | null;
+};
+
+export type Shift = {
+  id: string;
+  name: string;
+  type: 'fixed' | 'flexible' | 'rotational';
+  start_time: string;
+  end_time: string;
+  grace_minutes: number;
+  department: string | null;
+  employee_id: string | null;
+};
+
+export type AttendanceLog = {
+  id: string;
+  employee_id: string;
+  device_id: string | null;
+  punch_time: string;
+  punch_type: '0' | '1';
+  method: 'zkteco' | 'gps' | 'qr' | 'selfie';
+  verification_mode: string | null;
+};
+
+export type PayrollSummary = {
+  id: string;
+  employee_id: string;
+  work_date: string;
+  shift_name: string | null;
+  check_in: string | null;
+  check_out: string | null;
+  total_hours: number;
+  is_late: boolean;
+  late_minutes: number;
+  is_early_departure: boolean;
+  early_departure_minutes: number;
+  overtime_hours: number;
+  computed_at: string;
+};
