@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseConfigured } from '@/lib/supabase';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
+import ConfigWarning from './ConfigWarning';
 
 export default function AppShell({ title, children }: { title: string; children: React.ReactNode }) {
   const router = useRouter();
@@ -12,6 +13,7 @@ export default function AppShell({ title, children }: { title: string; children:
   const [adminName, setAdminName] = useState('Admin');
 
   useEffect(() => {
+    if (!supabaseConfigured) return;
     let active = true;
     supabase.auth.getSession().then(async ({ data }) => {
       if (!active) return;
@@ -37,6 +39,9 @@ export default function AppShell({ title, children }: { title: string; children:
     };
   }, [router]);
 
+  if (!supabaseConfigured) {
+    return <ConfigWarning />;
+  }
   if (status === 'loading') {
     return <div className="flex h-screen items-center justify-center text-slate-400">Loading…</div>;
   }

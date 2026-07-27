@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseConfigured } from '@/lib/supabase';
+import ConfigWarning from '@/components/ConfigWarning';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,6 +23,10 @@ export default function LoginPage() {
       return;
     }
     router.push('/');
+  }
+
+  if (!supabaseConfigured) {
+    return <ConfigWarning />;
   }
 
   return (
