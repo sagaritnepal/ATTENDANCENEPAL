@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Attendance Management System</title>
+<link rel="stylesheet" href="style.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+  <div class="login-card">
+    <h1>Attendance Management System</h1>
+    <p class="subtitle">Prototype &middot; ZKTeco K40 integration demo</p>
+    <form id="login-form">
+      <label>Username</label>
+      <input type="text" id="login-username" placeholder="admin" required />
+      <label>Password</label>
+      <input type="password" id="login-password" placeholder="admin123" required />
+      <button type="submit">Sign in</button>
+      <p class="error" id="login-error"></p>
+    </form>
+    <div class="demo-creds">
+      <strong>Demo accounts</strong>
+      <div>Admin &mdash; admin / admin123</div>
+      <div>Employee &mdash; sagar / sagar123</div>
+    </div>
+  </div>
+</div>
+
+<div id="app" class="app hidden">
+  <header class="topbar">
+    <div class="brand">Attendance<span>MS</span></div>
+    <nav id="tabs" class="tabs">
+      <button data-tab="dashboard" class="tab-btn active">Dashboard</button>
+      <button data-tab="employees" class="tab-btn admin-only">Employees</button>
+      <button data-tab="devices" class="tab-btn admin-only">Devices</button>
+      <button data-tab="shifts" class="tab-btn admin-only">Shifts</button>
+      <button data-tab="logs" class="tab-btn">Attendance Logs</button>
+      <button data-tab="payroll" class="tab-btn">Payroll Report</button>
+    </nav>
+    <div class="user-info">
+      <span id="user-label"></span>
+      <button id="logout-btn">Log out</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- DASHBOARD -->
+    <section id="tab-dashboard" class="tab-panel active">
+      <div class="cards">
+        <div class="card"><div class="card-value" id="stat-total">-</div><div class="card-label">Total Employees</div></div>
+        <div class="card good"><div class="card-value" id="stat-present">-</div><div class="card-label">Present Today</div></div>
+        <div class="card warn"><div class="card-value" id="stat-late">-</div><div class="card-label">Late Today</div></div>
+        <div class="card bad"><div class="card-value" id="stat-absent">-</div><div class="card-label">Absent Today</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Live Punch Feed <span class="live-dot"></span></h2>
+          <span class="hint">Updates in real time via WebSocket when a device syncs or a punch is recorded.</span>
+        </div>
+        <ul id="live-feed" class="live-feed"></ul>
+      </div>
+    </section>
+
+    <!-- EMPLOYEES -->
+    <section id="tab-employees" class="tab-panel">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Employees</h2>
+          <button class="btn" id="new-employee-btn">+ Add Employee</button>
+        </div>
+        <table class="data-table" id="employees-table">
+          <thead><tr><th>Code</th><th>Name</th><th>Email</th><th>Department</th><th>Fingerprint ID</th><th>Status</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- DEVICES -->
+    <section id="tab-devices" class="tab-panel">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>ZKTeco Devices</h2>
+          <button class="btn" id="new-device-btn">+ Register Device</button>
+        </div>
+        <table class="data-table" id="devices-table">
+          <thead><tr><th>Name</th><th>Branch</th><th>IP:Port</th><th>Status</th><th>Last Sync</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- SHIFTS -->
+    <section id="tab-shifts" class="tab-panel">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Shifts</h2>
+          <button class="btn" id="new-shift-btn">+ Add Shift</button>
+        </div>
+        <table class="data-table" id="shifts-table">
+          <thead><tr><th>Name</th><th>Type</th><th>Start</th><th>End</th><th>Grace (min)</th><th>Scope</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- LOGS -->
+    <section id="tab-logs" class="tab-panel">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Attendance Logs</h2>
+          <div class="filters">
+            <select id="logs-employee-filter"><option value="">All Employees</option></select>
+            <button class="btn" id="refresh-logs-btn">Refresh</button>
+          </div>
+        </div>
+        <table class="data-table" id="logs-table">
+          <thead><tr><th>Employee</th><th>Punch Time</th><th>Type</th><th>Verification</th><th>Device</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- PAYROLL -->
+    <section id="tab-payroll" class="tab-panel">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Payroll &amp; Attendance Report</h2>
+          <div class="filters">
+            <select id="payroll-employee-filter"><option value="">All Employees</option></select>
+            <input type="date" id="payroll-from" />
+            <input type="date" id="payroll-to" />
+            <button class="btn" id="run-payroll-btn">Generate Report</button>
+          </div>
+        </div>
+        <table class="data-table" id="payroll-table">
+          <thead><tr><th>Employee</th><th>Date</th><th>Shift</th><th>Check In</th><th>Check Out</th><th>Total Hrs</th><th>Late</th><th>Early Out</th><th>Overtime Hrs</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Generic modal for add forms -->
+<div id="modal-overlay" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 id="modal-title">Add</h3>
+    <form id="modal-form"></form>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

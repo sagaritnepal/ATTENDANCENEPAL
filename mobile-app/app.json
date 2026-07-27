@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "Attendance",
+    "slug": "attendance-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Used to take a selfie or scan a QR code for attendance check-in.",
+        "NSLocationWhenInUseUsageDescription": "Used to confirm you're at your branch when checking in."
+      }
+    },
+    "android": {
+      "permissions": ["CAMERA", "ACCESS_FINE_LOCATION"]
+    }
+  }
+}
