@@ -7,11 +7,13 @@ import { supabase, supabaseConfigured } from '@/lib/supabase';
 import AuthCard from '@/components/AuthCard';
 import ConfigWarning from '@/components/ConfigWarning';
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   if (!supabaseConfigured) {
@@ -21,18 +23,41 @@ export default function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setSubmitting(true);
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
-    setSubmitting(false);
-    if (authError) {
-      setError(authError.message);
+    setNotice(null);
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
       return;
     }
-    router.push('/');
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+
+    setSubmitting(true);
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: `${window.location.origin}/login` },
+    });
+    setSubmitting(false);
+
+    if (signUpError) {
+      setError(signUpError.message);
+      return;
+    }
+
+    if (data.session) {
+      router.push('/');
+      return;
+    }
+
+    // Email confirmation is required before a session is issued.
+    setNotice('Account created. Check your email to confirm it, then sign in.');
   }
 
   return (
-    <AuthCard title="Admin">
+    <AuthCard title="Sign Up">
       <form onSubmit={handleSubmit}>
         <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
         <input
@@ -50,22 +75,32 @@ export default function LoginPage() {
           onChange={e => setPassword(e.target.value)}
           className="mb-4 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
         />
+        <label className="mb-1 block text-sm font-medium text-slate-700">Confirm password</label>
+        <input
+          type="password"
+          required
+          value={confirmPassword}
+          onChange={e => setConfirmPassword(e.target.value)}
+          className="mb-4 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+        />
         {error && <p className="mb-4 text-sm text-critical">{error}</p>}
+        {notice && <p className="mb-4 text-sm text-good-text">{notice}</p>}
         <button
           type="submit"
           disabled={submitting}
           className="w-full rounded-lg bg-accent py-2.5 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
         >
-          {submitting ? 'Signing in…' : 'Sign in'}
+          {submitting ? 'Creating account…' : 'Create account'}
         </button>
-        <div className="mt-4 flex items-center justify-between text-sm">
-          <Link href="/register" className="font-medium text-accent hover:underline">
-            Create account
+        <p className="mt-4 text-center text-xs text-slate-500">
+          New accounts start with employee-level access. An existing admin can upgrade your role.
+        </p>
+        <p className="mt-3 text-center text-sm text-slate-600">
+          Already have an account?{' '}
+          <Link href="/login" className="font-medium text-accent hover:underline">
+            Sign in
           </Link>
-          <Link href="/forgot-password" className="text-slate-500 hover:underline">
-            Forgot password?
-          </Link>
-        </div>
+        </p>
       </form>
     </AuthCard>
   );
