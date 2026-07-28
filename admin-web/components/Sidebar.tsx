@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: '/attendance', label: 'Attendance', icon: ClockIcon, adminOnly: false },
   { href: '/leave', label: 'Leave', icon: LeaveIcon, adminOnly: false },
   { href: '/corrections', label: 'Corrections', icon: CorrectionIcon, adminOnly: false },
+  { href: '/calendar', label: 'Calendar', icon: CalendarViewIcon, adminOnly: false },
   { href: '/shifts', label: 'Shifts', icon: CalendarIcon, adminOnly: true },
   { href: '/devices', label: 'Devices', icon: DeviceIcon, adminOnly: true },
   { href: '/payroll', label: 'Payroll', icon: CardIcon, adminOnly: false },
@@ -130,6 +131,15 @@ function CorrectionIcon({ className }: IconProps) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 20a8 8 0 1 0-6.93-4M4 15v5h5" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l2.5 2.5" />
+    </svg>
+  );
+}
+function CalendarViewIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path strokeLinecap="round" d="M3 10h18M8 3v4M16 3v4" />
+      <circle cx="8.5" cy="15" r="1.2" fill="currentColor" stroke="none" />
     </svg>
   );
 }
