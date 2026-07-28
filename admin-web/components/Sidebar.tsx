@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: '/leave', label: 'Leave', icon: LeaveIcon, adminOnly: false },
   { href: '/corrections', label: 'Corrections', icon: CorrectionIcon, adminOnly: false },
   { href: '/calendar', label: 'Calendar', icon: CalendarViewIcon, adminOnly: false },
+  { href: '/tasks', label: 'Tasks', icon: TaskIcon, adminOnly: false },
   { href: '/shifts', label: 'Shifts', icon: CalendarIcon, adminOnly: true },
   { href: '/devices', label: 'Devices', icon: DeviceIcon, adminOnly: true },
   { href: '/payroll', label: 'Payroll', icon: CardIcon, adminOnly: false },
@@ -52,7 +53,7 @@ export default function Sidebar({ role, adminName, drawerOpen, onCloseDrawer }: 
           </span>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-1 px-3">
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3">
           {items.map(item => {
             const active = pathname === item.href;
             const Icon = item.icon;
@@ -131,6 +132,14 @@ function CorrectionIcon({ className }: IconProps) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 20a8 8 0 1 0-6.93-4M4 15v5h5" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l2.5 2.5" />
+    </svg>
+  );
+}
+function TaskIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="m8 12 2.5 2.5L16 9" />
     </svg>
   );
 }

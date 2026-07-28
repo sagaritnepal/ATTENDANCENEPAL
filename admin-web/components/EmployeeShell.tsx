@@ -10,6 +10,7 @@ const TABS = [
   { href: '/checkin', label: 'Check In', icon: CheckInIcon },
   { href: '/my-attendance', label: 'History', icon: HistoryIcon },
   { href: '/my-calendar', label: 'Calendar', icon: CalendarTabIcon },
+  { href: '/my-tasks', label: 'Tasks', icon: TaskTabIcon },
   { href: '/my-leave', label: 'Leave', icon: LeaveIcon },
   { href: '/my-corrections', label: 'Fix Punch', icon: FixIcon },
 ];
@@ -101,7 +102,7 @@ export default function EmployeeShell({ title, children }: { title: string; chil
             <Link
               key={tab.href}
               href={tab.href}
-              className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-xs ${
+              className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-center text-[10px] leading-tight ${
                 active ? 'text-accent' : 'text-slate-400'
               }`}
             >
@@ -137,6 +138,14 @@ function CalendarTabIcon({ className }: IconProps) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <rect x="3" y="5" width="18" height="16" rx="2" />
       <path strokeLinecap="round" d="M3 10h18M8 3v4M16 3v4" />
+    </svg>
+  );
+}
+function TaskTabIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="m8 12 2.5 2.5L16 9" />
     </svg>
   );
 }

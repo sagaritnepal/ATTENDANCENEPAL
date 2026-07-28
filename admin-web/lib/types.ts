@@ -87,6 +87,33 @@ export type CorrectionRequest = {
   created_at: string;
 };
 
+export type TaskStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'rejected';
+
+export type Task = {
+  id: string;
+  title: string;
+  description: string | null;
+  assigned_to: string;
+  assigned_by: string | null;
+  points: number;
+  status: TaskStatus;
+  due_date: string | null;
+  work_notes: string | null;
+  review_note: string | null;
+  submitted_at: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+};
+
+export type LeaderboardRow = {
+  employee_id: string;
+  name: string;
+  department: string | null;
+  total_points: number;
+  tasks_completed: number;
+};
+
 export type PayrollSummary = {
   id: string;
   employee_id: string;
