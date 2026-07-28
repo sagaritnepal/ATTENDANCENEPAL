@@ -7,10 +7,14 @@ import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import ConfigWarning from './ConfigWarning';
 
+type Role = 'admin' | 'hr';
+
 export default function AppShell({ title, children }: { title: string; children: React.ReactNode }) {
   const router = useRouter();
-  const [status, setStatus] = useState<'loading' | 'ready' | 'unauthorized'>('loading');
+  const [status, setStatus] = useState<'loading' | 'ready' | 'redirecting'>('loading');
+  const [role, setRole] = useState<Role>('admin');
   const [adminName, setAdminName] = useState('Admin');
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     if (!supabaseConfigured) return;
@@ -27,10 +31,13 @@ export default function AppShell({ title, children }: { title: string; children:
         .eq('id', data.session.user.id)
         .single();
       if (!active) return;
-      if (profile?.role !== 'admin') {
-        setStatus('unauthorized');
+      if (profile?.role === 'employee' || !profile) {
+        // Employees get their own mobile-first pages, never this dashboard.
+        setStatus('redirecting');
+        router.replace('/checkin');
         return;
       }
+      setRole(profile.role as Role);
       setAdminName(data.session.user.email?.split('@')[0] ?? 'Admin');
       setStatus('ready');
     });
@@ -42,35 +49,16 @@ export default function AppShell({ title, children }: { title: string; children:
   if (!supabaseConfigured) {
     return <ConfigWarning />;
   }
-  if (status === 'loading') {
+  if (status !== 'ready') {
     return <div className="flex h-screen items-center justify-center text-slate-400">Loading…</div>;
-  }
-  if (status === 'unauthorized') {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4 px-6 text-center text-slate-500">
-        <p className="max-w-md">
-          This account has employee-level access, not admin. This dashboard is admin-only — use the AttendX mobile app
-          for check-in instead. Ask an existing admin to upgrade your role with:
-        </p>
-        <code className="rounded bg-slate-100 px-2 py-1 text-xs">
-          update profiles set role = &apos;admin&apos; where id = &apos;&lt;your-auth-uuid&gt;&apos;;
-        </code>
-        <button
-          onClick={() => supabase.auth.signOut().then(() => router.replace('/login'))}
-          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          Sign out
-        </button>
-      </div>
-    );
   }
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar adminName={adminName} />
+      <Sidebar role={role} adminName={adminName} drawerOpen={drawerOpen} onCloseDrawer={() => setDrawerOpen(false)} />
       <div className="flex flex-1 flex-col overflow-y-auto">
-        <TopBar title={title} />
-        <main className="flex-1 p-8">{children}</main>
+        <TopBar title={title} onOpenMenu={() => setDrawerOpen(true)} />
+        <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
     </div>
   );

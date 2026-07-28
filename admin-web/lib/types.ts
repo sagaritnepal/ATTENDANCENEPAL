@@ -25,7 +25,7 @@ export type Employee = {
 export type Profile = {
   id: string;
   employee_id: string | null;
-  role: 'admin' | 'employee';
+  role: 'admin' | 'hr' | 'employee';
 };
 
 export type Device = {
@@ -59,12 +59,27 @@ export type AttendanceLog = {
   verification_mode: string | null;
 };
 
+export type LeaveType = 'sick' | 'casual' | 'annual' | 'unpaid';
+
 export type LeaveRequest = {
   id: string;
   employee_id: string;
-  leave_type: 'sick' | 'casual' | 'annual' | 'unpaid';
+  leave_type: LeaveType;
   start_date: string;
   end_date: string;
+  reason: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+};
+
+export type CorrectionRequest = {
+  id: string;
+  employee_id: string;
+  work_date: string;
+  requested_check_in: string | null;
+  requested_check_out: string | null;
   reason: string | null;
   status: 'pending' | 'approved' | 'rejected';
   reviewed_by: string | null;
@@ -85,5 +100,7 @@ export type PayrollSummary = {
   is_early_departure: boolean;
   early_departure_minutes: number;
   overtime_hours: number;
+  manually_corrected: boolean;
+  overtime_approved: boolean;
   computed_at: string;
 };

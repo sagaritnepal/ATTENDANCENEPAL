@@ -71,6 +71,17 @@ export default function PayrollPage() {
     return Array.from(map.values());
   }, [summaries, employees]);
 
+  const employeeName = (id: string) => employees.find(e => e.id === id)?.name ?? 'Unknown';
+  const pendingOvertime = useMemo(
+    () => summaries.filter(s => Number(s.overtime_hours) > 0 && !s.overtime_approved).sort((a, b) => a.work_date.localeCompare(b.work_date)),
+    [summaries]
+  );
+
+  async function approveOvertime(id: string) {
+    await supabase.from('payroll_summaries').update({ overtime_approved: true }).eq('id', id);
+    reload();
+  }
+
   return (
     <AppShell title="Attendance-based Payroll Controller">
       <div className="mb-5 flex items-center justify-between">
@@ -105,6 +116,41 @@ export default function PayrollPage() {
           <div className="mt-1 text-xs text-slate-500">Worked days vs possible</div>
         </div>
       </div>
+
+      {pendingOvertime.length > 0 && (
+        <div className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-base font-semibold text-ink">Overtime awaiting approval</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                  <th className="py-2 font-medium">Employee</th>
+                  <th className="py-2 font-medium">Date</th>
+                  <th className="py-2 font-medium">Overtime</th>
+                  <th className="py-2 font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingOvertime.map(s => (
+                  <tr key={s.id} className="border-b border-slate-100 last:border-0">
+                    <td className="py-2.5 font-medium text-ink">{employeeName(s.employee_id)}</td>
+                    <td className="py-2.5 text-slate-600">{s.work_date}</td>
+                    <td className="py-2.5 text-slate-600">{Number(s.overtime_hours).toFixed(1)} hrs</td>
+                    <td className="py-2.5">
+                      <button
+                        onClick={() => approveOvertime(s.id)}
+                        className="rounded-md bg-good px-3 py-1 text-xs font-semibold text-white hover:bg-good/90"
+                      >
+                        Approve
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="mb-4 text-base font-semibold text-ink">Roster hours breakdown</h2>

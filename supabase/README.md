@@ -16,13 +16,17 @@
    assignment well-defined (one shift row per employee).
 9. Run `006_profiles_employee_unique.sql` — ensures one login account can't be linked to more
    than one employee record.
-10. In Storage, create a public bucket named `attendance-selfies`.
-11. In Authentication, enable email/password sign-in and create your **admin** user, then:
+10. Run `007_hr_role_and_corrections.sql` — adds the **HR** role (same access as admin except
+    Devices/Shifts, which stay admin-only) and `attendance_correction_requests` (employees
+    requesting a fix for a missed punch). Depends on `payroll.sql` already being applied.
+11. In Storage, create a public bucket named `attendance-selfies`.
+12. In Authentication, enable email/password sign-in and create your **admin** user, then:
     ```sql
     insert into profiles (id, role) values ('<admin-auth-uuid>', 'admin');
     ```
-12. Copy your project URL + anon key into `../mobile-app/.env` and `../admin-web/.env.local`.
-13. Copy your project URL + **service role key** (Settings → API → `service_role` secret) into
+    Create an **HR** user the same way with `role = 'hr'` if you need one.
+13. Copy your project URL + anon key into `../mobile-app/.env` and `../admin-web/.env.local`.
+14. Copy your project URL + **service role key** (Settings → API → `service_role` secret) into
     `SUPABASE_SERVICE_ROLE_KEY` in `../admin-web/.env.local` and in Vercel's Environment
     Variables — this powers the "Create login" button on the admin-web Employees page (see
     below). Never prefix it with `NEXT_PUBLIC_`, and never put it in `../mobile-app/.env`.
@@ -30,12 +34,15 @@
 Employee logins are no longer created by hand: once an employee is added on the **Employees**
 page, click **Create login** on their row, set an email + temporary password, and share those
 with them — that creates their Supabase Auth account and links it to that employee record in one
-step. Sign in to the mobile app with that login to test GPS/QR/selfie check-in, and with the
-**admin** login to see the live dashboard. The seeded branch is centered on Kathmandu with a 5km
-radius — replace `latitude`/`longitude` in `seed.sql` with your real office coordinates before
-relying on the geofence check for anything real. To test QR check-in, encode the `qr_token_id`
-value (not the `token` text) printed by `seed.sql` into a QR code and scan it from
-`CheckInScreen`.
+step. Employees, HR, and Admin all sign in at the same `admin-web` URL — the app routes each role
+to its own view: Admin/HR land on the dashboard, Employees land on `/checkin` (GPS/QR/selfie
+check-in, attendance history, leave, and missed-punch correction requests, all mobile-friendly in
+any phone browser — no app install needed). `mobile-app` is a separate React Native/Expo client
+kept in the repo for possible future native distribution, but isn't required for day-to-day use.
+The seeded branch is centered on Kathmandu with a 5km radius — replace `latitude`/`longitude` in
+`seed.sql` with your real office coordinates before relying on the geofence check for anything
+real. To test QR check-in, encode the `qr_token_id` value (not the `token` text) printed by
+`seed.sql` into a QR code and scan it from the Check In page's QR option.
 
 ## What's in `schema.sql`
 
@@ -67,3 +74,19 @@ value (not the `token` text) printed by `seed.sql` into a QR code and scan it fr
 - `employees_on_leave_today` — a view listing `employee_id`s with an approved request covering
   today, used by the admin dashboard's "On Leave" stat and to exclude on-leave employees from
   "Absent" counts.
+
+## What's in `007_hr_role_and_corrections.sql`
+
+- Widens `profiles.role` to allow `'hr'`, and adds `is_admin_or_hr()`. The `employees`,
+  `leave_requests`, and `payroll_summaries` RLS policies are widened to it; `branches`, `devices`,
+  `shifts`, and `qr_tokens` deliberately keep using `is_admin()` — that's what keeps Devices and
+  Shift templates admin-only while HR gets everything else.
+- `attendance_correction_requests` — employee-submitted ("I forgot to check in/out on this
+  date"), admin/HR-approved. Same RLS shape as `leave_requests`.
+- `payroll_summaries.manually_corrected` and `.overtime_approved` — manual-review flags a routine
+  recompute must never silently reset (see `payroll.sql`).
+- `calc_payroll_fields()` in `payroll.sql` is the shared math both `compute_payroll_summaries()`
+  and the new `approve_attendance_correction(request_id)` call, so there's one source of truth for
+  how hours/late/early/overtime are derived from a check-in/check-out pair. Approving a correction
+  upserts `payroll_summaries` with `manually_corrected = true`, which `compute_payroll_summaries()`
+  now skips on future runs.
