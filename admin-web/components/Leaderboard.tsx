@@ -36,6 +36,14 @@ export default function Leaderboard({ highlightEmployeeId }: { highlightEmployee
                 <span className="w-6 shrink-0 text-center text-sm font-semibold text-slate-400">
                   {MEDALS[i] ?? i + 1}
                 </span>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent/10 text-xs font-semibold text-accent">
+                  {row.profile_photo_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={row.profile_photo_url} alt={row.name} className="h-full w-full object-cover" />
+                  ) : (
+                    row.name.slice(0, 1)
+                  )}
+                </div>
                 <div className="flex-1">
                   <div className={`text-sm ${isSelf ? 'font-semibold text-accent' : 'font-medium text-ink'}`}>
                     {row.name}

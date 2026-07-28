@@ -13,12 +13,26 @@ export type Employee = {
   name: string;
   email: string | null;
   phone: string | null;
+  address: string | null;
   department: string | null;
   designation: string | null;
   branch_id: string | null;
   fingerprint_id: string | null;
   profile_photo_url: string | null;
   status: 'active' | 'inactive';
+  date_of_joining: string | null;
+  resigned_at: string | null;
+  created_at: string;
+};
+
+export type PointRedemption = {
+  id: string;
+  employee_id: string;
+  points_requested: number;
+  note: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewed_by: string | null;
+  reviewed_at: string | null;
   created_at: string;
 };
 
@@ -125,6 +139,7 @@ export type LeaderboardRow = {
   department: string | null;
   total_points: number;
   tasks_completed: number;
+  profile_photo_url: string | null;
 };
 
 export type PayrollSummary = {

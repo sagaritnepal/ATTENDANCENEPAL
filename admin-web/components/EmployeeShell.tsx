@@ -10,6 +10,7 @@ const TABS = [
   { href: '/checkin', label: 'Check In/Out', icon: CheckInIcon },
   { href: '/my-calendar', label: 'Calendar', icon: CalendarTabIcon },
   { href: '/my-tasks', label: 'Tasks', icon: TaskTabIcon },
+  { href: '/my-profile', label: 'Profile', icon: ProfileTabIcon },
 ];
 
 export default function EmployeeShell({ title, children }: { title: string; children: React.ReactNode }) {
@@ -17,6 +18,7 @@ export default function EmployeeShell({ title, children }: { title: string; chil
   const pathname = usePathname();
   const [status, setStatus] = useState<'loading' | 'ready' | 'redirecting'>('loading');
   const [name, setName] = useState('Employee');
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [linked, setLinked] = useState(true);
 
   useEffect(() => {
@@ -47,9 +49,14 @@ export default function EmployeeShell({ title, children }: { title: string; chil
         setStatus('ready');
         return;
       }
-      const { data: emp } = await supabase.from('employees').select('name').eq('id', profile.employee_id).single();
+      const { data: emp } = await supabase
+        .from('employees')
+        .select('name, profile_photo_url')
+        .eq('id', profile.employee_id)
+        .single();
       if (!active) return;
       setName(emp?.name ?? 'Employee');
+      setPhotoUrl(emp?.profile_photo_url ?? null);
       setStatus('ready');
     });
     return () => {
@@ -70,9 +77,19 @@ export default function EmployeeShell({ title, children }: { title: string; chil
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-4">
-        <div>
-          <div className="text-xs text-slate-400">{title}</div>
-          <div className="text-base font-semibold text-ink">{name}</div>
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent/10 text-sm font-semibold text-accent">
+            {photoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={photoUrl} alt={name} className="h-full w-full object-cover" />
+            ) : (
+              name.slice(0, 1)
+            )}
+          </div>
+          <div>
+            <div className="text-xs text-slate-400">{title}</div>
+            <div className="text-base font-semibold text-ink">{name}</div>
+          </div>
         </div>
         <button
           onClick={handleSignOut}
@@ -135,6 +152,14 @@ function TaskTabIcon({ className }: IconProps) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <rect x="4" y="4" width="16" height="16" rx="2" />
       <path strokeLinecap="round" strokeLinejoin="round" d="m8 12 2.5 2.5L16 9" />
+    </svg>
+  );
+}
+function ProfileTabIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <circle cx="12" cy="8" r="3.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 20c1.2-3.5 4-5.5 7.5-5.5s6.3 2 7.5 5.5" />
     </svg>
   );
 }

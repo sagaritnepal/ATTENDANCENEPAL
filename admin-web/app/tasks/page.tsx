@@ -7,7 +7,7 @@ import Badge from '@/components/Badge';
 import Leaderboard from '@/components/Leaderboard';
 import TaskHoursChart from '@/components/TaskHoursChart';
 import { totalsByTask } from '@/lib/taskHours';
-import type { Employee, Task, TaskStatus, TaskTimeLog } from '@/lib/types';
+import type { Employee, PointRedemption, Task, TaskStatus, TaskTimeLog } from '@/lib/types';
 
 const EMPTY_FORM = { employee_id: '', title: '', description: '', points: 10, due_date: '' };
 
@@ -34,6 +34,10 @@ export default function TasksPage() {
   const [hoursEmployeeId, setHoursEmployeeId] = useState('');
   const [hoursLogs, setHoursLogs] = useState<TaskTimeLog[]>([]);
 
+  const [redemptions, setRedemptions] = useState<PointRedemption[]>([]);
+  const [redemptionFilter, setRedemptionFilter] = useState<'pending' | 'approved' | 'rejected' | 'All'>('pending');
+  const [busyRedemptionId, setBusyRedemptionId] = useState<string | null>(null);
+
   function reload() {
     supabase.from('tasks').select('*').order('created_at', { ascending: false }).then(({ data }) => setTasks(data ?? []));
     supabase
@@ -45,6 +49,11 @@ export default function TasksPage() {
         setEmployees(data ?? []);
         if (data && data.length > 0) setHoursEmployeeId(prev => prev || data[0].id);
       });
+    supabase
+      .from('point_redemptions')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setRedemptions(data ?? []));
   }
   useEffect(reload, []);
 
@@ -100,6 +109,22 @@ export default function TasksPage() {
       })
       .eq('id', task.id);
     setBusyId(null);
+    reload();
+  }
+
+  const filteredRedemptions = useMemo(
+    () => (redemptionFilter === 'All' ? redemptions : redemptions.filter(r => r.status === redemptionFilter)),
+    [redemptions, redemptionFilter]
+  );
+
+  async function reviewRedemption(id: string, status: 'approved' | 'rejected') {
+    setBusyRedemptionId(id);
+    const { data } = await supabase.auth.getUser();
+    await supabase
+      .from('point_redemptions')
+      .update({ status, reviewed_by: data.user?.id, reviewed_at: new Date().toISOString() })
+      .eq('id', id);
+    setBusyRedemptionId(null);
     reload();
   }
 
@@ -262,6 +287,59 @@ export default function TasksPage() {
             )}
           </div>
         </div>
+      </div>
+
+      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="mb-3 text-sm font-semibold text-ink">Point Redemptions</h2>
+        <div className="mb-4 flex flex-wrap gap-2">
+          {(['pending', 'approved', 'rejected', 'All'] as const).map(f => (
+            <button
+              key={f}
+              onClick={() => setRedemptionFilter(f)}
+              className={`rounded-full px-4 py-1.5 text-xs font-medium capitalize ${
+                redemptionFilter === f ? 'bg-accent text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+        {filteredRedemptions.length === 0 ? (
+          <p className="text-sm text-slate-400">No {redemptionFilter !== 'All' ? redemptionFilter : ''} redemption requests.</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {filteredRedemptions.map(r => (
+              <div key={r.id} className="flex flex-wrap items-center gap-3 py-3">
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-ink">
+                    {employeeName(r.employee_id)} · {r.points_requested} pts
+                  </div>
+                  {r.note && <div className="text-xs text-slate-400">{r.note}</div>}
+                </div>
+                {r.status === 'pending' ? (
+                  <div className="flex gap-2">
+                    <button
+                      disabled={busyRedemptionId === r.id}
+                      onClick={() => reviewRedemption(r.id, 'approved')}
+                      className="rounded-md bg-good px-3 py-1 text-xs font-semibold text-white hover:bg-good/90 disabled:opacity-50"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      disabled={busyRedemptionId === r.id}
+                      onClick={() => reviewRedemption(r.id, 'rejected')}
+                      className="rounded-md border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                ) : (
+                  <Badge tone={r.status === 'approved' ? 'good' : 'critical'}>{r.status}</Badge>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {showForm && (

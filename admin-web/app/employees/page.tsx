@@ -18,6 +18,7 @@ const EMPTY_FORM = {
   designation: '',
   fingerprint_id: '',
   branch_id: '',
+  date_of_joining: '',
 };
 
 const CSV_COLUMNS = ['employee_code', 'name', 'email', 'phone', 'department', 'designation', 'fingerprint_id'] as const;
@@ -149,6 +150,7 @@ export default function EmployeesPage() {
       designation: form.designation || null,
       fingerprint_id: form.fingerprint_id || null,
       branch_id: form.branch_id || null,
+      date_of_joining: form.date_of_joining || null,
       status: 'active',
     });
     setSaving(false);
@@ -163,6 +165,11 @@ export default function EmployeesPage() {
 
   async function handleBranchChange(employeeId: string, branchId: string) {
     await supabase.from('employees').update({ branch_id: branchId || null }).eq('id', employeeId);
+    reload();
+  }
+
+  async function handleDateOfJoiningChange(employeeId: string, date: string) {
+    await supabase.from('employees').update({ date_of_joining: date || null }).eq('id', employeeId);
     reload();
   }
 
@@ -395,6 +402,7 @@ export default function EmployeesPage() {
               <th className="px-5 py-3 font-medium">Biometric ID</th>
               <th className="px-5 py-3 font-medium">Department</th>
               <th className="px-5 py-3 font-medium">Branch</th>
+              <th className="px-5 py-3 font-medium">Joined</th>
               <th className="px-5 py-3 font-medium">Designation</th>
               <th className="px-5 py-3 font-medium">Shift</th>
               <th className="px-5 py-3 font-medium">Bio Enrollment</th>
@@ -448,6 +456,14 @@ export default function EmployeesPage() {
                       ))}
                     </select>
                   </td>
+                  <td className="px-5 py-3">
+                    <input
+                      type="date"
+                      value={emp.date_of_joining ?? ''}
+                      onChange={e => handleDateOfJoiningChange(emp.id, e.target.value)}
+                      className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                    />
+                  </td>
                   <td className="px-5 py-3 text-slate-600">{emp.designation ?? '—'}</td>
                   <td className="px-5 py-3">
                     <button onClick={() => openShiftModal(emp)} className="text-left text-slate-600 hover:text-accent hover:underline">
@@ -482,7 +498,7 @@ export default function EmployeesPage() {
             })}
             {pageItems.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-5 py-8 text-center text-slate-400">
+                <td colSpan={10} className="px-5 py-8 text-center text-slate-400">
                   No employees match this filter.
                 </td>
               </tr>
@@ -553,6 +569,15 @@ export default function EmployeesPage() {
                   </option>
                 ))}
               </select>
+            </div>
+            <div className="mb-3">
+              <label className="mb-1 block text-xs font-medium text-slate-600">Date of joining</label>
+              <input
+                type="date"
+                value={form.date_of_joining}
+                onChange={e => setForm(f => ({ ...f, date_of_joining: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+              />
             </div>
             {formError && <p className="mb-3 text-sm text-critical">{formError}</p>}
             <div className="mt-4 flex justify-end gap-2">
