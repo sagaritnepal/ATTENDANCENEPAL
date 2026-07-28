@@ -7,12 +7,11 @@ import { supabase, supabaseConfigured } from '@/lib/supabase';
 import ConfigWarning from './ConfigWarning';
 
 const TABS = [
-  { href: '/checkin', label: 'Check In', icon: CheckInIcon },
+  { href: '/checkin', label: 'Check In/Out', icon: CheckInIcon },
   { href: '/my-attendance', label: 'History', icon: HistoryIcon },
   { href: '/my-calendar', label: 'Calendar', icon: CalendarTabIcon },
   { href: '/my-tasks', label: 'Tasks', icon: TaskTabIcon },
   { href: '/my-leave', label: 'Leave', icon: LeaveIcon },
-  { href: '/my-corrections', label: 'Fix Punch', icon: FixIcon },
 ];
 
 export default function EmployeeShell({ title, children }: { title: string; children: React.ReactNode }) {
@@ -102,7 +101,7 @@ export default function EmployeeShell({ title, children }: { title: string; chil
             <Link
               key={tab.href}
               href={tab.href}
-              className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-center text-[10px] leading-tight ${
+              className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-center text-[11px] leading-tight ${
                 active ? 'text-accent' : 'text-slate-400'
               }`}
             >
@@ -153,14 +152,6 @@ function LeaveIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h5l2-3h4l2 3h5M4 12l1.5 7h13L20 12" />
-    </svg>
-  );
-}
-function FixIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 20a8 8 0 1 0-6.93-4M4 15v5h5" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l2.5 2.5" />
     </svg>
   );
 }
