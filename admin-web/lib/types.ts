@@ -88,6 +88,7 @@ export type CorrectionRequest = {
 };
 
 export type TaskStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'rejected';
+export type TaskSource = 'assigned' | 'self';
 
 export type Task = {
   id: string;
@@ -97,12 +98,22 @@ export type Task = {
   assigned_by: string | null;
   points: number;
   status: TaskStatus;
+  source: TaskSource;
   due_date: string | null;
   work_notes: string | null;
   review_note: string | null;
   submitted_at: string | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
+  created_at: string;
+};
+
+export type TaskTimeLog = {
+  id: string;
+  task_id: string;
+  employee_id: string;
+  started_at: string;
+  ended_at: string | null;
   created_at: string;
 };
 

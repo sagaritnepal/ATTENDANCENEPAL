@@ -5,7 +5,9 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import Leaderboard from '@/components/Leaderboard';
-import type { Employee, Task, TaskStatus } from '@/lib/types';
+import TaskHoursChart from '@/components/TaskHoursChart';
+import { totalsByTask } from '@/lib/taskHours';
+import type { Employee, Task, TaskStatus, TaskTimeLog } from '@/lib/types';
 
 const EMPTY_FORM = { employee_id: '', title: '', description: '', points: 10, due_date: '' };
 
@@ -27,14 +29,37 @@ export default function TasksPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
+  const [pointsDraft, setPointsDraft] = useState<Record<string, number>>({});
+
+  const [hoursEmployeeId, setHoursEmployeeId] = useState('');
+  const [hoursLogs, setHoursLogs] = useState<TaskTimeLog[]>([]);
 
   function reload() {
     supabase.from('tasks').select('*').order('created_at', { ascending: false }).then(({ data }) => setTasks(data ?? []));
-    supabase.from('employees').select('*').eq('status', 'active').order('name').then(({ data }) => setEmployees(data ?? []));
+    supabase
+      .from('employees')
+      .select('*')
+      .eq('status', 'active')
+      .order('name')
+      .then(({ data }) => {
+        setEmployees(data ?? []);
+        if (data && data.length > 0) setHoursEmployeeId(prev => prev || data[0].id);
+      });
   }
   useEffect(reload, []);
 
+  useEffect(() => {
+    if (!hoursEmployeeId) return;
+    supabase
+      .from('task_time_logs')
+      .select('*')
+      .eq('employee_id', hoursEmployeeId)
+      .then(({ data }) => setHoursLogs(data ?? []));
+  }, [hoursEmployeeId]);
+
   const employeeName = (id: string) => employees.find(e => e.id === id)?.name ?? 'Unknown';
+  const hoursTaskTotals = useMemo(() => totalsByTask(hoursLogs), [hoursLogs]);
+  const employeeTasks = useMemo(() => tasks.filter(t => t.assigned_to === hoursEmployeeId), [tasks, hoursEmployeeId]);
 
   const filtered = useMemo(() => (filter === 'All' ? tasks : tasks.filter(t => t.status === filter)), [tasks, filter]);
 
@@ -61,18 +86,19 @@ export default function TasksPage() {
     reload();
   }
 
-  async function review(id: string, status: 'approved' | 'rejected') {
-    setBusyId(id);
+  async function review(task: Task, status: 'approved' | 'rejected') {
+    setBusyId(task.id);
     const { data } = await supabase.auth.getUser();
     await supabase
       .from('tasks')
       .update({
         status,
-        review_note: noteDraft[id] || null,
+        points: status === 'approved' ? pointsDraft[task.id] ?? task.points : task.points,
+        review_note: noteDraft[task.id] || null,
         reviewed_by: data.user?.id,
         reviewed_at: new Date().toISOString(),
       })
-      .eq('id', id);
+      .eq('id', task.id);
     setBusyId(null);
     reload();
   }
@@ -119,7 +145,10 @@ export default function TasksPage() {
                 <tr key={t.id} className="border-b border-slate-100 last:border-0 align-top">
                   <td className="px-5 py-3 font-medium text-ink">{employeeName(t.assigned_to)}</td>
                   <td className="px-5 py-3 text-slate-600">
-                    <div className="font-medium text-ink">{t.title}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-ink">{t.title}</span>
+                      {t.source === 'self' && <Badge tone="info">Self-assigned</Badge>}
+                    </div>
                     {t.description && <div className="text-xs text-slate-400">{t.description}</div>}
                     {t.work_notes && (
                       <div className="mt-1 text-xs text-slate-500">
@@ -140,6 +169,16 @@ export default function TasksPage() {
                   <td className="px-5 py-3">
                     {t.status === 'submitted' ? (
                       <div className="flex flex-col gap-2">
+                        <label className="text-xs text-slate-500">
+                          Points to award
+                          <input
+                            type="number"
+                            min={0}
+                            value={pointsDraft[t.id] ?? t.points}
+                            onChange={e => setPointsDraft(d => ({ ...d, [t.id]: Number(e.target.value) }))}
+                            className="mt-0.5 w-24 rounded-md border border-slate-200 px-2 py-1 text-xs"
+                          />
+                        </label>
                         <input
                           placeholder="Optional review note"
                           value={noteDraft[t.id] ?? ''}
@@ -149,14 +188,14 @@ export default function TasksPage() {
                         <div className="flex gap-2">
                           <button
                             disabled={busyId === t.id}
-                            onClick={() => review(t.id, 'approved')}
+                            onClick={() => review(t, 'approved')}
                             className="rounded-md bg-good px-3 py-1 text-xs font-semibold text-white hover:bg-good/90 disabled:opacity-50"
                           >
                             Approve
                           </button>
                           <button
                             disabled={busyId === t.id}
-                            onClick={() => review(t.id, 'rejected')}
+                            onClick={() => review(t, 'rejected')}
                             className="rounded-md border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                           >
                             Reject
@@ -183,6 +222,46 @@ export default function TasksPage() {
         </div>
 
         <Leaderboard />
+      </div>
+
+      <div className="mt-6">
+        <div className="mb-3 max-w-xs">
+          <label className="mb-1 block text-xs font-medium text-slate-600">Hours worked by</label>
+          <select
+            value={hoursEmployeeId}
+            onChange={e => setHoursEmployeeId(e.target.value)}
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+          >
+            {employees.map(emp => (
+              <option key={emp.id} value={emp.id}>
+                {emp.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
+          <TaskHoursChart logs={hoursLogs} />
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <h2 className="mb-3 text-sm font-semibold text-ink">Hours by Task</h2>
+            {hoursTaskTotals.length === 0 ? (
+              <p className="text-sm text-slate-400">No time logged yet.</p>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {hoursTaskTotals.map(row => {
+                  const task = employeeTasks.find(t => t.id === row.task_id);
+                  return (
+                    <div key={row.task_id} className="flex items-center justify-between py-2 text-sm">
+                      <span className="text-ink">{task?.title ?? 'Deleted task'}</span>
+                      <span className="font-semibold text-ink">{row.hours} hrs</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {showForm && (
