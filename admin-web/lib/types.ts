@@ -85,6 +85,8 @@ export type CorrectionRequest = {
   reviewed_by: string | null;
   reviewed_at: string | null;
   created_at: string;
+  lat: number | null;
+  lng: number | null;
 };
 
 export type TaskStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'rejected';

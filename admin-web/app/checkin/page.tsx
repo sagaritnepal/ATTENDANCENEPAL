@@ -1,13 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import jsQR from 'jsqr';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import Badge from '@/components/Badge';
 import type { CorrectionRequest } from '@/lib/types';
 
-type Mode = 'menu' | 'qr-scan' | 'selfie';
 type View = 'live' | 'fix';
 
 const EMPTY_CORRECTION_FORM = { work_date: '', check_in_time: '', check_out_time: '', reason: '' };
@@ -22,19 +20,26 @@ function formatTime(value: string | null) {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+/** Best-effort, never blocks the caller — a denied/unavailable location
+ * just means the request is submitted without coordinates. */
+function getCurrentCoords(): Promise<{ lat: number; lng: number } | null> {
+  if (!navigator.geolocation) return Promise.resolve(null);
+  return new Promise(resolve => {
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  });
+}
+
 export default function CheckInPage() {
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [view, setView] = useState<View>('live');
 
   // Live check-in/out state
-  const [punchType, setPunchType] = useState<'0' | '1'>('0');
-  const [mode, setMode] = useState<Mode>('menu');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: 'good' | 'critical'; text: string } | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const scanFrameRef = useRef<number | null>(null);
 
   // Fix-a-missed-punch state
   const [requests, setRequests] = useState<CorrectionRequest[]>([]);
@@ -55,10 +60,6 @@ export default function CheckInPage() {
   }, []);
 
   useEffect(() => {
-    return () => stopCamera();
-  }, []);
-
-  useEffect(() => {
     if (view !== 'fix' || !employeeId) return;
     reloadCorrections(employeeId);
   }, [view, employeeId]);
@@ -72,46 +73,30 @@ export default function CheckInPage() {
       .then(({ data }) => setRequests(data ?? []));
   }
 
-  function stopCamera() {
-    if (scanFrameRef.current) cancelAnimationFrame(scanFrameRef.current);
-    scanFrameRef.current = null;
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
-  }
-
-  async function insertLog(payload: Record<string, unknown> & { method: string }) {
+  async function handleGpsCheckIn(punchType: '0' | '1') {
     if (!employeeId) {
       setMessage({ kind: 'critical', text: 'No employee linked to this account.' });
       return;
     }
-    setBusy(true);
-    const { error } = await supabase.from('attendance_logs').insert({
-      employee_id: employeeId,
-      punch_time: new Date().toISOString(),
-      punch_type: punchType,
-      ...payload,
-    });
-    setBusy(false);
-    setMode('menu');
-    if (error) setMessage({ kind: 'critical', text: `Check-in failed: ${error.message}` });
-    else setMessage({ kind: 'good', text: `${punchType === '0' ? 'Checked in' : 'Checked out'} via ${payload.method}.` });
-  }
-
-  async function handleGpsCheckIn() {
     if (!navigator.geolocation) {
       setMessage({ kind: 'critical', text: 'This browser does not support location access.' });
       return;
     }
     setBusy(true);
     navigator.geolocation.getCurrentPosition(
-      pos => {
-        setBusy(false);
-        insertLog({
+      async pos => {
+        const { error } = await supabase.from('attendance_logs').insert({
+          employee_id: employeeId,
+          punch_time: new Date().toISOString(),
+          punch_type: punchType,
           method: 'gps',
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
           accuracy_m: pos.coords.accuracy,
         });
+        setBusy(false);
+        if (error) setMessage({ kind: 'critical', text: `Check-in failed: ${error.message}` });
+        else setMessage({ kind: 'good', text: punchType === '0' ? 'Checked in.' : 'Checked out.' });
       },
       err => {
         setBusy(false);
@@ -119,84 +104,6 @@ export default function CheckInPage() {
       },
       { enableHighAccuracy: true, timeout: 15000 }
     );
-  }
-
-  async function openCamera(nextMode: 'qr-scan' | 'selfie') {
-    setMessage(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: nextMode === 'selfie' ? 'user' : 'environment' },
-      });
-      streamRef.current = stream;
-      setMode(nextMode);
-      // The <video> only exists once `mode` re-renders it in; attach next tick.
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play();
-          if (nextMode === 'qr-scan') scanLoop();
-        }
-      }, 0);
-    } catch {
-      setMessage({ kind: 'critical', text: 'Camera permission is required for this check-in method.' });
-    }
-  }
-
-  function scanLoop() {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
-      scanFrameRef.current = requestAnimationFrame(scanLoop);
-      return;
-    }
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(imageData.data, imageData.width, imageData.height);
-    if (code) {
-      stopCamera();
-      setMode('menu');
-      insertLog({ method: 'qr', qr_token_id: code.data });
-      return;
-    }
-    scanFrameRef.current = requestAnimationFrame(scanLoop);
-  }
-
-  async function handleSelfieCapture() {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob(async blob => {
-      if (!blob) return;
-      stopCamera();
-      setBusy(true);
-      const fileName = `selfies/${employeeId}-${Date.now()}.jpg`;
-      const { error: uploadError } = await supabase.storage.from('attendance-selfies').upload(fileName, blob, {
-        contentType: 'image/jpeg',
-      });
-      if (uploadError) {
-        setBusy(false);
-        setMode('menu');
-        setMessage({ kind: 'critical', text: `Upload failed: ${uploadError.message}` });
-        return;
-      }
-      const { data: publicUrl } = supabase.storage.from('attendance-selfies').getPublicUrl(fileName);
-      setBusy(false);
-      insertLog({ method: 'selfie', selfie_url: publicUrl.publicUrl });
-    }, 'image/jpeg', 0.85);
-  }
-
-  function cancelCamera() {
-    stopCamera();
-    setMode('menu');
   }
 
   async function handleCorrectionSubmit(e: React.FormEvent) {
@@ -210,12 +117,15 @@ export default function CheckInPage() {
       return;
     }
     setSubmittingCorrection(true);
+    const coords = await getCurrentCoords();
     const { error: insertError } = await supabase.from('attendance_correction_requests').insert({
       employee_id: employeeId,
       work_date: correctionForm.work_date,
       requested_check_in: checkIn,
       requested_check_out: checkOut,
       reason: correctionForm.reason || null,
+      lat: coords?.lat ?? null,
+      lng: coords?.lng ?? null,
     });
     setSubmittingCorrection(false);
     if (insertError) {
@@ -230,36 +140,6 @@ export default function CheckInPage() {
     if (status === 'approved') return 'good' as const;
     if (status === 'rejected') return 'critical' as const;
     return 'warning' as const;
-  }
-
-  if (mode === 'qr-scan' || mode === 'selfie') {
-    return (
-      <EmployeeShell title="Check In/Out">
-        <div className="relative overflow-hidden rounded-xl bg-black">
-          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-          <video ref={videoRef} playsInline muted className="w-full" />
-          <canvas ref={canvasRef} className="hidden" />
-          <div className="absolute inset-x-0 bottom-0 flex justify-center gap-3 bg-gradient-to-t from-black/70 to-transparent p-4">
-            {mode === 'selfie' && (
-              <button
-                onClick={handleSelfieCapture}
-                disabled={busy}
-                className="rounded-full bg-white px-6 py-3 text-sm font-semibold text-ink disabled:opacity-60"
-              >
-                Capture
-              </button>
-            )}
-            <button
-              onClick={cancelCamera}
-              className="rounded-full border border-white/60 px-6 py-3 text-sm font-semibold text-white"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-        {mode === 'qr-scan' && <p className="mt-3 text-center text-xs text-slate-500">Point the camera at your branch&apos;s QR code.</p>}
-      </EmployeeShell>
-    );
   }
 
   return (
@@ -287,49 +167,30 @@ export default function CheckInPage() {
             </div>
           )}
 
-          <div className="mb-6 flex overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <button
-              onClick={() => setPunchType('0')}
-              className={`flex-1 py-3 text-sm font-semibold ${punchType === '0' ? 'bg-accent text-white' : 'text-slate-500'}`}
-            >
-              Check In
-            </button>
-            <button
-              onClick={() => setPunchType('1')}
-              className={`flex-1 py-3 text-sm font-semibold ${punchType === '1' ? 'bg-accent text-white' : 'text-slate-500'}`}
-            >
-              Check Out
-            </button>
-          </div>
-
-          <p className="mb-3 text-sm font-medium text-slate-600">Choose a verification method:</p>
+          <p className="mb-3 text-sm font-medium text-slate-600">Uses your current GPS location:</p>
           <div className="flex flex-col gap-3">
             <button
-              onClick={handleGpsCheckIn}
+              onClick={() => handleGpsCheckIn('0')}
               disabled={busy || !employeeId}
-              className="rounded-xl border border-slate-200 bg-white py-4 text-base font-semibold text-ink shadow-sm disabled:opacity-50"
+              className="rounded-xl bg-green-600 py-4 text-base font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-50"
             >
-              📍 GPS Geofence
+              📍 Check In
             </button>
             <button
-              onClick={() => openCamera('qr-scan')}
+              onClick={() => handleGpsCheckIn('1')}
               disabled={busy || !employeeId}
-              className="rounded-xl border border-slate-200 bg-white py-4 text-base font-semibold text-ink shadow-sm disabled:opacity-50"
+              className="rounded-xl bg-green-600 py-4 text-base font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-50"
             >
-              ▦ Scan Branch QR
-            </button>
-            <button
-              onClick={() => openCamera('selfie')}
-              disabled={busy || !employeeId}
-              className="rounded-xl border border-slate-200 bg-white py-4 text-base font-semibold text-ink shadow-sm disabled:opacity-50"
-            >
-              🤳 Selfie
+              📍 Check Out
             </button>
           </div>
         </>
       ) : (
         <>
-          <p className="mb-4 text-sm text-slate-500">Forgot to check in or out? Request a correction and HR/Admin will review it.</p>
+          <p className="mb-4 text-sm text-slate-500">
+            Forgot to check in or out? Request a correction and HR/Admin will review it. Your current location is
+            captured automatically as confirmation.
+          </p>
 
           <form onSubmit={handleCorrectionSubmit} className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
             <label className="mb-1 block text-xs font-medium text-slate-600">Date</label>

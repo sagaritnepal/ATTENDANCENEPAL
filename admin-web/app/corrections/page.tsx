@@ -95,6 +95,7 @@ export default function CorrectionsPage() {
               <th className="px-5 py-3 font-medium">Requested In</th>
               <th className="px-5 py-3 font-medium">Requested Out</th>
               <th className="px-5 py-3 font-medium">Reason</th>
+              <th className="px-5 py-3 font-medium">Location</th>
               <th className="px-5 py-3 font-medium">Status</th>
               <th className="px-5 py-3 font-medium">Actions</th>
             </tr>
@@ -107,6 +108,20 @@ export default function CorrectionsPage() {
                 <td className="px-5 py-3 text-slate-600">{formatTime(r.requested_check_in)}</td>
                 <td className="px-5 py-3 text-slate-600">{formatTime(r.requested_check_out)}</td>
                 <td className="px-5 py-3 max-w-xs truncate text-slate-600">{r.reason ?? '—'}</td>
+                <td className="px-5 py-3 text-slate-600">
+                  {r.lat != null && r.lng != null ? (
+                    <a
+                      href={`https://www.google.com/maps?q=${r.lat},${r.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-accent hover:underline"
+                    >
+                      View
+                    </a>
+                  ) : (
+                    '—'
+                  )}
+                </td>
                 <td className="px-5 py-3">
                   <Badge tone={r.status === 'approved' ? 'good' : r.status === 'rejected' ? 'critical' : 'warning'}>
                     {r.status}
@@ -138,7 +153,7 @@ export default function CorrectionsPage() {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-5 py-8 text-center text-slate-400">
+                <td colSpan={8} className="px-5 py-8 text-center text-slate-400">
                   No {filter !== 'All' ? filter : ''} correction requests.
                 </td>
               </tr>
