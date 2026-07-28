@@ -7,6 +7,8 @@ import EmployeeShell from '@/components/EmployeeShell';
 import Badge from '@/components/Badge';
 import type { Employee, LeaderboardRow, PointRedemption } from '@/lib/types';
 
+const EMPTY_PROFILE_FORM = { name: '', email: '', phone: '', address: '', department: '', designation: '' };
+
 function tenureDays(dateOfJoining: string | null, resignedAt: string | null) {
   if (!dateOfJoining) return null;
   const start = new Date(dateOfJoining).getTime();
@@ -27,11 +29,10 @@ export default function MyProfilePage() {
   const [board, setBoard] = useState<LeaderboardRow | null>(null);
   const [redemptions, setRedemptions] = useState<PointRedemption[]>([]);
 
-  const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
-  const [savingContact, setSavingContact] = useState(false);
-  const [contactSaved, setContactSaved] = useState(false);
-  const [contactError, setContactError] = useState<string | null>(null);
+  const [profileForm, setProfileForm] = useState(EMPTY_PROFILE_FORM);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -51,8 +52,14 @@ export default function MyProfilePage() {
       .then(({ data }) => {
         if (data) {
           setEmployee(data);
-          setPhone(data.phone ?? '');
-          setAddress(data.address ?? '');
+          setProfileForm({
+            name: data.name ?? '',
+            email: data.email ?? '',
+            phone: data.phone ?? '',
+            address: data.address ?? '',
+            department: data.department ?? '',
+            designation: data.designation ?? '',
+          });
         }
       });
     supabase
@@ -80,23 +87,32 @@ export default function MyProfilePage() {
     });
   }, []);
 
-  async function handleSaveContact(e: React.FormEvent) {
+  async function saveProfile(photoUrl: string | null) {
+    const { error } = await supabase.rpc('update_my_profile', {
+      p_name: profileForm.name,
+      p_email: profileForm.email || null,
+      p_phone: profileForm.phone || null,
+      p_address: profileForm.address || null,
+      p_department: profileForm.department || null,
+      p_designation: profileForm.designation || null,
+      p_photo_url: photoUrl,
+    });
+    return error;
+  }
+
+  async function handleSaveProfile(e: React.FormEvent) {
     e.preventDefault();
     if (!employee) return;
-    setSavingContact(true);
-    setContactError(null);
-    setContactSaved(false);
-    const { error } = await supabase.rpc('update_my_profile', {
-      p_phone: phone || null,
-      p_address: address || null,
-      p_photo_url: employee.profile_photo_url,
-    });
-    setSavingContact(false);
+    setSavingProfile(true);
+    setProfileError(null);
+    setProfileSaved(false);
+    const error = await saveProfile(employee.profile_photo_url);
+    setSavingProfile(false);
     if (error) {
-      setContactError(error.message);
+      setProfileError(error.message);
       return;
     }
-    setContactSaved(true);
+    setProfileSaved(true);
     reload(employee.id);
   }
 
@@ -121,11 +137,7 @@ export default function MyProfilePage() {
       return;
     }
     const { data: publicUrl } = supabase.storage.from('attendance-selfies').getPublicUrl(path);
-    const { error: rpcError } = await supabase.rpc('update_my_profile', {
-      p_phone: phone || null,
-      p_address: address || null,
-      p_photo_url: publicUrl.publicUrl,
-    });
+    const rpcError = await saveProfile(publicUrl.publicUrl);
     setUploadingPhoto(false);
     if (rpcError) {
       alert(`Could not save photo: ${rpcError.message}`);
@@ -166,6 +178,11 @@ export default function MyProfilePage() {
   async function handleSignOut() {
     await supabase.auth.signOut();
     router.replace('/login');
+  }
+
+  function updateField(key: keyof typeof EMPTY_PROFILE_FORM, value: string) {
+    setProfileForm(f => ({ ...f, [key]: value }));
+    setProfileSaved(false);
   }
 
   if (loading) {
@@ -242,11 +259,8 @@ export default function MyProfilePage() {
 
       <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-ink">Employment</h2>
+        <p className="mb-3 text-xs text-slate-400">Set by HR/Admin — not editable here.</p>
         <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-slate-400">Email</span>
-            <span className="text-ink">{employee.email ?? '—'}</span>
-          </div>
           <div className="flex justify-between">
             <span className="text-slate-400">Date of joining</span>
             <span className="text-ink">{employee.date_of_joining ?? '—'}</span>
@@ -264,35 +278,57 @@ export default function MyProfilePage() {
         </div>
       </div>
 
-      <form onSubmit={handleSaveContact} className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-ink">Contact</h2>
+      <form onSubmit={handleSaveProfile} className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="mb-3 text-sm font-semibold text-ink">My Details</h2>
+
+        <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
+        <input
+          required
+          value={profileForm.name}
+          onChange={e => updateField('name', e.target.value)}
+          className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+        />
+        <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
+        <input
+          type="email"
+          value={profileForm.email}
+          onChange={e => updateField('email', e.target.value)}
+          className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+        />
         <label className="mb-1 block text-xs font-medium text-slate-600">Phone</label>
         <input
-          value={phone}
-          onChange={e => {
-            setPhone(e.target.value);
-            setContactSaved(false);
-          }}
+          value={profileForm.phone}
+          onChange={e => updateField('phone', e.target.value)}
           className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
         />
         <label className="mb-1 block text-xs font-medium text-slate-600">Address</label>
         <textarea
-          value={address}
-          onChange={e => {
-            setAddress(e.target.value);
-            setContactSaved(false);
-          }}
+          value={profileForm.address}
+          onChange={e => updateField('address', e.target.value)}
           rows={2}
           className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
         />
-        {contactError && <p className="mb-3 text-sm text-critical">{contactError}</p>}
-        {contactSaved && <p className="mb-3 text-sm text-good-text">Saved.</p>}
+        <label className="mb-1 block text-xs font-medium text-slate-600">Department</label>
+        <input
+          value={profileForm.department}
+          onChange={e => updateField('department', e.target.value)}
+          className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+        />
+        <label className="mb-1 block text-xs font-medium text-slate-600">Designation</label>
+        <input
+          value={profileForm.designation}
+          onChange={e => updateField('designation', e.target.value)}
+          className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+        />
+
+        {profileError && <p className="mb-3 text-sm text-critical">{profileError}</p>}
+        {profileSaved && <p className="mb-3 text-sm text-good-text">Saved.</p>}
         <button
           type="submit"
-          disabled={savingContact}
+          disabled={savingProfile}
           className="w-full rounded-lg bg-accent py-2 text-sm font-semibold text-white disabled:opacity-60"
         >
-          {savingContact ? 'Saving…' : 'Save contact info'}
+          {savingProfile ? 'Saving…' : 'Save changes'}
         </button>
       </form>
 
