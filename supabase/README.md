@@ -1,5 +1,10 @@
 # Supabase Backend
 
+Everything below (`schema.sql`, `payroll.sql`, `seed.sql`, `00N_*.sql`) is the historical record of
+what's already been run by hand in the SQL editor. **New schema changes now go in
+`migrations/`** instead and auto-apply on push once the GitHub integration is connected — see
+`migrations/README.md`.
+
 ## Setup
 
 1. Create a project at [supabase.com](https://supabase.com).
