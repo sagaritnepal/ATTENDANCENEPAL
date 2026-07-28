@@ -14,6 +14,9 @@
     },
     "android": {
       "permissions": ["CAMERA", "ACCESS_FINE_LOCATION"]
+    },
+    "web": {
+      "bundler": "metro"
     }
   }
 }
