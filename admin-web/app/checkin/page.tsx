@@ -7,6 +7,13 @@ import Badge from '@/components/Badge';
 import type { CorrectionRequest } from '@/lib/types';
 
 type View = 'live' | 'fix';
+type PunchModal = {
+  punchType: '0' | '1';
+  punchTime: string;
+  status: 'locating' | 'ready' | 'error';
+  coords?: { lat: number; lng: number; accuracy: number };
+  error?: string;
+};
 
 const EMPTY_CORRECTION_FORM = { work_date: '', check_in_time: '', check_out_time: '', reason: '' };
 
@@ -40,6 +47,7 @@ export default function CheckInPage() {
   // Live check-in/out state
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: 'good' | 'critical'; text: string } | null>(null);
+  const [modal, setModal] = useState<PunchModal | null>(null);
 
   // Fix-a-missed-punch state
   const [requests, setRequests] = useState<CorrectionRequest[]>([]);
@@ -73,37 +81,57 @@ export default function CheckInPage() {
       .then(({ data }) => setRequests(data ?? []));
   }
 
-  async function handleGpsCheckIn(punchType: '0' | '1') {
+  function locate(base: PunchModal) {
+    if (!navigator.geolocation) {
+      setModal({ ...base, status: 'error', error: 'This browser does not support location access.' });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos =>
+        setModal(m =>
+          m
+            ? { ...m, status: 'ready', coords: { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy } }
+            : m
+        ),
+      err => setModal(m => (m ? { ...m, status: 'error', error: err.message } : m)),
+      { enableHighAccuracy: true, timeout: 15000 }
+    );
+  }
+
+  function openPunchModal(punchType: '0' | '1') {
     if (!employeeId) {
       setMessage({ kind: 'critical', text: 'No employee linked to this account.' });
       return;
     }
-    if (!navigator.geolocation) {
-      setMessage({ kind: 'critical', text: 'This browser does not support location access.' });
-      return;
-    }
+    const base: PunchModal = { punchType, punchTime: new Date().toISOString(), status: 'locating' };
+    setModal(base);
+    locate(base);
+  }
+
+  function retryLocate() {
+    if (!modal) return;
+    const base: PunchModal = { punchType: modal.punchType, punchTime: modal.punchTime, status: 'locating' };
+    setModal(base);
+    locate(base);
+  }
+
+  async function confirmPunch() {
+    if (!modal || modal.status !== 'ready' || !modal.coords || !employeeId) return;
     setBusy(true);
-    navigator.geolocation.getCurrentPosition(
-      async pos => {
-        const { error } = await supabase.from('attendance_logs').insert({
-          employee_id: employeeId,
-          punch_time: new Date().toISOString(),
-          punch_type: punchType,
-          method: 'gps',
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy_m: pos.coords.accuracy,
-        });
-        setBusy(false);
-        if (error) setMessage({ kind: 'critical', text: `Check-in failed: ${error.message}` });
-        else setMessage({ kind: 'good', text: punchType === '0' ? 'Checked in.' : 'Checked out.' });
-      },
-      err => {
-        setBusy(false);
-        setMessage({ kind: 'critical', text: `Location permission denied or unavailable: ${err.message}` });
-      },
-      { enableHighAccuracy: true, timeout: 15000 }
-    );
+    const { error } = await supabase.from('attendance_logs').insert({
+      employee_id: employeeId,
+      punch_time: modal.punchTime,
+      punch_type: modal.punchType,
+      method: 'gps',
+      lat: modal.coords.lat,
+      lng: modal.coords.lng,
+      accuracy_m: modal.coords.accuracy,
+    });
+    setBusy(false);
+    const punchType = modal.punchType;
+    setModal(null);
+    if (error) setMessage({ kind: 'critical', text: `Check-in failed: ${error.message}` });
+    else setMessage({ kind: 'good', text: punchType === '0' ? 'Checked in.' : 'Checked out.' });
   }
 
   async function handleCorrectionSubmit(e: React.FormEvent) {
@@ -170,15 +198,15 @@ export default function CheckInPage() {
           <p className="mb-3 text-sm font-medium text-slate-600">Uses your current GPS location:</p>
           <div className="flex flex-col gap-3">
             <button
-              onClick={() => handleGpsCheckIn('0')}
-              disabled={busy || !employeeId}
+              onClick={() => openPunchModal('0')}
+              disabled={!employeeId}
               className="rounded-xl bg-green-600 py-4 text-base font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-50"
             >
               📍 Check In
             </button>
             <button
-              onClick={() => handleGpsCheckIn('1')}
-              disabled={busy || !employeeId}
+              onClick={() => openPunchModal('1')}
+              disabled={!employeeId}
               className="rounded-xl bg-green-600 py-4 text-base font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-50"
             >
               📍 Check Out
@@ -261,6 +289,44 @@ export default function CheckInPage() {
             </div>
           )}
         </>
+      )}
+
+      {modal && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-lg">
+            <h3 className="mb-1 text-lg font-semibold text-ink">
+              Confirm {modal.punchType === '0' ? 'Check In' : 'Check Out'}
+            </h3>
+            <p className="mb-4 text-xs text-slate-500">{new Date(modal.punchTime).toLocaleString()}</p>
+
+            {modal.status === 'locating' && <p className="mb-4 text-sm text-slate-500">📍 Getting your location…</p>}
+            {modal.status === 'ready' && <p className="mb-4 text-sm text-good-text">📍 Location confirmed</p>}
+            {modal.status === 'error' && (
+              <div className="mb-4">
+                <p className="mb-2 text-sm text-critical">📍 {modal.error ?? 'Could not get your location.'}</p>
+                <button onClick={retryLocate} className="text-xs font-medium text-accent hover:underline">
+                  Try again
+                </button>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setModal(null)}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmPunch}
+                disabled={modal.status !== 'ready' || busy}
+                className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+              >
+                {busy ? 'Submitting…' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </EmployeeShell>
   );
