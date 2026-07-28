@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
-import type { Employee, Shift, Profile } from '@/lib/types';
+import type { Employee, Shift, Profile, Branch } from '@/lib/types';
 import { resolveShift, formatShiftHours } from '@/lib/shift';
 
 const PAGE_SIZE = 8;
@@ -17,6 +17,7 @@ const EMPTY_FORM = {
   department: '',
   designation: '',
   fingerprint_id: '',
+  branch_id: '',
 };
 
 const CSV_COLUMNS = ['employee_code', 'name', 'email', 'phone', 'department', 'designation', 'fingerprint_id'] as const;
@@ -75,6 +76,7 @@ export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [filter, setFilter] = useState('All');
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
@@ -108,6 +110,7 @@ export default function EmployeesPage() {
     supabase.from('employees').select('*').order('created_at', { ascending: false }).then(({ data }) => setEmployees(data ?? []));
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
     supabase.from('profiles').select('id, employee_id, role').then(({ data }) => setProfiles(data ?? []));
+    supabase.from('branches').select('*').order('name').then(({ data }) => setBranches(data ?? []));
   }
 
   useEffect(reload, []);
@@ -145,6 +148,7 @@ export default function EmployeesPage() {
       department: form.department || null,
       designation: form.designation || null,
       fingerprint_id: form.fingerprint_id || null,
+      branch_id: form.branch_id || null,
       status: 'active',
     });
     setSaving(false);
@@ -154,6 +158,11 @@ export default function EmployeesPage() {
     }
     setForm(EMPTY_FORM);
     setShowForm(false);
+    reload();
+  }
+
+  async function handleBranchChange(employeeId: string, branchId: string) {
+    await supabase.from('employees').update({ branch_id: branchId || null }).eq('id', employeeId);
     reload();
   }
 
@@ -385,6 +394,7 @@ export default function EmployeesPage() {
               <th className="px-5 py-3 font-medium">Contact</th>
               <th className="px-5 py-3 font-medium">Biometric ID</th>
               <th className="px-5 py-3 font-medium">Department</th>
+              <th className="px-5 py-3 font-medium">Branch</th>
               <th className="px-5 py-3 font-medium">Designation</th>
               <th className="px-5 py-3 font-medium">Shift</th>
               <th className="px-5 py-3 font-medium">Bio Enrollment</th>
@@ -422,6 +432,22 @@ export default function EmployeesPage() {
                   </td>
                   <td className="px-5 py-3 text-slate-600">{emp.fingerprint_id ?? '—'}</td>
                   <td className="px-5 py-3 text-slate-600">{emp.department ?? '—'}</td>
+                  <td className="px-5 py-3">
+                    <select
+                      value={emp.branch_id ?? ''}
+                      onChange={e => handleBranchChange(emp.id, e.target.value)}
+                      className={`rounded-md border px-2 py-1 text-xs ${
+                        emp.branch_id ? 'border-slate-200 text-slate-600' : 'border-warning text-warning-text'
+                      }`}
+                    >
+                      <option value="">Unassigned</option>
+                      {branches.map(b => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
                   <td className="px-5 py-3 text-slate-600">{emp.designation ?? '—'}</td>
                   <td className="px-5 py-3">
                     <button onClick={() => openShiftModal(emp)} className="text-left text-slate-600 hover:text-accent hover:underline">
@@ -456,7 +482,7 @@ export default function EmployeesPage() {
             })}
             {pageItems.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-5 py-8 text-center text-slate-400">
+                <td colSpan={9} className="px-5 py-8 text-center text-slate-400">
                   No employees match this filter.
                 </td>
               </tr>
@@ -513,6 +539,21 @@ export default function EmployeesPage() {
                 />
               </div>
             ))}
+            <div className="mb-3">
+              <label className="mb-1 block text-xs font-medium text-slate-600">Branch</label>
+              <select
+                value={form.branch_id}
+                onChange={e => setForm(f => ({ ...f, branch_id: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+              >
+                <option value="">Unassigned (GPS check-in won&apos;t work until set)</option>
+                {branches.map(b => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             {formError && <p className="mb-3 text-sm text-critical">{formError}</p>}
             <div className="mt-4 flex justify-end gap-2">
               <button
