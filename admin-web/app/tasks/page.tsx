@@ -241,7 +241,7 @@ export default function TasksPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
-          <TaskHoursChart logs={hoursLogs} />
+          <TaskHoursChart logs={hoursLogs} tasks={employeeTasks} />
 
           <div className="rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="mb-3 text-sm font-semibold text-ink">Hours by Task</h2>

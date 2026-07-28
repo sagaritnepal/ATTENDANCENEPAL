@@ -166,7 +166,7 @@ export default function MyTasksPage() {
       ) : (
         <>
           <div className="mb-5">
-            <TaskHoursChart logs={logs} />
+            <TaskHoursChart logs={logs} tasks={tasks} />
           </div>
 
           {error && <p className="mb-3 text-sm text-critical">{error}</p>}
@@ -188,7 +188,6 @@ export default function MyTasksPage() {
               {tasks.map(t => {
                 const isRunningHere = runningLog?.task_id === t.id;
                 const hours = taskHours(t.id);
-                const active = t.status === 'pending' || t.status === 'in_progress';
                 return (
                   <div key={t.id} className="rounded-xl border border-slate-200 bg-white p-4">
                     <div className="mb-1 flex items-start justify-between gap-2">
@@ -211,25 +210,35 @@ export default function MyTasksPage() {
                       </p>
                     )}
 
-                    {active && (
+                    {t.status === 'pending' && (
+                      <button
+                        disabled={busyId === t.id}
+                        onClick={() => startTimer(t.id)}
+                        className="w-full rounded-lg bg-accent py-2 text-sm font-semibold text-white disabled:opacity-60"
+                      >
+                        ✅ Accept Task
+                      </button>
+                    )}
+
+                    {t.status === 'in_progress' && (
                       <div className="space-y-2">
                         {isRunningHere ? (
                           <button
                             disabled={busyId === runningLog.id}
                             onClick={() => stopTimer(runningLog.id)}
-                            className="w-full rounded-lg bg-critical py-2 text-sm font-semibold text-white disabled:opacity-60"
+                            className="w-full rounded-lg bg-warning py-2 text-sm font-semibold text-white disabled:opacity-60"
                           >
-                            ⏱ {formatElapsed(runningLog.started_at, now)} · Stop Timer
+                            ⏸ {formatElapsed(runningLog.started_at, now)} · Hold
                           </button>
                         ) : runningLog ? (
-                          <p className="text-xs text-slate-400">Timer running on another task.</p>
+                          <p className="text-xs text-slate-400">Timer running on another task — hold it first to resume this one.</p>
                         ) : (
                           <button
                             disabled={busyId === t.id}
                             onClick={() => startTimer(t.id)}
                             className="w-full rounded-lg border border-accent py-2 text-sm font-semibold text-accent disabled:opacity-60"
                           >
-                            ▶ Start Timer
+                            ▶ Resume
                           </button>
                         )}
 
@@ -243,9 +252,9 @@ export default function MyTasksPage() {
                         <button
                           disabled={busyId === t.id}
                           onClick={() => submit(t.id)}
-                          className="w-full rounded-lg bg-accent py-2 text-sm font-semibold text-white disabled:opacity-60"
+                          className="w-full rounded-lg bg-good py-2 text-sm font-semibold text-white disabled:opacity-60"
                         >
-                          Mark as done
+                          Complete Task
                         </button>
                       </div>
                     )}
