@@ -7,30 +7,34 @@
 3. Run `payroll.sql` — adds the `compute_payroll_summaries()` function.
 4. Run `seed.sql` — creates a sample branch, shift, and employee, and prints the `employee_id`
    and `qr_token_id` you'll need for the next steps.
-5. Run `003_auth_signup.sql` — auto-creates a `profiles` row (role `employee`) whenever someone
+5. Run `002_designation.sql` — adds `employees.designation`.
+6. Run `003_auth_signup.sql` — auto-creates a `profiles` row (role `employee`) whenever someone
    registers through the admin-web `/register` page, so self-service signup works end to end.
-6. Run `004_leave_management.sql` — adds `leave_requests` (employee-submitted, admin-approved)
+7. Run `004_leave_management.sql` — adds `leave_requests` (employee-submitted, admin-approved)
    and the `employees_on_leave_today` view the dashboard's "On Leave" stat reads from.
-7. In Storage, create a public bucket named `attendance-selfies`.
-8. In Authentication, enable email/password sign-in and create your **admin** user, then:
-   ```sql
-   insert into profiles (id, role) values ('<admin-auth-uuid>', 'admin');
-   ```
-9. Create a second Authentication user for the **employee** login, then link it to the employee
-   seeded in step 4 (use the `employee_id` printed by `seed.sql`):
-   ```sql
-   insert into profiles (id, employee_id, role)
-   values ('<employee-auth-uuid>', '<employee_id-from-seed.sql>', 'employee');
-   ```
-10. Copy your project URL + anon key into `../mobile-app/.env` and `../admin-web/.env.local`.
-11. Copy your project URL + service role key into `../zkteco-bridge/.env` if you have physical
-    ZKTeco terminals to bridge in.
+8. Run `005_employee_extras.sql` — adds `employees.phone` and makes per-employee shift
+   assignment well-defined (one shift row per employee).
+9. Run `006_profiles_employee_unique.sql` — ensures one login account can't be linked to more
+   than one employee record.
+10. In Storage, create a public bucket named `attendance-selfies`.
+11. In Authentication, enable email/password sign-in and create your **admin** user, then:
+    ```sql
+    insert into profiles (id, role) values ('<admin-auth-uuid>', 'admin');
+    ```
+12. Copy your project URL + anon key into `../mobile-app/.env` and `../admin-web/.env.local`.
+13. Copy your project URL + **service role key** (Settings → API → `service_role` secret) into
+    `SUPABASE_SERVICE_ROLE_KEY` in `../admin-web/.env.local` and in Vercel's Environment
+    Variables — this powers the "Create login" button on the admin-web Employees page (see
+    below). Never prefix it with `NEXT_PUBLIC_`, and never put it in `../mobile-app/.env`.
 
-Sign in to the mobile app with the **employee** login to test GPS/QR/selfie check-in, and with
-the **admin** login to see the live dashboard. The seeded branch is centered on Kathmandu with a
-5km radius — replace `latitude`/`longitude` in `seed.sql` with your real office coordinates
-before relying on the geofence check for anything real. To test QR check-in, encode the
-`qr_token_id` value (not the `token` text) printed by `seed.sql` into a QR code and scan it from
+Employee logins are no longer created by hand: once an employee is added on the **Employees**
+page, click **Create login** on their row, set an email + temporary password, and share those
+with them — that creates their Supabase Auth account and links it to that employee record in one
+step. Sign in to the mobile app with that login to test GPS/QR/selfie check-in, and with the
+**admin** login to see the live dashboard. The seeded branch is centered on Kathmandu with a 5km
+radius — replace `latitude`/`longitude` in `seed.sql` with your real office coordinates before
+relying on the geofence check for anything real. To test QR check-in, encode the `qr_token_id`
+value (not the `token` text) printed by `seed.sql` into a QR code and scan it from
 `CheckInScreen`.
 
 ## What's in `schema.sql`

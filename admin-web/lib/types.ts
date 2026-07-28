@@ -22,6 +22,12 @@ export type Employee = {
   created_at: string;
 };
 
+export type Profile = {
+  id: string;
+  employee_id: string | null;
+  role: 'admin' | 'employee';
+};
+
 export type Device = {
   id: string;
   name: string;

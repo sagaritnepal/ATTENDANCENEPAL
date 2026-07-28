@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
-import type { Employee, Shift } from '@/lib/types';
+import type { Employee, Shift, Profile } from '@/lib/types';
 import { resolveShift, formatShiftHours } from '@/lib/shift';
 
 const PAGE_SIZE = 8;
@@ -22,6 +22,13 @@ const EMPTY_FORM = {
 const CSV_COLUMNS = ['employee_code', 'name', 'email', 'phone', 'department', 'designation', 'fingerprint_id'] as const;
 
 const SHIFT_FORM_DEFAULT = { name: '', start_time: '09:00', end_time: '18:00', grace_minutes: 10 };
+
+const PASSWORD_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+function generatePassword(length = 10) {
+  let out = '';
+  for (let i = 0; i < length; i++) out += PASSWORD_CHARS[Math.floor(Math.random() * PASSWORD_CHARS.length)];
+  return out;
+}
 
 // Minimal CSV parser: handles quoted fields ("a,b") and escaped quotes (""),
 // which covers what a spreadsheet export actually produces — no need for a
@@ -67,6 +74,7 @@ function parseCsv(text: string): string[][] {
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [filter, setFilter] = useState('All');
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
@@ -90,9 +98,16 @@ export default function EmployeesPage() {
   const [savingShift, setSavingShift] = useState(false);
   const [shiftError, setShiftError] = useState<string | null>(null);
 
+  const [loginModalEmployee, setLoginModalEmployee] = useState<Employee | null>(null);
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+  const [creatingLogin, setCreatingLogin] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginResult, setLoginResult] = useState<{ email: string; password: string } | null>(null);
+
   function reload() {
     supabase.from('employees').select('*').order('created_at', { ascending: false }).then(({ data }) => setEmployees(data ?? []));
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
+    supabase.from('profiles').select('id, employee_id, role').then(({ data }) => setProfiles(data ?? []));
   }
 
   useEffect(reload, []);
@@ -100,6 +115,11 @@ export default function EmployeesPage() {
   const departments = useMemo(
     () => Array.from(new Set(employees.map(e => e.department).filter(Boolean))) as string[],
     [employees]
+  );
+
+  const linkedEmployeeIds = useMemo(
+    () => new Set(profiles.map(p => p.employee_id).filter((id): id is string => Boolean(id))),
+    [profiles]
   );
 
   const templateShifts = useMemo(() => shifts.filter(s => s.employee_id === null), [shifts]);
@@ -259,6 +279,40 @@ export default function EmployeesPage() {
     reload();
   }
 
+  function openLoginModal(emp: Employee) {
+    setLoginForm({ email: emp.email ?? '', password: generatePassword() });
+    setLoginError(null);
+    setLoginResult(null);
+    setLoginModalEmployee(emp);
+  }
+
+  async function handleCreateLogin(e: React.FormEvent) {
+    e.preventDefault();
+    if (!loginModalEmployee) return;
+    setCreatingLogin(true);
+    setLoginError(null);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setCreatingLogin(false);
+      setLoginError('Your session expired — please sign in again.');
+      return;
+    }
+    const res = await fetch('/api/create-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ employeeId: loginModalEmployee.id, email: loginForm.email, password: loginForm.password }),
+    });
+    const body = await res.json().catch(() => ({}));
+    setCreatingLogin(false);
+    if (!res.ok) {
+      setLoginError(body.error ?? 'Could not create the login.');
+      return;
+    }
+    setLoginResult({ email: loginForm.email, password: loginForm.password });
+    reload();
+  }
+
   return (
     <AppShell title="Employee Directory">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -381,10 +435,17 @@ export default function EmployeesPage() {
                     </Badge>
                   </td>
                   <td className="px-5 py-3">
-                    <div className="flex gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                       <button onClick={() => openShiftModal(emp)} className="text-xs font-medium text-accent hover:underline">
                         Assign shift
                       </button>
+                      {linkedEmployeeIds.has(emp.id) ? (
+                        <span className="text-xs font-medium text-good">Login active</span>
+                      ) : (
+                        <button onClick={() => openLoginModal(emp)} className="text-xs font-medium text-accent hover:underline">
+                          Create login
+                        </button>
+                      )}
                       <button onClick={() => handleDelete(emp.id)} className="text-xs font-medium text-critical hover:underline">
                         Remove
                       </button>
@@ -549,6 +610,87 @@ export default function EmployeesPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {loginModalEmployee && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+            {loginResult ? (
+              <>
+                <h3 className="mb-1 text-lg font-semibold text-ink">Login created</h3>
+                <p className="mb-4 text-xs text-slate-500">
+                  Share these with {loginModalEmployee.name} so they can sign in on the mobile app. This password won&apos;t
+                  be shown again.
+                </p>
+                <div className="mb-4 space-y-2 rounded-lg bg-slate-50 p-3 text-sm">
+                  <div>
+                    <span className="text-xs uppercase text-slate-400">Email</span>
+                    <div className="font-medium text-ink">{loginResult.email}</div>
+                  </div>
+                  <div>
+                    <span className="text-xs uppercase text-slate-400">Password</span>
+                    <div className="font-mono font-medium text-ink">{loginResult.password}</div>
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setLoginModalEmployee(null)}
+                    className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
+                  >
+                    Done
+                  </button>
+                </div>
+              </>
+            ) : (
+              <form onSubmit={handleCreateLogin}>
+                <h3 className="mb-1 text-lg font-semibold text-ink">Create Login</h3>
+                <p className="mb-4 text-xs text-slate-500">{loginModalEmployee.name} will use this to sign in on the mobile app.</p>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
+                <input
+                  type="email"
+                  required
+                  value={loginForm.email}
+                  onChange={e => setLoginForm(f => ({ ...f, email: e.target.value }))}
+                  className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+                />
+                <label className="mb-1 block text-xs font-medium text-slate-600">Temporary password</label>
+                <div className="mb-3 flex gap-2">
+                  <input
+                    required
+                    minLength={8}
+                    value={loginForm.password}
+                    onChange={e => setLoginForm(f => ({ ...f, password: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/30"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setLoginForm(f => ({ ...f, password: generatePassword() }))}
+                    className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                  >
+                    Regenerate
+                  </button>
+                </div>
+                {loginError && <p className="mb-3 text-sm text-critical">{loginError}</p>}
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setLoginModalEmployee(null)}
+                    className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={creatingLogin}
+                    className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+                  >
+                    {creatingLogin ? 'Creating…' : 'Create login'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       )}
     </AppShell>
