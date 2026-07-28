@@ -16,6 +16,11 @@ type Row = {
   hours: number;
   status: 'Present' | 'Late' | 'Absent';
   overtime: number;
+  /** No payroll_summaries row yet (only computed by the nightly job or
+   * "Recalculate month" on the Payroll page) — hours/late status aren't
+   * final, this row is built straight from today's raw punches so it's
+   * not invisible until that recompute runs. */
+  pending?: boolean;
 };
 
 function isoDaysAgo(n: number) {
@@ -67,20 +72,38 @@ export default function AttendancePage() {
     for (const day of days) {
       for (const emp of employees) {
         const summary = summaries.find(s => s.employee_id === emp.id && s.work_date === day);
+        const dayLogs = logs
+          .filter(l => l.employee_id === emp.id && l.punch_time.slice(0, 10) === day)
+          .sort((a, b) => a.punch_time.localeCompare(b.punch_time));
+
         if (summary) {
-          const firstLog = logs.find(
-            l => l.employee_id === emp.id && l.punch_time.slice(0, 10) === day
-          );
           out.push({
             key: `${emp.id}-${day}`,
             date: day,
             employeeName: emp.name,
-            device: deviceName(firstLog?.device_id ?? null),
+            device: deviceName(dayLogs[0]?.device_id ?? null),
             checkIn: summary.check_in,
             checkOut: summary.check_out,
             hours: summary.total_hours,
             status: summary.is_late ? 'Late' : 'Present',
             overtime: summary.overtime_hours,
+          });
+        } else if (dayLogs.length > 0) {
+          // Not yet processed by compute_payroll_summaries() (runs nightly
+          // for the previous day, or manually via "Recalculate month" on
+          // Payroll) — show the raw punches now rather than "Absent" until
+          // final hours/late status are computed.
+          out.push({
+            key: `${emp.id}-${day}`,
+            date: day,
+            employeeName: emp.name,
+            device: deviceName(dayLogs[0].device_id ?? null),
+            checkIn: dayLogs[0].punch_time,
+            checkOut: dayLogs.length > 1 ? dayLogs[dayLogs.length - 1].punch_time : null,
+            hours: 0,
+            status: 'Present',
+            overtime: 0,
+            pending: true,
           });
         } else {
           out.push({
@@ -171,11 +194,11 @@ export default function AttendancePage() {
                 <td className="px-5 py-3 text-slate-600">{r.device}</td>
                 <td className="px-5 py-3 text-slate-600">{r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '–:–'}</td>
                 <td className="px-5 py-3 text-slate-600">{r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '–:–'}</td>
-                <td className="px-5 py-3 text-slate-600">{r.hours.toFixed(1)} hrs</td>
+                <td className="px-5 py-3 text-slate-600">{r.pending ? 'Pending calc' : `${r.hours.toFixed(1)} hrs`}</td>
                 <td className="px-5 py-3">
                   <Badge tone={r.status === 'Present' ? 'good' : r.status === 'Late' ? 'warning' : 'critical'}>{r.status}</Badge>
                 </td>
-                <td className="px-5 py-3 text-slate-600">{r.overtime.toFixed(1)} hr</td>
+                <td className="px-5 py-3 text-slate-600">{r.pending ? '–' : `${r.overtime.toFixed(1)} hr`}</td>
               </tr>
             ))}
             {rows.length === 0 && (

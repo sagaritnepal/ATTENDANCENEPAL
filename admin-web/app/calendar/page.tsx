@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import MonthCalendar from '@/components/MonthCalendar';
+import { localDateKey } from '@/lib/calendar';
 import type { AttendanceLog, Employee } from '@/lib/types';
 
 const WINDOW_DAYS = 400;
@@ -43,7 +44,7 @@ export default function CalendarPage() {
 
   const presentDates = useMemo(() => {
     const set = new Set<string>();
-    for (const log of logs) set.add(log.punch_time.slice(0, 10));
+    for (const log of logs) set.add(localDateKey(log.punch_time));
     return set;
   }, [logs]);
 

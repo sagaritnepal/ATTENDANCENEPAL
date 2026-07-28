@@ -24,6 +24,16 @@ function dateKey(year: number, monthIndex0: number, day: number) {
   return `${year}-${pad(monthIndex0 + 1)}-${pad(day)}`;
 }
 
+/** The AD calendar-date key (YYYY-MM-DD) for a punch_time, in the browser's
+ * LOCAL timezone — matching how grid cells below compute their own adKey.
+ * Never slice the raw ISO string for this: that gives the UTC date, which
+ * silently disagrees with the local date whenever the browser's timezone
+ * offset pushes a punch across midnight relative to UTC. */
+export function localDateKey(iso: string): string {
+  const d = new Date(iso);
+  return dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
 function chunkIntoWeeks(cells: CalendarCell[]): CalendarCell[][] {
   const weeks: CalendarCell[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
