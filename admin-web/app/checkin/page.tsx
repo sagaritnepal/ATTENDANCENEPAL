@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import Badge from '@/components/Badge';
-import type { CorrectionRequest } from '@/lib/types';
+import type { CorrectionRequest, LeaveRequest, LeaveType } from '@/lib/types';
 
-type View = 'live' | 'fix';
+type View = 'menu' | 'fix' | 'leave';
 type PunchModal = {
   punchType: '0' | '1';
   punchTime: string;
@@ -16,6 +16,8 @@ type PunchModal = {
 };
 
 const EMPTY_CORRECTION_FORM = { work_date: '', check_in_time: '', check_out_time: '', reason: '' };
+const LEAVE_TYPES: LeaveType[] = ['casual', 'sick', 'annual', 'unpaid'];
+const EMPTY_LEAVE_FORM = { leave_type: 'casual' as LeaveType, start_date: '', end_date: '', reason: '' };
 
 function toTimestamp(date: string, time: string) {
   if (!date || !time) return null;
@@ -25,6 +27,12 @@ function toTimestamp(date: string, time: string) {
 function formatTime(value: string | null) {
   if (!value) return '—';
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function statusTone(status: string) {
+  if (status === 'approved') return 'good' as const;
+  if (status === 'rejected') return 'critical' as const;
+  return 'warning' as const;
 }
 
 /** Best-effort, never blocks the caller — a denied/unavailable location
@@ -42,7 +50,7 @@ function getCurrentCoords(): Promise<{ lat: number; lng: number } | null> {
 
 export default function CheckInPage() {
   const [employeeId, setEmployeeId] = useState<string | null>(null);
-  const [view, setView] = useState<View>('live');
+  const [view, setView] = useState<View>('menu');
 
   // Live check-in/out state
   const [busy, setBusy] = useState(false);
@@ -54,6 +62,12 @@ export default function CheckInPage() {
   const [correctionForm, setCorrectionForm] = useState(EMPTY_CORRECTION_FORM);
   const [submittingCorrection, setSubmittingCorrection] = useState(false);
   const [correctionError, setCorrectionError] = useState<string | null>(null);
+
+  // Leave state
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [leaveForm, setLeaveForm] = useState(EMPTY_LEAVE_FORM);
+  const [submittingLeave, setSubmittingLeave] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -68,8 +82,9 @@ export default function CheckInPage() {
   }, []);
 
   useEffect(() => {
-    if (view !== 'fix' || !employeeId) return;
-    reloadCorrections(employeeId);
+    if (!employeeId) return;
+    if (view === 'fix') reloadCorrections(employeeId);
+    if (view === 'leave') reloadLeave(employeeId);
   }, [view, employeeId]);
 
   function reloadCorrections(empId: string) {
@@ -79,6 +94,15 @@ export default function CheckInPage() {
       .eq('employee_id', empId)
       .order('created_at', { ascending: false })
       .then(({ data }) => setRequests(data ?? []));
+  }
+
+  function reloadLeave(empId: string) {
+    supabase
+      .from('leave_requests')
+      .select('*')
+      .eq('employee_id', empId)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setLeaveRequests(data ?? []));
   }
 
   function locate(base: PunchModal) {
@@ -164,30 +188,41 @@ export default function CheckInPage() {
     reloadCorrections(employeeId);
   }
 
-  function statusTone(status: string) {
-    if (status === 'approved') return 'good' as const;
-    if (status === 'rejected') return 'critical' as const;
-    return 'warning' as const;
+  async function handleLeaveSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!employeeId) return;
+    setLeaveError(null);
+    setSubmittingLeave(true);
+    const { error: insertError } = await supabase.from('leave_requests').insert({
+      employee_id: employeeId,
+      leave_type: leaveForm.leave_type,
+      start_date: leaveForm.start_date,
+      end_date: leaveForm.end_date,
+      reason: leaveForm.reason || null,
+    });
+    setSubmittingLeave(false);
+    if (insertError) {
+      setLeaveError(insertError.message);
+      return;
+    }
+    setLeaveForm(EMPTY_LEAVE_FORM);
+    reloadLeave(employeeId);
+  }
+
+  function BackButton() {
+    return (
+      <button
+        onClick={() => setView('menu')}
+        className="mb-4 text-sm font-medium text-accent hover:underline"
+      >
+        ← Back
+      </button>
+    );
   }
 
   return (
     <EmployeeShell title="Check In/Out">
-      <div className="mb-4 flex overflow-hidden rounded-xl border border-slate-200 bg-white text-sm font-semibold">
-        <button
-          onClick={() => setView('live')}
-          className={`flex-1 py-2.5 ${view === 'live' ? 'bg-accent text-white' : 'text-slate-500'}`}
-        >
-          Check In/Out
-        </button>
-        <button
-          onClick={() => setView('fix')}
-          className={`flex-1 py-2.5 ${view === 'fix' ? 'bg-accent text-white' : 'text-slate-500'}`}
-        >
-          Fix a Missed Punch
-        </button>
-      </div>
-
-      {view === 'live' ? (
+      {view === 'menu' && (
         <>
           {message && (
             <div className={`mb-4 rounded-lg px-4 py-3 text-sm ${message.kind === 'good' ? 'bg-good-bg text-good-text' : 'bg-critical-bg text-critical-text'}`}>
@@ -195,7 +230,7 @@ export default function CheckInPage() {
             </div>
           )}
 
-          <p className="mb-3 text-sm font-medium text-slate-600">Uses your current GPS location:</p>
+          <p className="mb-3 text-sm font-medium text-slate-600">Check In/Check Out use your current GPS location:</p>
           <div className="flex flex-col gap-3">
             <button
               onClick={() => openPunchModal('0')}
@@ -211,10 +246,25 @@ export default function CheckInPage() {
             >
               📍 Check Out
             </button>
+            <button
+              onClick={() => setView('fix')}
+              className="rounded-xl bg-green-600 py-4 text-base font-semibold text-white shadow-sm hover:bg-green-700"
+            >
+              🔧 Fix a Missed Punch
+            </button>
+            <button
+              onClick={() => setView('leave')}
+              className="rounded-xl bg-green-600 py-4 text-base font-semibold text-white shadow-sm hover:bg-green-700"
+            >
+              🏖 Leave
+            </button>
           </div>
         </>
-      ) : (
+      )}
+
+      {view === 'fix' && (
         <>
+          <BackButton />
           <p className="mb-4 text-sm text-slate-500">
             Forgot to check in or out? Request a correction and HR/Admin will review it. Your current location is
             captured automatically as confirmation.
@@ -280,6 +330,83 @@ export default function CheckInPage() {
                     <div className="text-sm font-medium text-ink">{r.work_date}</div>
                     <div className="text-xs text-slate-400">
                       In {formatTime(r.requested_check_in)} · Out {formatTime(r.requested_check_out)}
+                    </div>
+                    {r.reason && <div className="text-xs text-slate-400">{r.reason}</div>}
+                  </div>
+                  <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {view === 'leave' && (
+        <>
+          <BackButton />
+          <form onSubmit={handleLeaveSubmit} className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
+            <label className="mb-1 block text-xs font-medium text-slate-600">Type</label>
+            <div className="mb-3 flex flex-wrap gap-2">
+              {LEAVE_TYPES.map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setLeaveForm(f => ({ ...f, leave_type: t }))}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium capitalize ${
+                    leaveForm.leave_type === t ? 'bg-accent text-white' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+
+            <label className="mb-1 block text-xs font-medium text-slate-600">Start date</label>
+            <input
+              type="date"
+              required
+              value={leaveForm.start_date}
+              onChange={e => setLeaveForm(f => ({ ...f, start_date: e.target.value }))}
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <label className="mb-1 block text-xs font-medium text-slate-600">End date</label>
+            <input
+              type="date"
+              required
+              value={leaveForm.end_date}
+              onChange={e => setLeaveForm(f => ({ ...f, end_date: e.target.value }))}
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <label className="mb-1 block text-xs font-medium text-slate-600">Reason (optional)</label>
+            <textarea
+              value={leaveForm.reason}
+              onChange={e => setLeaveForm(f => ({ ...f, reason: e.target.value }))}
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              rows={2}
+            />
+            {leaveError && <p className="mb-3 text-sm text-critical">{leaveError}</p>}
+            <button
+              type="submit"
+              disabled={submittingLeave || !employeeId}
+              className="w-full rounded-lg bg-accent py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {submittingLeave ? 'Submitting…' : 'Submit request'}
+            </button>
+            {!employeeId && (
+              <p className="mt-2 text-xs text-warning-text">Your account isn&apos;t linked to an employee record yet.</p>
+            )}
+          </form>
+
+          <h2 className="mb-3 text-sm font-semibold text-ink">My requests</h2>
+          {leaveRequests.length === 0 ? (
+            <p className="text-center text-sm text-slate-400">No leave requests yet.</p>
+          ) : (
+            <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+              {leaveRequests.map(r => (
+                <div key={r.id} className="flex items-center gap-3 px-4 py-3">
+                  <div className="flex-1">
+                    <div className="text-sm font-medium capitalize text-ink">
+                      {r.leave_type} · {r.start_date} → {r.end_date}
                     </div>
                     {r.reason && <div className="text-xs text-slate-400">{r.reason}</div>}
                   </div>

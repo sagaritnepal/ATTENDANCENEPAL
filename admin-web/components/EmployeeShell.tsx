@@ -8,10 +8,8 @@ import ConfigWarning from './ConfigWarning';
 
 const TABS = [
   { href: '/checkin', label: 'Check In/Out', icon: CheckInIcon },
-  { href: '/my-attendance', label: 'History', icon: HistoryIcon },
   { href: '/my-calendar', label: 'Calendar', icon: CalendarTabIcon },
   { href: '/my-tasks', label: 'Tasks', icon: TaskTabIcon },
-  { href: '/my-leave', label: 'Leave', icon: LeaveIcon },
 ];
 
 export default function EmployeeShell({ title, children }: { title: string; children: React.ReactNode }) {
@@ -124,14 +122,6 @@ function CheckInIcon({ className }: IconProps) {
     </svg>
   );
 }
-function HistoryIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
-      <circle cx="12" cy="12" r="9" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
-    </svg>
-  );
-}
 function CalendarTabIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
@@ -145,13 +135,6 @@ function TaskTabIcon({ className }: IconProps) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <rect x="4" y="4" width="16" height="16" rx="2" />
       <path strokeLinecap="round" strokeLinejoin="round" d="m8 12 2.5 2.5L16 9" />
-    </svg>
-  );
-}
-function LeaveIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h5l2-3h4l2 3h5M4 12l1.5 7h13L20 12" />
     </svg>
   );
 }
