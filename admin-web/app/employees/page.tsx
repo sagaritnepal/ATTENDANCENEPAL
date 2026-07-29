@@ -393,118 +393,225 @@ export default function EmployeesPage() {
 
       <input ref={photoInputRef} type="file" accept="image/*" onChange={handlePhotoSelected} className="hidden" />
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-              <th className="px-5 py-3 font-medium">Employee</th>
-              <th className="px-5 py-3 font-medium">Contact</th>
-              <th className="px-5 py-3 font-medium">Biometric ID</th>
-              <th className="px-5 py-3 font-medium">Department</th>
-              <th className="px-5 py-3 font-medium">Branch</th>
-              <th className="px-5 py-3 font-medium">Joined</th>
-              <th className="px-5 py-3 font-medium">Designation</th>
-              <th className="px-5 py-3 font-medium">Shift</th>
-              <th className="px-5 py-3 font-medium">Bio Enrollment</th>
-              <th className="px-5 py-3 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pageItems.map(emp => {
-              const shift = resolveShift(emp, shifts);
-              const hasOwnShift = shifts.some(s => s.employee_id === emp.id);
-              return (
-                <tr key={emp.id} className="border-b border-slate-100 last:border-0">
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => openPhotoPicker(emp.id)}
-                        title="Upload photo"
-                        className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-accent/10 text-xs font-semibold text-accent"
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        {/* Mobile: one stacked card per employee — no side-scrolling. */}
+        <div className="divide-y divide-slate-100 md:hidden">
+          {pageItems.map(emp => {
+            const shift = resolveShift(emp, shifts);
+            const hasOwnShift = shifts.some(s => s.employee_id === emp.id);
+            return (
+              <div key={emp.id} className="p-4">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => openPhotoPicker(emp.id)}
+                    title="Upload photo"
+                    className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-accent/10 text-sm font-semibold text-accent"
+                  >
+                    {uploadingPhotoId === emp.id ? (
+                      <span className="flex h-full w-full items-center justify-center">…</span>
+                    ) : emp.profile_photo_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={emp.profile_photo_url} alt={emp.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="flex h-full w-full items-center justify-center">{emp.name.slice(0, 1)}</span>
+                    )}
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-ink">{emp.name}</div>
+                    <div className="truncate text-xs text-slate-400">{emp.designation ?? '—'} · {emp.department ?? '—'}</div>
+                  </div>
+                  <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
+                    {emp.fingerprint_id ? 'Registered' : 'Pending'}
+                  </Badge>
+                </div>
+
+                <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+                  <div className="col-span-2">
+                    <dt className="text-xs text-slate-400">Contact</dt>
+                    <dd className="text-slate-600">{emp.phone ?? '—'} {emp.email && <span className="text-xs text-slate-400">· {emp.email}</span>}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-400">Biometric ID</dt>
+                    <dd className="text-slate-600">{emp.fingerprint_id ?? '—'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-400">Shift</dt>
+                    <dd>
+                      <button onClick={() => openShiftModal(emp)} className="text-left text-slate-600 hover:text-accent hover:underline">
+                        {formatShiftHours(shift)}
+                        {!hasOwnShift && <span className="ml-1 text-xs text-slate-400">(default)</span>}
+                      </button>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-400">Branch</dt>
+                    <dd>
+                      <select
+                        value={emp.branch_id ?? ''}
+                        onChange={e => handleBranchChange(emp.id, e.target.value)}
+                        className={`w-full rounded-md border px-2 py-1 text-xs ${
+                          emp.branch_id ? 'border-slate-200 text-slate-600' : 'border-warning text-warning-text'
+                        }`}
                       >
-                        {uploadingPhotoId === emp.id ? (
-                          <span className="flex h-full w-full items-center justify-center">…</span>
-                        ) : emp.profile_photo_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={emp.profile_photo_url} alt={emp.name} className="h-full w-full object-cover" />
-                        ) : (
-                          <span className="flex h-full w-full items-center justify-center">{emp.name.slice(0, 1)}</span>
-                        )}
-                      </button>
-                      <span className="font-medium text-ink">{emp.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3 text-slate-600">
-                    <div>{emp.phone ?? '—'}</div>
-                    <div className="text-xs text-slate-400">{emp.email ?? ''}</div>
-                  </td>
-                  <td className="px-5 py-3 text-slate-600">{emp.fingerprint_id ?? '—'}</td>
-                  <td className="px-5 py-3 text-slate-600">{emp.department ?? '—'}</td>
-                  <td className="px-5 py-3">
-                    <select
-                      value={emp.branch_id ?? ''}
-                      onChange={e => handleBranchChange(emp.id, e.target.value)}
-                      className={`rounded-md border px-2 py-1 text-xs ${
-                        emp.branch_id ? 'border-slate-200 text-slate-600' : 'border-warning text-warning-text'
-                      }`}
-                    >
-                      <option value="">Unassigned</option>
-                      {branches.map(b => (
-                        <option key={b.id} value={b.id}>
-                          {b.name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-5 py-3">
-                    <input
-                      type="date"
-                      value={emp.date_of_joining ?? ''}
-                      onChange={e => handleDateOfJoiningChange(emp.id, e.target.value)}
-                      className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
-                    />
-                  </td>
-                  <td className="px-5 py-3 text-slate-600">{emp.designation ?? '—'}</td>
-                  <td className="px-5 py-3">
-                    <button onClick={() => openShiftModal(emp)} className="text-left text-slate-600 hover:text-accent hover:underline">
-                      {formatShiftHours(shift)}
-                      {!hasOwnShift && <span className="ml-1 text-xs text-slate-400">(default)</span>}
+                        <option value="">Unassigned</option>
+                        {branches.map(b => (
+                          <option key={b.id} value={b.id}>
+                            {b.name}
+                          </option>
+                        ))}
+                      </select>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-400">Joined</dt>
+                    <dd>
+                      <input
+                        type="date"
+                        value={emp.date_of_joining ?? ''}
+                        onChange={e => handleDateOfJoiningChange(emp.id, e.target.value)}
+                        className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                      />
+                    </dd>
+                  </div>
+                </dl>
+
+                <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
+                  <button onClick={() => openShiftModal(emp)} className="text-xs font-medium text-accent hover:underline">
+                    Assign shift
+                  </button>
+                  {linkedEmployeeIds.has(emp.id) ? (
+                    <span className="text-xs font-medium text-good">Login active</span>
+                  ) : (
+                    <button onClick={() => openLoginModal(emp)} className="text-xs font-medium text-accent hover:underline">
+                      Create login
                     </button>
-                  </td>
-                  <td className="px-5 py-3">
-                    <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
-                      {emp.fingerprint_id ? 'Registered' : 'Pending'}
-                    </Badge>
-                  </td>
-                  <td className="px-5 py-3">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <button onClick={() => openShiftModal(emp)} className="text-xs font-medium text-accent hover:underline">
-                        Assign shift
-                      </button>
-                      {linkedEmployeeIds.has(emp.id) ? (
-                        <span className="text-xs font-medium text-good">Login active</span>
-                      ) : (
-                        <button onClick={() => openLoginModal(emp)} className="text-xs font-medium text-accent hover:underline">
-                          Create login
+                  )}
+                  <button onClick={() => handleDelete(emp.id)} className="text-xs font-medium text-critical hover:underline">
+                    Remove
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {pageItems.length === 0 && (
+            <div className="px-5 py-8 text-center text-slate-400">No employees match this filter.</div>
+          )}
+        </div>
+
+        {/* Desktop: full table. */}
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                <th className="px-5 py-3 font-medium">Employee</th>
+                <th className="px-5 py-3 font-medium">Contact</th>
+                <th className="px-5 py-3 font-medium">Biometric ID</th>
+                <th className="px-5 py-3 font-medium">Department</th>
+                <th className="px-5 py-3 font-medium">Branch</th>
+                <th className="px-5 py-3 font-medium">Joined</th>
+                <th className="px-5 py-3 font-medium">Designation</th>
+                <th className="px-5 py-3 font-medium">Shift</th>
+                <th className="px-5 py-3 font-medium">Bio Enrollment</th>
+                <th className="px-5 py-3 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageItems.map(emp => {
+                const shift = resolveShift(emp, shifts);
+                const hasOwnShift = shifts.some(s => s.employee_id === emp.id);
+                return (
+                  <tr key={emp.id} className="border-b border-slate-100 last:border-0">
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => openPhotoPicker(emp.id)}
+                          title="Upload photo"
+                          className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-accent/10 text-xs font-semibold text-accent"
+                        >
+                          {uploadingPhotoId === emp.id ? (
+                            <span className="flex h-full w-full items-center justify-center">…</span>
+                          ) : emp.profile_photo_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={emp.profile_photo_url} alt={emp.name} className="h-full w-full object-cover" />
+                          ) : (
+                            <span className="flex h-full w-full items-center justify-center">{emp.name.slice(0, 1)}</span>
+                          )}
                         </button>
-                      )}
-                      <button onClick={() => handleDelete(emp.id)} className="text-xs font-medium text-critical hover:underline">
-                        Remove
+                        <span className="font-medium text-ink">{emp.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-slate-600">
+                      <div>{emp.phone ?? '—'}</div>
+                      <div className="text-xs text-slate-400">{emp.email ?? ''}</div>
+                    </td>
+                    <td className="px-5 py-3 text-slate-600">{emp.fingerprint_id ?? '—'}</td>
+                    <td className="px-5 py-3 text-slate-600">{emp.department ?? '—'}</td>
+                    <td className="px-5 py-3">
+                      <select
+                        value={emp.branch_id ?? ''}
+                        onChange={e => handleBranchChange(emp.id, e.target.value)}
+                        className={`rounded-md border px-2 py-1 text-xs ${
+                          emp.branch_id ? 'border-slate-200 text-slate-600' : 'border-warning text-warning-text'
+                        }`}
+                      >
+                        <option value="">Unassigned</option>
+                        {branches.map(b => (
+                          <option key={b.id} value={b.id}>
+                            {b.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-5 py-3">
+                      <input
+                        type="date"
+                        value={emp.date_of_joining ?? ''}
+                        onChange={e => handleDateOfJoiningChange(emp.id, e.target.value)}
+                        className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                      />
+                    </td>
+                    <td className="px-5 py-3 text-slate-600">{emp.designation ?? '—'}</td>
+                    <td className="px-5 py-3">
+                      <button onClick={() => openShiftModal(emp)} className="text-left text-slate-600 hover:text-accent hover:underline">
+                        {formatShiftHours(shift)}
+                        {!hasOwnShift && <span className="ml-1 text-xs text-slate-400">(default)</span>}
                       </button>
-                    </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
+                        {emp.fingerprint_id ? 'Registered' : 'Pending'}
+                      </Badge>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button onClick={() => openShiftModal(emp)} className="text-xs font-medium text-accent hover:underline">
+                          Assign shift
+                        </button>
+                        {linkedEmployeeIds.has(emp.id) ? (
+                          <span className="text-xs font-medium text-good">Login active</span>
+                        ) : (
+                          <button onClick={() => openLoginModal(emp)} className="text-xs font-medium text-accent hover:underline">
+                            Create login
+                          </button>
+                        )}
+                        <button onClick={() => handleDelete(emp.id)} className="text-xs font-medium text-critical hover:underline">
+                          Remove
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {pageItems.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="px-5 py-8 text-center text-slate-400">
+                    No employees match this filter.
                   </td>
                 </tr>
-              );
-            })}
-            {pageItems.length === 0 && (
-              <tr>
-                <td colSpan={10} className="px-5 py-8 text-center text-slate-400">
-                  No employees match this filter.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
 
         <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-sm text-slate-500">
           <span>
