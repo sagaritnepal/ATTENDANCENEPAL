@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
@@ -164,12 +165,14 @@ export default function EmployeesPage() {
   }
 
   async function handleBranchChange(employeeId: string, branchId: string) {
-    await supabase.from('employees').update({ branch_id: branchId || null }).eq('id', employeeId);
+    const { error } = await supabase.from('employees').update({ branch_id: branchId || null }).eq('id', employeeId);
+    if (error) alert(`Could not update branch: ${error.message}`);
     reload();
   }
 
   async function handleDateOfJoiningChange(employeeId: string, date: string) {
-    await supabase.from('employees').update({ date_of_joining: date || null }).eq('id', employeeId);
+    const { error } = await supabase.from('employees').update({ date_of_joining: date || null }).eq('id', employeeId);
+    if (error) alert(`Could not update date of joining: ${error.message}`);
     reload();
   }
 
@@ -417,7 +420,9 @@ export default function EmployeesPage() {
                     )}
                   </button>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium text-ink">{emp.name}</div>
+                    <Link href={`/attendance?employee=${emp.id}`} className="block truncate font-medium text-ink hover:text-accent hover:underline">
+                      {emp.name}
+                    </Link>
                     <div className="truncate text-xs text-slate-400">{emp.designation ?? '—'} · {emp.department ?? '—'}</div>
                   </div>
                   <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
@@ -437,10 +442,17 @@ export default function EmployeesPage() {
                   <div>
                     <dt className="text-xs text-slate-400">Shift</dt>
                     <dd>
-                      <button onClick={() => openShiftModal(emp)} className="text-left text-slate-600 hover:text-accent hover:underline">
-                        {formatShiftHours(shift)}
-                        {!hasOwnShift && <span className="ml-1 text-xs text-slate-400">(default)</span>}
-                      </button>
+                      <select
+                        disabled
+                        value={shift.id}
+                        title="Managed on the Shifts page"
+                        className="w-full cursor-not-allowed rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-500"
+                      >
+                        <option value={shift.id}>
+                          {formatShiftHours(shift)}
+                          {!hasOwnShift ? ' (default)' : ''}
+                        </option>
+                      </select>
                     </dd>
                   </div>
                   <div>
@@ -476,9 +488,6 @@ export default function EmployeesPage() {
                 </dl>
 
                 <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
-                  <button onClick={() => openShiftModal(emp)} className="text-xs font-medium text-accent hover:underline">
-                    Assign shift
-                  </button>
                   {linkedEmployeeIds.has(emp.id) ? (
                     <span className="text-xs font-medium text-good">Login active</span>
                   ) : (
@@ -537,7 +546,9 @@ export default function EmployeesPage() {
                             <span className="flex h-full w-full items-center justify-center">{emp.name.slice(0, 1)}</span>
                           )}
                         </button>
-                        <span className="font-medium text-ink">{emp.name}</span>
+                        <Link href={`/attendance?employee=${emp.id}`} className="font-medium text-ink hover:text-accent hover:underline">
+                          {emp.name}
+                        </Link>
                       </div>
                     </td>
                     <td className="px-5 py-3 text-slate-600">

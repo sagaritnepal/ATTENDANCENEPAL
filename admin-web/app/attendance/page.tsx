@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
@@ -30,6 +32,16 @@ function isoDaysAgo(n: number) {
 }
 
 export default function AttendancePage() {
+  return (
+    <Suspense fallback={null}>
+      <AttendanceView />
+    </Suspense>
+  );
+}
+
+function AttendanceView() {
+  const searchParams = useSearchParams();
+  const employeeFilter = searchParams.get('employee');
   const [from, setFrom] = useState(isoDaysAgo(6));
   const [to, setTo] = useState(isoDaysAgo(0));
   const [status, setStatus] = useState<'All' | 'Present' | 'Late' | 'Absent'>('All');
@@ -39,9 +51,12 @@ export default function AttendancePage() {
   const [devices, setDevices] = useState<Device[]>([]);
 
   useEffect(() => {
-    supabase.from('employees').select('*').eq('status', 'active').then(({ data }) => setEmployees(data ?? []));
+    const query = employeeFilter
+      ? supabase.from('employees').select('*').eq('id', employeeFilter)
+      : supabase.from('employees').select('*').eq('status', 'active');
+    query.then(({ data }) => setEmployees(data ?? []));
     supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
-  }, []);
+  }, [employeeFilter]);
 
   useEffect(() => {
     supabase
@@ -151,6 +166,16 @@ export default function AttendancePage() {
 
   return (
     <AppShell title="Biometric Attendance Logs">
+      {employeeFilter && (
+        <div className="mb-4 flex items-center justify-between rounded-lg bg-accent/10 px-4 py-2 text-sm">
+          <span className="text-ink">
+            Showing records for <span className="font-semibold">{employees[0]?.name ?? 'this employee'}</span>
+          </span>
+          <Link href="/attendance" className="font-medium text-accent hover:underline">
+            Clear filter
+          </Link>
+        </div>
+      )}
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
