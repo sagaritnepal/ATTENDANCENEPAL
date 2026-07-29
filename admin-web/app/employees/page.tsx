@@ -24,8 +24,6 @@ const EMPTY_FORM = {
 
 const CSV_COLUMNS = ['employee_code', 'name', 'email', 'phone', 'department', 'designation', 'fingerprint_id'] as const;
 
-const SHIFT_FORM_DEFAULT = { name: '', start_time: '09:00', end_time: '18:00', grace_minutes: 10 };
-
 const PASSWORD_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
 function generatePassword(length = 10) {
   let out = '';
@@ -96,11 +94,6 @@ export default function EmployeesPage() {
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [photoTargetId, setPhotoTargetId] = useState<string | null>(null);
   const [uploadingPhotoId, setUploadingPhotoId] = useState<string | null>(null);
-
-  const [shiftModalEmployee, setShiftModalEmployee] = useState<Employee | null>(null);
-  const [shiftForm, setShiftForm] = useState(SHIFT_FORM_DEFAULT);
-  const [savingShift, setSavingShift] = useState(false);
-  const [shiftError, setShiftError] = useState<string | null>(null);
 
   const [loginModalEmployee, setLoginModalEmployee] = useState<Employee | null>(null);
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
@@ -248,53 +241,31 @@ export default function EmployeesPage() {
     reload();
   }
 
-  function openShiftModal(emp: Employee) {
-    const existing = shifts.find(s => s.employee_id === emp.id);
-    setShiftForm(
-      existing
-        ? { name: existing.name, start_time: existing.start_time.slice(0, 5), end_time: existing.end_time.slice(0, 5), grace_minutes: existing.grace_minutes }
-        : SHIFT_FORM_DEFAULT
-    );
-    setShiftError(null);
-    setShiftModalEmployee(emp);
-  }
-
-  function applyTemplate(templateId: string) {
-    const template = templateShifts.find(s => s.id === templateId);
-    if (!template) return;
-    setShiftForm({
-      name: template.name,
-      start_time: template.start_time.slice(0, 5),
-      end_time: template.end_time.slice(0, 5),
-      grace_minutes: template.grace_minutes,
-    });
-  }
-
-  async function handleAssignShift(e: React.FormEvent) {
-    e.preventDefault();
-    if (!shiftModalEmployee) return;
-    setSavingShift(true);
-    setShiftError(null);
-    const { error } = await supabase
-      .from('shifts')
-      .upsert(
-        {
-          employee_id: shiftModalEmployee.id,
-          name: shiftForm.name || 'Custom',
-          type: 'fixed',
-          start_time: shiftForm.start_time,
-          end_time: shiftForm.end_time,
-          grace_minutes: shiftForm.grace_minutes,
-          department: null,
-        },
-        { onConflict: 'employee_id' }
-      );
-    setSavingShift(false);
-    if (error) {
-      setShiftError(error.message);
+  // Shift *templates* are designed on the Shifts page; here we only pick
+  // which template (if any) applies to this one employee — an upsert into
+  // the same employee-scoped shifts row the old "Assign shift" modal used.
+  async function handleShiftChange(employeeId: string, templateId: string) {
+    if (!templateId) {
+      const { error } = await supabase.from('shifts').delete().eq('employee_id', employeeId);
+      if (error) alert(`Could not update shift: ${error.message}`);
+      reload();
       return;
     }
-    setShiftModalEmployee(null);
+    const template = templateShifts.find(t => t.id === templateId);
+    if (!template) return;
+    const { error } = await supabase.from('shifts').upsert(
+      {
+        employee_id: employeeId,
+        name: template.name,
+        type: template.type,
+        start_time: template.start_time,
+        end_time: template.end_time,
+        grace_minutes: template.grace_minutes,
+        department: null,
+      },
+      { onConflict: 'employee_id' }
+    );
+    if (error) alert(`Could not update shift: ${error.message}`);
     reload();
   }
 
@@ -402,6 +373,7 @@ export default function EmployeesPage() {
           {pageItems.map(emp => {
             const shift = resolveShift(emp, shifts);
             const hasOwnShift = shifts.some(s => s.employee_id === emp.id);
+            const deptDefaultShift = resolveShift(emp, shifts.filter(s => s.employee_id !== emp.id));
             return (
               <div key={emp.id} className="p-4">
                 <div className="flex items-center gap-3">
@@ -443,15 +415,22 @@ export default function EmployeesPage() {
                     <dt className="text-xs text-slate-400">Shift</dt>
                     <dd>
                       <select
-                        disabled
-                        value={shift.id}
-                        title="Managed on the Shifts page"
-                        className="w-full cursor-not-allowed rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-500"
+                        value={
+                          hasOwnShift
+                            ? templateShifts.find(
+                                t => t.name === shift.name && t.start_time === shift.start_time && t.end_time === shift.end_time
+                              )?.id ?? ''
+                            : ''
+                        }
+                        onChange={e => handleShiftChange(emp.id, e.target.value)}
+                        className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
                       >
-                        <option value={shift.id}>
-                          {formatShiftHours(shift)}
-                          {!hasOwnShift ? ' (default)' : ''}
-                        </option>
+                        <option value="">Default ({formatShiftHours(deptDefaultShift)})</option>
+                        {templateShifts.map(t => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} ({formatShiftHours(t)})
+                          </option>
+                        ))}
                       </select>
                     </dd>
                   </div>
@@ -528,6 +507,7 @@ export default function EmployeesPage() {
               {pageItems.map(emp => {
                 const shift = resolveShift(emp, shifts);
                 const hasOwnShift = shifts.some(s => s.employee_id === emp.id);
+                const deptDefaultShift = resolveShift(emp, shifts.filter(s => s.employee_id !== emp.id));
                 return (
                   <tr key={emp.id} className="border-b border-slate-100 last:border-0">
                     <td className="px-5 py-3">
@@ -583,10 +563,24 @@ export default function EmployeesPage() {
                     </td>
                     <td className="px-5 py-3 text-slate-600">{emp.designation ?? '—'}</td>
                     <td className="px-5 py-3">
-                      <button onClick={() => openShiftModal(emp)} className="text-left text-slate-600 hover:text-accent hover:underline">
-                        {formatShiftHours(shift)}
-                        {!hasOwnShift && <span className="ml-1 text-xs text-slate-400">(default)</span>}
-                      </button>
+                      <select
+                        value={
+                          hasOwnShift
+                            ? templateShifts.find(
+                                t => t.name === shift.name && t.start_time === shift.start_time && t.end_time === shift.end_time
+                              )?.id ?? ''
+                            : ''
+                        }
+                        onChange={e => handleShiftChange(emp.id, e.target.value)}
+                        className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                      >
+                        <option value="">Default ({formatShiftHours(deptDefaultShift)})</option>
+                        {templateShifts.map(t => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} ({formatShiftHours(t)})
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td className="px-5 py-3">
                       <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
@@ -595,9 +589,6 @@ export default function EmployeesPage() {
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex flex-wrap items-center gap-3">
-                        <button onClick={() => openShiftModal(emp)} className="text-xs font-medium text-accent hover:underline">
-                          Assign shift
-                        </button>
                         {linkedEmployeeIds.has(emp.id) ? (
                           <span className="text-xs font-medium text-good">Login active</span>
                         ) : (
@@ -712,85 +703,6 @@ export default function EmployeesPage() {
                 className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
               >
                 {saving ? 'Saving…' : 'Save employee'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {shiftModalEmployee && (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
-          <form onSubmit={handleAssignShift} className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
-            <h3 className="mb-1 text-lg font-semibold text-ink">Assign Shift</h3>
-            <p className="mb-4 text-xs text-slate-500">{shiftModalEmployee.name}</p>
-
-            {templateShifts.length > 0 && (
-              <div className="mb-4">
-                <label className="mb-1 block text-xs font-medium text-slate-600">Start from a template</label>
-                <select
-                  onChange={e => e.target.value && applyTemplate(e.target.value)}
-                  defaultValue=""
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                >
-                  <option value="">Custom…</option>
-                  {templateShifts.map(t => (
-                    <option key={t.id} value={t.id}>
-                      {t.name} ({formatShiftHours(t)})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <label className="mb-1 block text-xs font-medium text-slate-600">Shift name</label>
-            <input
-              required
-              value={shiftForm.name}
-              onChange={e => setShiftForm(f => ({ ...f, name: e.target.value }))}
-              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-            <div className="mb-3 grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Start</label>
-                <input
-                  type="time"
-                  value={shiftForm.start_time}
-                  onChange={e => setShiftForm(f => ({ ...f, start_time: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">End</label>
-                <input
-                  type="time"
-                  value={shiftForm.end_time}
-                  onChange={e => setShiftForm(f => ({ ...f, end_time: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Grace period (minutes)</label>
-            <input
-              type="number"
-              value={shiftForm.grace_minutes}
-              onChange={e => setShiftForm(f => ({ ...f, grace_minutes: Number(e.target.value) }))}
-              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-            {shiftError && <p className="mb-3 text-sm text-critical">{shiftError}</p>}
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShiftModalEmployee(null)}
-                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={savingShift}
-                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
-              >
-                {savingShift ? 'Saving…' : 'Assign shift'}
               </button>
             </div>
           </form>
