@@ -17,7 +17,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 const failureCounts = new Map();
 
 async function fetchActiveDevices() {
-  const { data, error } = await supabase.from('devices').select('*').eq('status', 'online');
+  const { data, error } = await supabase.from('devices').select('*');
   if (error) throw error;
   return data;
 }
