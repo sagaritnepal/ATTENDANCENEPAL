@@ -25,6 +25,29 @@ export default function DevicesPage() {
   }
   useEffect(reload, []);
 
+  // Reflects zkteco-bridge's status/last_sync writes the moment they land, instead of
+  // requiring a manual "Refresh" click.
+  useEffect(() => {
+    const channel = supabase
+      .channel('devices-live')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'devices' }, payload => {
+        setDevices(prev => [...prev, payload.new as Device]);
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'devices' }, payload => {
+        const updated = payload.new as Device;
+        setDevices(prev => prev.map(d => (d.id === updated.id ? updated : d)));
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'devices' }, payload => {
+        const removed = payload.old as Device;
+        setDevices(prev => prev.filter(d => d.id !== removed.id));
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -33,7 +56,6 @@ export default function DevicesPage() {
       branch_id: form.branch_id,
       ip_address: form.ip_address,
       port: form.port,
-      status: 'offline',
     });
     setSaving(false);
     setForm(EMPTY_FORM);
