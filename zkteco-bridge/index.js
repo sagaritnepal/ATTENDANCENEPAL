@@ -8,7 +8,7 @@ require('dotenv').config();
 const ZKLib = require('node-zklib');
 const { createClient } = require('@supabase/supabase-js');
 
-const SYNC_INTERVAL_MS = Number(process.env.SYNC_INTERVAL_MS || 60 * 1000);
+const SYNC_INTERVAL_MS = Number(process.env.SYNC_INTERVAL_MS || 15 * 1000);
 const MAX_BACKOFF_MS = 10 * 60 * 1000;
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
