@@ -63,6 +63,13 @@ export default function DevicesPage() {
     reload();
   }
 
+  async function handleDelete(id: string) {
+    if (!confirm('Remove this device? Past punches synced from it are kept, but it will stop being polled.')) return;
+    const { error } = await supabase.from('devices').delete().eq('id', id);
+    if (error) alert(`Could not remove: ${error.message}`);
+    reload();
+  }
+
   return (
     <AppShell title="Biometric Sync Devices">
       <div className="mb-5 flex items-center justify-between">
@@ -99,6 +106,9 @@ export default function DevicesPage() {
               <p className="text-sm text-slate-600">👥 Registered: {registered} staff</p>
               <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-sm">
                 <span className="font-medium text-accent">{fetched} punches fetched</span>
+                <button onClick={() => handleDelete(d.id)} className="text-xs font-medium text-critical hover:underline">
+                  Remove
+                </button>
               </div>
             </div>
           );
