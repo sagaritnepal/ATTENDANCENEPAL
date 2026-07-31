@@ -68,7 +68,7 @@ export default function DevicesPage() {
       <div className="mb-5 flex items-center justify-between">
         <p className="text-sm text-slate-500">
           Biometric terminal integrations — <code className="rounded bg-slate-100 px-1.5 py-0.5">zkteco-bridge</code> polls each device
-          every 5 minutes and writes here.
+          every 1 minute and writes here.
         </p>
         <div className="flex gap-2">
           <button onClick={reload} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">

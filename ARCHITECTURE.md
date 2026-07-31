@@ -67,7 +67,7 @@ token validity server-side, so a modified client can't fake presence.
 - **Mobile punches:** written directly to Supabase via the client SDK. If offline, the app queues
   the punch locally (AsyncStorage) and flushes it on reconnect; the composite unique key on
   `(employee_id, punch_time)` makes retried writes idempotent, same guarantee as v1.
-- **ZKTeco bridge:** unchanged polling loop (every 5 minutes, exponential backoff on
+- **ZKTeco bridge:** unchanged polling loop (every 1 minute, exponential backoff on
   unreachable devices), upserting on the same composite key.
 - **Realtime dashboard:** admin console subscribes to `attendance_logs` inserts via Supabase
   Realtime (Postgres logical replication under the hood) instead of a custom WebSocket server.
