@@ -7,10 +7,13 @@ import type { Branch, BranchDepartment, Department } from '@/lib/types';
 
 const EMPTY_FORM = { name: '', branch_code: '', latitude: '', longitude: '', radius_meters: 150 };
 
+type EmployeeScope = { branch_id: string | null; department: string | null };
+
 export default function BranchesPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [branchDepartments, setBranchDepartments] = useState<BranchDepartment[]>([]);
+  const [employees, setEmployees] = useState<EmployeeScope[]>([]);
   const [editing, setEditing] = useState<Branch | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -30,6 +33,7 @@ export default function BranchesPage() {
     supabase.from('branches').select('*').order('name').then(({ data }) => setBranches(data ?? []));
     supabase.from('departments').select('*').order('name').then(({ data }) => setDepartments(data ?? []));
     supabase.from('branch_departments').select('*').then(({ data }) => setBranchDepartments(data ?? []));
+    supabase.from('employees').select('branch_id, department').then(({ data }) => setEmployees(data ?? []));
   }
   useEffect(reload, []);
 
@@ -41,6 +45,10 @@ export default function BranchesPage() {
     }
     return map;
   }, [branches, departments, branchDepartments]);
+
+  function employeeCount(branchId: string, departmentName: string) {
+    return employees.filter(e => e.branch_id === branchId && e.department === departmentName).length;
+  }
 
   function openAdd() {
     setEditing(null);
@@ -236,6 +244,7 @@ export default function BranchesPage() {
                       className="flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent"
                     >
                       {d.name}
+                      <span className="text-accent/70">· {employeeCount(b.id, d.name)}</span>
                       <button
                         onClick={() => handleUnlinkDepartment(b.id, d.id)}
                         title="Remove from this branch"
