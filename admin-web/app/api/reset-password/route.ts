@@ -29,27 +29,43 @@ export async function POST(req: NextRequest) {
     .select('role')
     .eq('id', callerData.user.id)
     .single();
-  if (callerProfile?.role !== 'admin' && callerProfile?.role !== 'hr') {
-    return NextResponse.json({ error: 'Only admin/HR can reset a login password.' }, { status: 403 });
-  }
 
   const body = await req.json().catch(() => null);
   const employeeId = typeof body?.employeeId === 'string' ? body.employeeId : null;
+  const userId = typeof body?.userId === 'string' ? body.userId : null;
   const password = typeof body?.password === 'string' ? body.password : '';
-  if (!employeeId || password.length < 8) {
-    return NextResponse.json({ error: 'employeeId and a password of at least 8 characters are required.' }, { status: 400 });
+  if ((!employeeId && !userId) || password.length < 8) {
+    return NextResponse.json(
+      { error: 'employeeId or userId, plus a password of at least 8 characters, are required.' },
+      { status: 400 }
+    );
   }
 
-  const { data: link, error: linkError } = await admin
-    .from('profiles')
-    .select('id')
-    .eq('employee_id', employeeId)
-    .maybeSingle();
-  if (linkError || !link) {
-    return NextResponse.json({ error: 'This employee has no login to reset.' }, { status: 404 });
+  let targetUserId = userId;
+  if (employeeId) {
+    // Resetting an employee's login: admin or HR.
+    if (callerProfile?.role !== 'admin' && callerProfile?.role !== 'hr') {
+      return NextResponse.json({ error: 'Only admin/HR can reset a login password.' }, { status: 403 });
+    }
+    const { data: link, error: linkError } = await admin
+      .from('profiles')
+      .select('id')
+      .eq('employee_id', employeeId)
+      .maybeSingle();
+    if (linkError || !link) {
+      return NextResponse.json({ error: 'This employee has no login to reset.' }, { status: 404 });
+    }
+    targetUserId = link.id;
+  } else {
+    // Resetting any account directly by user id (admin/HR/employee accounts
+    // not necessarily tied to an employee row) — admin-only, matching the
+    // same admin-only restriction as Devices/Shifts management.
+    if (callerProfile?.role !== 'admin') {
+      return NextResponse.json({ error: 'Only admins can reset another account directly.' }, { status: 403 });
+    }
   }
 
-  const { error: updateError } = await admin.auth.admin.updateUserById(link.id, { password });
+  const { error: updateError } = await admin.auth.admin.updateUserById(targetUserId!, { password });
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 400 });
   }
