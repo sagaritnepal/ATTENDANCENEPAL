@@ -125,9 +125,10 @@ export default function DevicesPage() {
           const branch = branches.find(b => b.id === d.branch_id);
           const registered = employees.filter(e => e.branch_id === d.branch_id && e.fingerprint_id).length;
           const fetched = logs.filter(l => l.device_id === d.id).length;
-          const history = syncEvents.filter(e => e.device_id === d.id).slice(0, 5);
+          const deviceEvents = syncEvents.filter(e => e.device_id === d.id);
           const busy = (type: 'users' | 'logs') =>
-            queuing === `${d.id}-${type}` || history.some(e => e.sync_type === type && (e.status === 'pending' || e.status === 'running'));
+            queuing === `${d.id}-${type}` ||
+            deviceEvents.some(e => e.sync_type === type && (e.status === 'pending' || e.status === 'running'));
           return (
             <div key={d.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-2 flex items-center justify-between">
@@ -163,19 +164,36 @@ export default function DevicesPage() {
                   {busy('logs') ? 'Syncing log…' : '🕐 Sync Log'}
                 </button>
               </div>
+            </div>
+          );
+        })}
+        {devices.length === 0 && <p className="text-sm text-slate-400">No devices registered yet.</p>}
+      </div>
 
-              <div className="mt-4 border-t border-slate-100 pt-3">
-                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">History</p>
-                {history.length === 0 && <p className="text-xs text-slate-400">No sync requests yet.</p>}
-                <ul className="space-y-1.5">
-                  {history.map(e => (
-                    <li key={e.id} className="flex items-start justify-between gap-2 text-xs">
-                      <div className="min-w-0">
-                        <span className="font-medium text-ink">{e.sync_type === 'users' ? 'Users' : 'Log'}</span>{' '}
-                        <span className="text-slate-400">{new Date(e.requested_at).toLocaleString()}</span>
-                        {e.summary && <div className="text-slate-500">{e.summary}</div>}
-                        {e.error && <div className="text-critical">{e.error}</div>}
-                      </div>
+      <div className="mt-8 rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 px-5 py-3">
+          <h2 className="text-sm font-semibold text-ink">Sync History</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                <th className="px-5 py-3 font-medium">Device</th>
+                <th className="px-5 py-3 font-medium">Type</th>
+                <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 font-medium">Requested</th>
+                <th className="px-5 py-3 font-medium">Completed</th>
+                <th className="px-5 py-3 font-medium">Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {syncEvents.map(e => {
+                const device = devices.find(d => d.id === e.device_id);
+                return (
+                  <tr key={e.id} className="border-b border-slate-100 last:border-0">
+                    <td className="px-5 py-3 font-medium text-ink">{device?.name ?? 'Unknown device'}</td>
+                    <td className="px-5 py-3 text-slate-600">{e.sync_type === 'users' ? '👥 Users' : '🕐 Log'}</td>
+                    <td className="px-5 py-3">
                       <Badge
                         tone={
                           e.status === 'success' ? 'good' : e.status === 'failed' ? 'critical' : e.status === 'running' ? 'info' : 'neutral'
@@ -183,14 +201,27 @@ export default function DevicesPage() {
                       >
                         {e.status}
                       </Badge>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          );
-        })}
-        {devices.length === 0 && <p className="text-sm text-slate-400">No devices registered yet.</p>}
+                    </td>
+                    <td className="px-5 py-3 text-slate-600">{new Date(e.requested_at).toLocaleString()}</td>
+                    <td className="px-5 py-3 text-slate-600">{e.completed_at ? new Date(e.completed_at).toLocaleString() : '—'}</td>
+                    <td className="px-5 py-3 max-w-xs">
+                      {e.summary && <span className="text-slate-600">{e.summary}</span>}
+                      {e.error && <span className="text-critical">{e.error}</span>}
+                      {!e.summary && !e.error && <span className="text-slate-400">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+              {syncEvents.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
+                    No sync requests yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {showForm && (
