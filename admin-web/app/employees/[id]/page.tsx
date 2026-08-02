@@ -66,7 +66,9 @@ export default function EmployeeCvPage() {
       .single()
       .then(({ data }) => {
         if (data) {
-          setEmployee(data);
+          // skills is a new column — normalize to [] if the migration adding
+          // it hasn't been run yet, so the page degrades instead of crashing.
+          setEmployee({ ...data, skills: data.skills ?? [] });
           setEmergencyForm({
             emergency_contact_name: data.emergency_contact_name ?? '',
             emergency_contact_relationship: data.emergency_contact_relationship ?? '',
