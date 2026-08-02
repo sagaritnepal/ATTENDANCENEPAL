@@ -32,7 +32,7 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthCard title="Admin">
+    <AuthCard>
       <form onSubmit={handleSubmit}>
         <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
         <input
