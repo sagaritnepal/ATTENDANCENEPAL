@@ -176,7 +176,12 @@ export default function EmployeesPage() {
     const body = await res.json().catch(() => ({}));
     setSavingUsername(false);
     if (!res.ok) {
-      alert(`Could not update the username: ${body.error ?? 'unknown error'}`);
+      const message: string = body.error ?? 'unknown error';
+      alert(
+        /already been registered|already exists|duplicate/i.test(message)
+          ? 'That username is already used by another login — usernames must be unique.'
+          : `Could not update the username: ${message}`
+      );
       return;
     }
     setEditingUsernameId(null);
@@ -261,7 +266,15 @@ export default function EmployeesPage() {
     });
     setSaving(false);
     if (error) {
-      setFormError(error.message);
+      if (error.code === '23505') {
+        setFormError(
+          error.message.includes('email')
+            ? 'That email is already used by another employee.'
+            : 'That Employee ID is already in use — each employee needs a unique ID.'
+        );
+      } else {
+        setFormError(error.message);
+      }
       return;
     }
     setForm(EMPTY_FORM);
@@ -643,7 +656,7 @@ export default function EmployeesPage() {
                               autoFocus
                               value={usernameDraft}
                               onChange={e => setUsernameDraft(e.target.value)}
-                              className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                              className="w-full rounded-md border border-slate-200 px-2 py-1 text-sm font-semibold text-ink"
                             />
                             <button
                               type="button"
@@ -665,7 +678,8 @@ export default function EmployeesPage() {
                           <button
                             type="button"
                             onClick={() => startEditUsername(emp)}
-                            className="truncate text-left text-xs text-slate-600 hover:text-accent hover:underline"
+                            title="Click to edit"
+                            className="truncate text-left text-sm font-semibold text-ink hover:text-accent hover:underline"
                           >
                             {loginEmailByEmployee[emp.id] ?? '—'}
                           </button>
@@ -750,7 +764,7 @@ export default function EmployeesPage() {
               <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                 <th className="px-3 py-3 font-medium">Employee Name</th>
                 <th className="px-2 py-3 font-medium">ID</th>
-                <th className="w-40 px-2 py-3 font-medium">Username</th>
+                <th className="w-44 px-2 py-3 font-medium">Username</th>
                 <th className="w-28 px-2 py-3 font-medium">Branch</th>
                 <th className="w-32 px-2 py-3 font-medium">Shift</th>
                 <th className="px-3 py-3 font-medium">Bio Enrollment</th>
@@ -794,7 +808,7 @@ export default function EmployeesPage() {
                       </div>
                     </td>
                     <td className="px-2 py-3 text-slate-600">{emp.fingerprint_id ?? '—'}</td>
-                    <td className="w-40 px-2 py-3">
+                    <td className="w-44 px-2 py-3">
                       {linkedEmployeeIds.has(emp.id) ? (
                         editingUsernameId === emp.id ? (
                           <div className="flex items-center gap-1">
@@ -803,7 +817,7 @@ export default function EmployeesPage() {
                               autoFocus
                               value={usernameDraft}
                               onChange={e => setUsernameDraft(e.target.value)}
-                              className="w-full max-w-[9rem] rounded-md border border-slate-200 px-1.5 py-1 text-xs"
+                              className="w-full max-w-[10rem] rounded-md border border-slate-200 px-1.5 py-1 text-sm font-semibold text-ink"
                             />
                             <button
                               type="button"
@@ -830,7 +844,7 @@ export default function EmployeesPage() {
                             type="button"
                             onClick={() => startEditUsername(emp)}
                             title="Click to edit"
-                            className="max-w-[9rem] truncate text-left text-xs text-slate-600 hover:text-accent hover:underline"
+                            className="max-w-[10rem] truncate text-left text-sm font-semibold text-ink hover:text-accent hover:underline"
                           >
                             {loginEmailByEmployee[emp.id] ?? '—'}
                           </button>
@@ -1220,13 +1234,16 @@ function ShiftPicker({
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="flex w-full flex-col items-start rounded-md border border-slate-200 px-2 py-1 text-left hover:bg-slate-50"
+        className="flex w-full items-center gap-1.5 rounded-lg border border-accent/20 bg-accent/5 px-2 py-1.5 text-left transition-colors hover:border-accent/40 hover:bg-accent/10"
       >
-        <span className="max-w-full truncate text-xs font-medium text-slate-700">{selected?.label}</span>
-        <span className="max-w-full truncate text-[10px] text-slate-400">{selected?.hours}</span>
+        <ClockIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
+        <span className="min-w-0 flex-1">
+          <span className="block max-w-full truncate text-xs font-semibold text-ink">{selected?.label}</span>
+          <span className="block max-w-full truncate text-[10px] font-medium text-accent">{selected?.hours}</span>
+        </span>
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-20 mt-1 max-h-56 w-44 overflow-y-auto rounded-md border border-slate-200 bg-white py-1 shadow-lg">
+        <div className="absolute left-0 top-full z-20 mt-1 max-h-56 w-48 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
           {options.map(o => (
             <button
               key={o.id}
@@ -1235,12 +1252,15 @@ function ShiftPicker({
                 onChange(o.id);
                 setOpen(false);
               }}
-              className={`flex w-full flex-col items-start px-2.5 py-1.5 text-left hover:bg-slate-50 ${
-                o.id === value ? 'bg-accent/5' : ''
+              className={`flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left hover:bg-accent/5 ${
+                o.id === value ? 'bg-accent/10' : ''
               }`}
             >
-              <span className="text-xs font-medium text-slate-700">{o.label}</span>
-              <span className="text-[10px] text-slate-400">{o.hours}</span>
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-semibold text-ink">{o.label}</span>
+                <span className="block truncate text-[10px] text-slate-400">{o.hours}</span>
+              </span>
+              {o.id === value && <CheckIcon className="h-3.5 w-3.5 shrink-0 text-accent" />}
             </button>
           ))}
         </div>
@@ -1261,6 +1281,15 @@ function CheckIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+    </svg>
+  );
+}
+
+function ClockIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <circle cx="12" cy="12" r="9" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
     </svg>
   );
 }
