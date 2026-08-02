@@ -508,7 +508,7 @@ export default function EmployeesPage() {
                     <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
                       {emp.fingerprint_id ? 'Registered' : 'Pending'}
                     </Badge>
-                    {linkedEmployeeIds.has(emp.id) && <Badge tone="info">Login Active</Badge>}
+                    {linkedEmployeeIds.has(emp.id) && <Badge tone="good">Login Active</Badge>}
                   </div>
                 </div>
 
@@ -676,7 +676,7 @@ export default function EmployeesPage() {
                         <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
                           {emp.fingerprint_id ? 'Registered' : 'Pending'}
                         </Badge>
-                        {linkedEmployeeIds.has(emp.id) && <Badge tone="info">Login Active</Badge>}
+                        {linkedEmployeeIds.has(emp.id) && <Badge tone="good">Login Active</Badge>}
                       </div>
                     </td>
                     <td className="px-3 py-3">
