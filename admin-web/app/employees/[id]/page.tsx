@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
@@ -16,9 +16,7 @@ function tenureDays(dateOfJoining: string | null, resignedAt: string | null) {
 
 const EMPTY_EDUCATION_FORM = { degree: '', institution: '', year: '' };
 const EMPTY_EXPERIENCE_FORM = { employer: '', role: '', start_date: '', end_date: '' };
-const EMPTY_EMERGENCY_FORM = { emergency_contact_name: '', emergency_contact_relationship: '', emergency_contact_phone: '' };
 const EMPTY_CORE_FORM = {
-  employee_code: '',
   name: '',
   email: '',
   phone: '',
@@ -27,6 +25,9 @@ const EMPTY_CORE_FORM = {
   branch_id: '',
   date_of_joining: '',
   address: '',
+  emergency_contact_name: '',
+  emergency_contact_relationship: '',
+  emergency_contact_phone: '',
 };
 
 async function toDataUrl(url: string): Promise<string | null> {
@@ -59,8 +60,8 @@ export default function EmployeeCvPage() {
   const [coreForm, setCoreForm] = useState(EMPTY_CORE_FORM);
   const [savingCore, setSavingCore] = useState(false);
 
-  const [emergencyForm, setEmergencyForm] = useState(EMPTY_EMERGENCY_FORM);
-  const [savingEmergency, setSavingEmergency] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const [skillInput, setSkillInput] = useState('');
 
@@ -85,13 +86,7 @@ export default function EmployeeCvPage() {
           // skills is a new column — normalize to [] if the migration adding
           // it hasn't been run yet, so the page degrades instead of crashing.
           setEmployee({ ...data, skills: data.skills ?? [] });
-          setEmergencyForm({
-            emergency_contact_name: data.emergency_contact_name ?? '',
-            emergency_contact_relationship: data.emergency_contact_relationship ?? '',
-            emergency_contact_phone: data.emergency_contact_phone ?? '',
-          });
           setCoreForm({
-            employee_code: data.employee_code ?? '',
             name: data.name ?? '',
             email: data.email ?? '',
             phone: data.phone ?? '',
@@ -100,6 +95,9 @@ export default function EmployeeCvPage() {
             branch_id: data.branch_id ?? '',
             date_of_joining: data.date_of_joining ?? '',
             address: data.address ?? '',
+            emergency_contact_name: data.emergency_contact_name ?? '',
+            emergency_contact_relationship: data.emergency_contact_relationship ?? '',
+            emergency_contact_phone: data.emergency_contact_phone ?? '',
           });
           if (data.branch_id) {
             supabase
@@ -137,26 +135,6 @@ export default function EmployeeCvPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employeeId]);
 
-  async function handleSaveEmergency(e: React.FormEvent) {
-    e.preventDefault();
-    if (!employee) return;
-    setSavingEmergency(true);
-    const { error } = await supabase
-      .from('employees')
-      .update({
-        emergency_contact_name: emergencyForm.emergency_contact_name || null,
-        emergency_contact_relationship: emergencyForm.emergency_contact_relationship || null,
-        emergency_contact_phone: emergencyForm.emergency_contact_phone || null,
-      })
-      .eq('id', employee.id);
-    setSavingEmergency(false);
-    if (error) {
-      alert(`Could not save: ${error.message}`);
-      return;
-    }
-    reload();
-  }
-
   async function handleSaveCore(e: React.FormEvent) {
     e.preventDefault();
     if (!employee) return;
@@ -164,7 +142,6 @@ export default function EmployeeCvPage() {
     const { error } = await supabase
       .from('employees')
       .update({
-        employee_code: coreForm.employee_code,
         name: coreForm.name,
         email: coreForm.email || null,
         phone: coreForm.phone || null,
@@ -173,6 +150,9 @@ export default function EmployeeCvPage() {
         branch_id: coreForm.branch_id || null,
         date_of_joining: coreForm.date_of_joining || null,
         address: coreForm.address || null,
+        emergency_contact_name: coreForm.emergency_contact_name || null,
+        emergency_contact_relationship: coreForm.emergency_contact_relationship || null,
+        emergency_contact_phone: coreForm.emergency_contact_phone || null,
       })
       .eq('id', employee.id);
     setSavingCore(false);
@@ -181,6 +161,39 @@ export default function EmployeeCvPage() {
       return;
     }
     setEditingCore(false);
+    reload();
+  }
+
+  function openPhotoPicker() {
+    photoInputRef.current?.click();
+  }
+
+  async function handlePhotoSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !employee) return;
+
+    setUploadingPhoto(true);
+    const ext = file.name.split('.').pop() || 'jpg';
+    const path = `employee-photos/${employee.id}-${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage.from('attendance-selfies').upload(path, file, {
+      contentType: file.type || 'image/jpeg',
+    });
+    if (uploadError) {
+      setUploadingPhoto(false);
+      alert(`Photo upload failed: ${uploadError.message}`);
+      return;
+    }
+    const { data: publicUrl } = supabase.storage.from('attendance-selfies').getPublicUrl(path);
+    const { error } = await supabase
+      .from('employees')
+      .update({ profile_photo_url: publicUrl.publicUrl })
+      .eq('id', employee.id);
+    setUploadingPhoto(false);
+    if (error) {
+      alert(`Could not save photo: ${error.message}`);
+      return;
+    }
     reload();
   }
 
@@ -329,6 +342,7 @@ export default function EmployeeCvPage() {
       const days = tenureDays(employee!.date_of_joining, employee!.resigned_at);
       const employmentLines = [
         `Employee code: ${employee!.employee_code}`,
+        employee!.fingerprint_id ? `Biometric / Registration ID: ${employee!.fingerprint_id}` : null,
         `Date of joining: ${employee!.date_of_joining ?? '—'}`,
         days !== null ? `Tenure: ${days} days${employee!.resigned_at ? ' (resigned ' + employee!.resigned_at + ')' : ''}` : null,
         employee!.address ? `Address: ${employee!.address}` : null,
@@ -407,6 +421,8 @@ export default function EmployeeCvPage() {
 
   return (
     <AppShell title="Employee CV">
+      <input ref={photoInputRef} type="file" accept="image/*" onChange={handlePhotoSelected} className="hidden" />
+
       <div className="mb-5 flex items-center justify-between">
         <Link href="/employees" className="text-sm font-medium text-accent hover:underline">
           {'←'} Employee Directory
@@ -437,16 +453,22 @@ export default function EmployeeCvPage() {
       </div>
 
       {!editingCore ? (
-        <>
-          <div className="mb-5 flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-6">
-            <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full bg-accent/10 text-2xl font-semibold text-accent">
-              {employee.profile_photo_url ? (
+        <div className="mb-5 rounded-xl border border-slate-200 bg-white p-6">
+          <div className="mb-5 flex items-center gap-4">
+            <button
+              onClick={openPhotoPicker}
+              title="Upload photo"
+              className="relative h-20 w-20 shrink-0 overflow-hidden rounded-full bg-accent/10 text-2xl font-semibold text-accent"
+            >
+              {uploadingPhoto ? (
+                <span className="flex h-full w-full items-center justify-center text-sm">…</span>
+              ) : employee.profile_photo_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={employee.profile_photo_url} alt={employee.name} className="h-full w-full object-cover" />
               ) : (
                 <span className="flex h-full w-full items-center justify-center">{employee.name.slice(0, 1)}</span>
               )}
-            </div>
+            </button>
             <div>
               <h1 className="text-lg font-semibold text-ink">{employee.name}</h1>
               <p className="text-sm text-slate-500">
@@ -455,43 +477,85 @@ export default function EmployeeCvPage() {
               <p className="text-xs text-slate-400">
                 {[employee.phone, employee.email, branch?.name].filter(Boolean).join('  ·  ') || '—'}
               </p>
+              <button onClick={openPhotoPicker} className="mt-1 text-xs font-medium text-accent hover:underline">
+                Change photo
+              </button>
             </div>
           </div>
 
-          <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
-            <h2 className="mb-3 text-sm font-semibold text-ink">Employment</h2>
-            <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-slate-100 pt-4 text-sm sm:grid-cols-3">
+            <div>
+              <span className="block text-xs text-slate-400">Employee code</span>
+              <span className="text-ink">{employee.employee_code}</span>
+            </div>
+            <div>
+              <span className="block text-xs text-slate-400">Biometric / Registration ID</span>
+              <span className="text-ink">{employee.fingerprint_id ?? '—'}</span>
+            </div>
+            <div>
+              <span className="block text-xs text-slate-400">Date of joining</span>
+              <span className="text-ink">{employee.date_of_joining ?? '—'}</span>
+            </div>
+            <div>
+              <span className="block text-xs text-slate-400">{employee.resigned_at ? 'Days worked' : 'Days with company'}</span>
+              <span className="text-ink">{days !== null ? `${days} days` : '—'}</span>
+            </div>
+            {employee.resigned_at && (
               <div>
-                <span className="block text-xs text-slate-400">Employee code</span>
-                <span className="text-ink">{employee.employee_code}</span>
+                <span className="block text-xs text-slate-400">Resigned</span>
+                <span className="text-ink">{employee.resigned_at}</span>
               </div>
-              <div>
-                <span className="block text-xs text-slate-400">Date of joining</span>
-                <span className="text-ink">{employee.date_of_joining ?? '—'}</span>
+            )}
+            {employee.address && (
+              <div className="col-span-2 sm:col-span-3">
+                <span className="block text-xs text-slate-400">Address</span>
+                <span className="text-ink">{employee.address}</span>
               </div>
-              <div>
-                <span className="block text-xs text-slate-400">{employee.resigned_at ? 'Days worked' : 'Days with company'}</span>
-                <span className="text-ink">{days !== null ? `${days} days` : '—'}</span>
-              </div>
-              {employee.resigned_at && (
-                <div>
-                  <span className="block text-xs text-slate-400">Resigned</span>
-                  <span className="text-ink">{employee.resigned_at}</span>
-                </div>
+            )}
+          </div>
+
+          {(employee.emergency_contact_name || employee.emergency_contact_phone) && (
+            <div className="mt-4 border-t border-slate-100 pt-4 text-sm">
+              <span className="mb-1 block text-xs text-slate-400">Emergency contact</span>
+              <span className="text-ink">
+                {[employee.emergency_contact_name, employee.emergency_contact_relationship, employee.emergency_contact_phone]
+                  .filter(Boolean)
+                  .join(' — ')}
+              </span>
+            </div>
+          )}
+        </div>
+      ) : (
+        <form onSubmit={handleSaveCore} className="mb-5 rounded-xl border border-slate-200 bg-white p-6">
+          <div className="mb-4 flex items-center gap-4">
+            <button
+              type="button"
+              onClick={openPhotoPicker}
+              title="Upload photo"
+              className="relative h-20 w-20 shrink-0 overflow-hidden rounded-full bg-accent/10 text-2xl font-semibold text-accent"
+            >
+              {uploadingPhoto ? (
+                <span className="flex h-full w-full items-center justify-center text-sm">…</span>
+              ) : employee.profile_photo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={employee.profile_photo_url} alt={employee.name} className="h-full w-full object-cover" />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center">{employee.name.slice(0, 1)}</span>
               )}
-              {employee.address && (
-                <div className="col-span-2">
-                  <span className="block text-xs text-slate-400">Address</span>
-                  <span className="text-ink">{employee.address}</span>
-                </div>
-              )}
+            </button>
+            <div>
+              <button type="button" onClick={openPhotoPicker} className="text-xs font-medium text-accent hover:underline">
+                Change photo
+              </button>
+              <div className="mt-2 flex gap-4 text-xs text-slate-400">
+                <span>Code: {employee.employee_code}</span>
+                <span>Biometric ID: {employee.fingerprint_id ?? '—'}</span>
+              </div>
             </div>
           </div>
-        </>
-      ) : (
-        <form onSubmit={handleSaveCore} className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-ink">Edit Details</h2>
+
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-ink">Details</h2>
             <button
               type="button"
               onClick={() => {
@@ -510,15 +574,6 @@ export default function EmployeeCvPage() {
                 required
                 value={coreForm.name}
                 onChange={e => setCoreForm(f => ({ ...f, name: e.target.value }))}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Employee code</label>
-              <input
-                required
-                value={coreForm.employee_code}
-                onChange={e => setCoreForm(f => ({ ...f, employee_code: e.target.value }))}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
               />
             </div>
@@ -589,52 +644,44 @@ export default function EmployeeCvPage() {
               />
             </div>
           </div>
+
+          <h2 className="mb-3 mt-5 border-t border-slate-100 pt-4 text-sm font-semibold text-ink">Emergency Contact</h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
+              <input
+                value={coreForm.emergency_contact_name}
+                onChange={e => setCoreForm(f => ({ ...f, emergency_contact_name: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Relationship</label>
+              <input
+                value={coreForm.emergency_contact_relationship}
+                onChange={e => setCoreForm(f => ({ ...f, emergency_contact_relationship: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Phone</label>
+              <input
+                value={coreForm.emergency_contact_phone}
+                onChange={e => setCoreForm(f => ({ ...f, emergency_contact_phone: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+
           <button
             type="submit"
             disabled={savingCore}
-            className="mt-4 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+            className="mt-5 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
           >
             {savingCore ? 'Saving…' : 'Save changes'}
           </button>
         </form>
       )}
-
-      <form onSubmit={handleSaveEmergency} className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-ink">Emergency Contact</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
-            <input
-              value={emergencyForm.emergency_contact_name}
-              onChange={e => setEmergencyForm(f => ({ ...f, emergency_contact_name: e.target.value }))}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Relationship</label>
-            <input
-              value={emergencyForm.emergency_contact_relationship}
-              onChange={e => setEmergencyForm(f => ({ ...f, emergency_contact_relationship: e.target.value }))}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Phone</label>
-            <input
-              value={emergencyForm.emergency_contact_phone}
-              onChange={e => setEmergencyForm(f => ({ ...f, emergency_contact_phone: e.target.value }))}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-          </div>
-        </div>
-        <button
-          type="submit"
-          disabled={savingEmergency}
-          className="mt-3 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
-        >
-          {savingEmergency ? 'Saving…' : 'Save'}
-        </button>
-      </form>
 
       <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-ink">Skills</h2>
