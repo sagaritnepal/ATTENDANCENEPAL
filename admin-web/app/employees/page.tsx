@@ -414,7 +414,7 @@ export default function EmployeesPage() {
                     )}
                   </button>
                   <div className="min-w-0 flex-1">
-                    <Link href={`/attendance?employee=${emp.id}`} className="block truncate font-medium text-ink hover:text-accent hover:underline">
+                    <Link href={`/employees/${emp.id}`} className="block truncate font-medium text-ink hover:text-accent hover:underline">
                       {emp.name}
                     </Link>
                     <div className="truncate text-xs text-slate-400">{emp.designation ?? '—'} · {emp.department ?? '—'}</div>
@@ -553,7 +553,7 @@ export default function EmployeesPage() {
                             <span className="flex h-full w-full items-center justify-center">{emp.name.slice(0, 1)}</span>
                           )}
                         </button>
-                        <Link href={`/attendance?employee=${emp.id}`} className="font-medium text-ink hover:text-accent hover:underline">
+                        <Link href={`/employees/${emp.id}`} className="font-medium text-ink hover:text-accent hover:underline">
                           {emp.name}
                         </Link>
                       </div>

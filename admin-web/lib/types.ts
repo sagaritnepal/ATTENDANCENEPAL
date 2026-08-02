@@ -22,7 +22,28 @@ export type Employee = {
   status: 'active' | 'inactive';
   date_of_joining: string | null;
   resigned_at: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_relationship: string | null;
+  emergency_contact_phone: string | null;
+  skills: string[];
   created_at: string;
+};
+
+export type EmployeeEducation = {
+  id: string;
+  employee_id: string;
+  degree: string;
+  institution: string | null;
+  year: number | null;
+};
+
+export type EmployeeWorkExperience = {
+  id: string;
+  employee_id: string;
+  employer: string;
+  role: string | null;
+  start_date: string | null;
+  end_date: string | null;
 };
 
 export type PointRedemption = {
