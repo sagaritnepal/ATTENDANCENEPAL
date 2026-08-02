@@ -5,9 +5,12 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import Badge from '@/components/Badge';
-import type { Employee, LeaderboardRow, PointRedemption } from '@/lib/types';
+import type { Employee, EmployeeEducation, EmployeeWorkExperience, LeaderboardRow, PointRedemption } from '@/lib/types';
 
 const EMPTY_PROFILE_FORM = { name: '', email: '', phone: '', address: '', department: '', designation: '' };
+const EMPTY_EMERGENCY_FORM = { emergency_contact_name: '', emergency_contact_relationship: '', emergency_contact_phone: '' };
+const EMPTY_EDUCATION_FORM = { degree: '', institution: '', year: '' };
+const EMPTY_EXPERIENCE_FORM = { employer: '', role: '', start_date: '', end_date: '' };
 
 function tenureDays(dateOfJoining: string | null, resignedAt: string | null) {
   if (!dateOfJoining) return null;
@@ -43,6 +46,21 @@ export default function MyProfilePage() {
   const [submittingRedeem, setSubmittingRedeem] = useState(false);
   const [redeemError, setRedeemError] = useState<string | null>(null);
 
+  const [emergencyForm, setEmergencyForm] = useState(EMPTY_EMERGENCY_FORM);
+  const [savingEmergency, setSavingEmergency] = useState(false);
+
+  const [skillInput, setSkillInput] = useState('');
+
+  const [education, setEducation] = useState<EmployeeEducation[]>([]);
+  const [showEducationForm, setShowEducationForm] = useState(false);
+  const [educationForm, setEducationForm] = useState(EMPTY_EDUCATION_FORM);
+  const [savingEducation, setSavingEducation] = useState(false);
+
+  const [experience, setExperience] = useState<EmployeeWorkExperience[]>([]);
+  const [showExperienceForm, setShowExperienceForm] = useState(false);
+  const [experienceForm, setExperienceForm] = useState(EMPTY_EXPERIENCE_FORM);
+  const [savingExperience, setSavingExperience] = useState(false);
+
   function reload(empId: string) {
     supabase
       .from('employees')
@@ -51,7 +69,9 @@ export default function MyProfilePage() {
       .single()
       .then(({ data }) => {
         if (data) {
-          setEmployee(data);
+          // skills is a new column — normalize to [] if the migration adding
+          // it hasn't been run yet, so the page degrades instead of crashing.
+          setEmployee({ ...data, skills: data.skills ?? [] });
           setProfileForm({
             name: data.name ?? '',
             email: data.email ?? '',
@@ -59,6 +79,11 @@ export default function MyProfilePage() {
             address: data.address ?? '',
             department: data.department ?? '',
             designation: data.designation ?? '',
+          });
+          setEmergencyForm({
+            emergency_contact_name: data.emergency_contact_name ?? '',
+            emergency_contact_relationship: data.emergency_contact_relationship ?? '',
+            emergency_contact_phone: data.emergency_contact_phone ?? '',
           });
         }
       });
@@ -72,6 +97,18 @@ export default function MyProfilePage() {
       const rows = (data as LeaderboardRow[]) ?? [];
       setBoard(rows.find(r => r.employee_id === empId) ?? null);
     });
+    supabase
+      .from('employee_education')
+      .select('*')
+      .eq('employee_id', empId)
+      .order('year', { ascending: false })
+      .then(({ data }) => setEducation(data ?? []));
+    supabase
+      .from('employee_work_experience')
+      .select('*')
+      .eq('employee_id', empId)
+      .order('start_date', { ascending: false })
+      .then(({ data }) => setExperience(data ?? []));
   }
 
   useEffect(() => {
@@ -87,7 +124,13 @@ export default function MyProfilePage() {
     });
   }, []);
 
-  async function saveProfile(photoUrl: string | null) {
+  // update_my_profile() replaces the whole editable row at once, so every
+  // call passes the full current state — only the field actually being
+  // changed differs from what's already there (profileForm/emergencyForm are
+  // kept in sync via reload() after each save, same as the photo-only save
+  // below relies on profileForm already reflecting saved values).
+  async function saveProfile(overrides: { photoUrl?: string | null; skills?: string[]; emergency?: typeof EMPTY_EMERGENCY_FORM } = {}) {
+    const emergency = overrides.emergency ?? emergencyForm;
     const { error } = await supabase.rpc('update_my_profile', {
       p_name: profileForm.name,
       p_email: profileForm.email || null,
@@ -95,7 +138,11 @@ export default function MyProfilePage() {
       p_address: profileForm.address || null,
       p_department: profileForm.department || null,
       p_designation: profileForm.designation || null,
-      p_photo_url: photoUrl,
+      p_photo_url: overrides.photoUrl !== undefined ? overrides.photoUrl : employee?.profile_photo_url ?? null,
+      p_skills: overrides.skills ?? employee?.skills ?? [],
+      p_emergency_contact_name: emergency.emergency_contact_name || null,
+      p_emergency_contact_relationship: emergency.emergency_contact_relationship || null,
+      p_emergency_contact_phone: emergency.emergency_contact_phone || null,
     });
     return error;
   }
@@ -106,13 +153,107 @@ export default function MyProfilePage() {
     setSavingProfile(true);
     setProfileError(null);
     setProfileSaved(false);
-    const error = await saveProfile(employee.profile_photo_url);
+    const error = await saveProfile();
     setSavingProfile(false);
     if (error) {
       setProfileError(error.message);
       return;
     }
     setProfileSaved(true);
+    reload(employee.id);
+  }
+
+  async function handleSaveEmergency(e: React.FormEvent) {
+    e.preventDefault();
+    if (!employee) return;
+    setSavingEmergency(true);
+    const error = await saveProfile();
+    setSavingEmergency(false);
+    if (error) {
+      alert(`Could not save: ${error.message}`);
+      return;
+    }
+    reload(employee.id);
+  }
+
+  async function addSkill() {
+    const skill = skillInput.trim();
+    if (!skill || !employee) return;
+    if (employee.skills.includes(skill)) {
+      setSkillInput('');
+      return;
+    }
+    const error = await saveProfile({ skills: [...employee.skills, skill] });
+    if (error) {
+      alert(`Could not add skill: ${error.message}`);
+      return;
+    }
+    setSkillInput('');
+    reload(employee.id);
+  }
+
+  async function removeSkill(skill: string) {
+    if (!employee) return;
+    const error = await saveProfile({ skills: employee.skills.filter(s => s !== skill) });
+    if (error) {
+      alert(`Could not remove skill: ${error.message}`);
+      return;
+    }
+    reload(employee.id);
+  }
+
+  async function handleAddEducation(e: React.FormEvent) {
+    e.preventDefault();
+    if (!employee) return;
+    setSavingEducation(true);
+    const { error } = await supabase.from('employee_education').insert({
+      employee_id: employee.id,
+      degree: educationForm.degree,
+      institution: educationForm.institution || null,
+      year: educationForm.year ? Number(educationForm.year) : null,
+    });
+    setSavingEducation(false);
+    if (error) {
+      alert(`Could not add: ${error.message}`);
+      return;
+    }
+    setEducationForm(EMPTY_EDUCATION_FORM);
+    setShowEducationForm(false);
+    reload(employee.id);
+  }
+
+  async function handleDeleteEducation(id: string) {
+    if (!employee) return;
+    if (!confirm('Remove this education entry?')) return;
+    await supabase.from('employee_education').delete().eq('id', id);
+    reload(employee.id);
+  }
+
+  async function handleAddExperience(e: React.FormEvent) {
+    e.preventDefault();
+    if (!employee) return;
+    setSavingExperience(true);
+    const { error } = await supabase.from('employee_work_experience').insert({
+      employee_id: employee.id,
+      employer: experienceForm.employer,
+      role: experienceForm.role || null,
+      start_date: experienceForm.start_date || null,
+      end_date: experienceForm.end_date || null,
+    });
+    setSavingExperience(false);
+    if (error) {
+      alert(`Could not add: ${error.message}`);
+      return;
+    }
+    setExperienceForm(EMPTY_EXPERIENCE_FORM);
+    setShowExperienceForm(false);
+    reload(employee.id);
+  }
+
+  async function handleDeleteExperience(id: string) {
+    if (!employee) return;
+    if (!confirm('Remove this work experience entry?')) return;
+    await supabase.from('employee_work_experience').delete().eq('id', id);
     reload(employee.id);
   }
 
@@ -137,7 +278,7 @@ export default function MyProfilePage() {
       return;
     }
     const { data: publicUrl } = supabase.storage.from('attendance-selfies').getPublicUrl(path);
-    const rpcError = await saveProfile(publicUrl.publicUrl);
+    const rpcError = await saveProfile({ photoUrl: publicUrl.publicUrl });
     setUploadingPhoto(false);
     if (rpcError) {
       alert(`Could not save photo: ${rpcError.message}`);
@@ -332,6 +473,120 @@ export default function MyProfilePage() {
         </button>
       </form>
 
+      <form onSubmit={handleSaveEmergency} className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="mb-3 text-sm font-semibold text-ink">Emergency Contact</h2>
+        <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
+        <input
+          value={emergencyForm.emergency_contact_name}
+          onChange={e => setEmergencyForm(f => ({ ...f, emergency_contact_name: e.target.value }))}
+          className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+        />
+        <label className="mb-1 block text-xs font-medium text-slate-600">Relationship</label>
+        <input
+          value={emergencyForm.emergency_contact_relationship}
+          onChange={e => setEmergencyForm(f => ({ ...f, emergency_contact_relationship: e.target.value }))}
+          className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+        />
+        <label className="mb-1 block text-xs font-medium text-slate-600">Phone</label>
+        <input
+          value={emergencyForm.emergency_contact_phone}
+          onChange={e => setEmergencyForm(f => ({ ...f, emergency_contact_phone: e.target.value }))}
+          className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+        />
+        <button
+          type="submit"
+          disabled={savingEmergency}
+          className="w-full rounded-lg bg-accent py-2 text-sm font-semibold text-white disabled:opacity-60"
+        >
+          {savingEmergency ? 'Saving…' : 'Save'}
+        </button>
+      </form>
+
+      <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="mb-3 text-sm font-semibold text-ink">Skills</h2>
+        <div className="mb-3 flex flex-wrap gap-2">
+          {employee.skills.map(skill => (
+            <span key={skill} className="flex items-center gap-1 rounded-full bg-accent/10 px-3 py-1 text-xs font-medium text-accent">
+              {skill}
+              <button onClick={() => removeSkill(skill)} className="text-accent/60 hover:text-accent">
+                ×
+              </button>
+            </span>
+          ))}
+          {employee.skills.length === 0 && <p className="text-xs text-slate-400">No skills added yet.</p>}
+        </div>
+        <div className="flex gap-2">
+          <input
+            value={skillInput}
+            onChange={e => setSkillInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addSkill();
+              }
+            }}
+            placeholder="Add a skill and press Enter"
+            className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          />
+          <button onClick={addSkill} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            Add
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-ink">Education</h2>
+          <button onClick={() => setShowEducationForm(true)} className="text-xs font-medium text-accent hover:underline">
+            + Add
+          </button>
+        </div>
+        {education.length === 0 && <p className="text-xs text-slate-400">No education entries yet.</p>}
+        <ul className="divide-y divide-slate-100">
+          {education.map(ed => (
+            <li key={ed.id} className="flex items-center justify-between py-2 text-sm">
+              <div>
+                <span className="font-medium text-ink">{ed.degree}</span>
+                {(ed.institution || ed.year) && (
+                  <span className="block text-xs text-slate-500">{[ed.institution, ed.year ? String(ed.year) : null].filter(Boolean).join(', ')}</span>
+                )}
+              </div>
+              <button onClick={() => handleDeleteEducation(ed.id)} className="text-xs font-medium text-critical hover:underline">
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-ink">Work Experience</h2>
+          <button onClick={() => setShowExperienceForm(true)} className="text-xs font-medium text-accent hover:underline">
+            + Add
+          </button>
+        </div>
+        {experience.length === 0 && <p className="text-xs text-slate-400">No work experience entries yet.</p>}
+        <ul className="divide-y divide-slate-100">
+          {experience.map(exp => (
+            <li key={exp.id} className="flex items-center justify-between py-2 text-sm">
+              <div>
+                <span className="font-medium text-ink">{exp.employer}</span>
+                {exp.role && <span className="text-slate-500"> — {exp.role}</span>}
+                {(exp.start_date || exp.end_date) && (
+                  <span className="block text-xs text-slate-400">
+                    {exp.start_date ?? '—'} {'–'} {exp.end_date ?? 'Present'}
+                  </span>
+                )}
+              </div>
+              <button onClick={() => handleDeleteExperience(exp.id)} className="text-xs font-medium text-critical hover:underline">
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+
       <button
         onClick={handleSignOut}
         className="mb-6 w-full rounded-lg border border-slate-200 bg-white py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
@@ -377,6 +632,107 @@ export default function MyProfilePage() {
                 className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
               >
                 {submittingRedeem ? 'Submitting…' : 'Submit request'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showEducationForm && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
+          <form onSubmit={handleAddEducation} className="w-full max-w-sm rounded-xl bg-white p-6 shadow-lg">
+            <h3 className="mb-4 text-lg font-semibold text-ink">Add Education</h3>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Degree</label>
+            <input
+              required
+              value={educationForm.degree}
+              onChange={e => setEducationForm(f => ({ ...f, degree: e.target.value }))}
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <label className="mb-1 block text-xs font-medium text-slate-600">Institution</label>
+            <input
+              value={educationForm.institution}
+              onChange={e => setEducationForm(f => ({ ...f, institution: e.target.value }))}
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <label className="mb-1 block text-xs font-medium text-slate-600">Year</label>
+            <input
+              type="number"
+              value={educationForm.year}
+              onChange={e => setEducationForm(f => ({ ...f, year: e.target.value }))}
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowEducationForm(false)}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={savingEducation}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+              >
+                {savingEducation ? 'Saving…' : 'Add'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showExperienceForm && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
+          <form onSubmit={handleAddExperience} className="w-full max-w-sm rounded-xl bg-white p-6 shadow-lg">
+            <h3 className="mb-4 text-lg font-semibold text-ink">Add Work Experience</h3>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Employer</label>
+            <input
+              required
+              value={experienceForm.employer}
+              onChange={e => setExperienceForm(f => ({ ...f, employer: e.target.value }))}
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <label className="mb-1 block text-xs font-medium text-slate-600">Role</label>
+            <input
+              value={experienceForm.role}
+              onChange={e => setExperienceForm(f => ({ ...f, role: e.target.value }))}
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <div className="mb-3 grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Start date</label>
+                <input
+                  type="date"
+                  value={experienceForm.start_date}
+                  onChange={e => setExperienceForm(f => ({ ...f, start_date: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">End date</label>
+                <input
+                  type="date"
+                  value={experienceForm.end_date}
+                  onChange={e => setExperienceForm(f => ({ ...f, end_date: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowExperienceForm(false)}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={savingExperience}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+              >
+                {savingExperience ? 'Saving…' : 'Add'}
               </button>
             </div>
           </form>
