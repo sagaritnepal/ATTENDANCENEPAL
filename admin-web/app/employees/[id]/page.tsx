@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
-import type { Branch, Employee, EmployeeEducation, EmployeeWorkExperience } from '@/lib/types';
+import type { Branch, Department, Employee, EmployeeEducation, EmployeeWorkExperience } from '@/lib/types';
 
 function tenureDays(dateOfJoining: string | null, resignedAt: string | null) {
   if (!dateOfJoining) return null;
@@ -52,6 +52,7 @@ export default function EmployeeCvPage() {
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [branch, setBranch] = useState<Branch | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [departmentOptions, setDepartmentOptions] = useState<Department[]>([]);
   const [education, setEducation] = useState<EmployeeEducation[]>([]);
   const [experience, setExperience] = useState<EmployeeWorkExperience[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,6 +118,11 @@ export default function EmployeeCvPage() {
       .select('*')
       .order('name')
       .then(({ data }) => setBranches(data ?? []));
+    supabase
+      .from('departments')
+      .select('*')
+      .order('name')
+      .then(({ data }) => setDepartmentOptions(data ?? []));
     supabase
       .from('employee_education')
       .select('*')
@@ -596,11 +602,21 @@ export default function EmployeeCvPage() {
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Department</label>
-              <input
+              <select
                 value={coreForm.department}
                 onChange={e => setCoreForm(f => ({ ...f, department: e.target.value }))}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              />
+              >
+                <option value="">Unassigned</option>
+                {coreForm.department && !departmentOptions.some(d => d.name === coreForm.department) && (
+                  <option value={coreForm.department}>{coreForm.department}</option>
+                )}
+                {departmentOptions.map(d => (
+                  <option key={d.id} value={d.name}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Designation</label>

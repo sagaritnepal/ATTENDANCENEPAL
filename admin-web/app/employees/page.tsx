@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
-import type { Employee, Shift, Profile, Branch } from '@/lib/types';
+import type { Employee, Shift, Profile, Branch, Department } from '@/lib/types';
 import { resolveShift, formatShiftHours } from '@/lib/shift';
 
 const PAGE_SIZE = 8;
@@ -77,6 +77,7 @@ export default function EmployeesPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [departmentOptions, setDepartmentOptions] = useState<Department[]>([]);
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -129,6 +130,7 @@ export default function EmployeesPage() {
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
     supabase.from('profiles').select('id, employee_id, role').then(({ data }) => setProfiles(data ?? []));
     supabase.from('branches').select('*').order('name').then(({ data }) => setBranches(data ?? []));
+    supabase.from('departments').select('*').order('name').then(({ data }) => setDepartmentOptions(data ?? []));
     loadLoginEmails();
   }
 
@@ -1007,7 +1009,6 @@ export default function EmployeesPage() {
                     ['name', 'Full name', true],
                     ['email', 'Email', false],
                     ['phone', 'Contact number', false],
-                    ['department', 'Department', false],
                     ['designation', 'Designation', false],
                     ['fingerprint_id', 'Fingerprint / Biometric ID', false],
                   ] as const
@@ -1022,6 +1023,21 @@ export default function EmployeesPage() {
                     />
                   </div>
                 ))}
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Department</label>
+                  <select
+                    value={form.department}
+                    onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+                  >
+                    <option value="">Unassigned</option>
+                    {departmentOptions.map(d => (
+                      <option key={d.id} value={d.name}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-600">Branch</label>
                   <select

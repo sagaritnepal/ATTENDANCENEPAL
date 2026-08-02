@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { href: '/calendar', label: 'Calendar', icon: CalendarViewIcon, adminOnly: false },
   { href: '/tasks', label: 'Tasks', icon: TaskIcon, adminOnly: false },
   { href: '/shifts', label: 'Shifts', icon: CalendarIcon, adminOnly: true },
-  { href: '/branches', label: 'Branches', icon: BranchIcon, adminOnly: true },
+  { href: '/branches', label: 'Branch/Depart', icon: BranchIcon, adminOnly: true },
   { href: '/devices', label: 'Devices', icon: DeviceIcon, adminOnly: true },
   { href: '/payroll', label: 'Payroll', icon: CardIcon, adminOnly: false },
   { href: '/team', label: 'Team Accounts', icon: TeamIcon, adminOnly: true },

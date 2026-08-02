@@ -7,6 +7,17 @@ export type Branch = {
   radius_meters: number;
 };
 
+export type Department = {
+  id: string;
+  name: string;
+  created_at: string;
+};
+
+export type BranchDepartment = {
+  branch_id: string;
+  department_id: string;
+};
+
 export type Employee = {
   id: string;
   employee_code: string;
