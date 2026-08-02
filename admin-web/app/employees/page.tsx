@@ -218,7 +218,14 @@ export default function EmployeesPage() {
           .some(v => (v as string).toLowerCase().includes(term));
       });
     }
-    return list;
+    return [...list].sort((a, b) => {
+      const aId = a.fingerprint_id ?? '';
+      const bId = b.fingerprint_id ?? '';
+      if (!aId && !bId) return 0;
+      if (!aId) return 1;
+      if (!bId) return -1;
+      return aId.localeCompare(bId, undefined, { numeric: true, sensitivity: 'base' });
+    });
   }, [employees, shifts, filter, search]);
 
   const searchSuggestions = useMemo(() => {
@@ -751,13 +758,13 @@ export default function EmployeesPage() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-                <th className="px-3 py-3 font-medium">Employee Name</th>
-                <th className="px-2 py-3 font-medium">ID</th>
-                <th className="w-44 px-2 py-3 font-medium">Username</th>
-                <th className="w-28 px-2 py-3 font-medium">Branch</th>
-                <th className="w-32 px-2 py-3 font-medium">Shift</th>
-                <th className="px-3 py-3 font-medium">Bio Enrollment</th>
-                <th className="px-3 py-3 font-medium">Actions</th>
+                <th className="px-2 py-3 text-center font-medium">ID</th>
+                <th className="px-3 py-3 text-center font-medium">Employee Name</th>
+                <th className="w-44 px-2 py-3 text-center font-medium">Username</th>
+                <th className="w-28 px-2 py-3 text-center font-medium">Branch</th>
+                <th className="w-32 px-2 py-3 text-center font-medium">Shift</th>
+                <th className="px-3 py-3 text-center font-medium">Bio Enrollment</th>
+                <th className="px-3 py-3 text-center font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -767,6 +774,7 @@ export default function EmployeesPage() {
                 const deptDefaultShift = resolveShift(emp, shifts.filter(s => s.employee_id !== emp.id));
                 return (
                   <tr key={emp.id} className="border-b border-slate-100 last:border-0">
+                    <td className="px-2 py-3 text-center text-sm font-semibold text-ink">{emp.fingerprint_id ?? '—'}</td>
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-2">
                         <button
@@ -796,7 +804,6 @@ export default function EmployeesPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-2 py-3 text-sm font-semibold text-ink">{emp.fingerprint_id ?? '—'}</td>
                     <td className="w-44 px-2 py-3">
                       {linkedEmployeeIds.has(emp.id) ? (
                         editingUsernameIds.has(emp.id) ? (
