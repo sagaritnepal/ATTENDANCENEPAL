@@ -20,6 +20,7 @@ export default function EmployeeShell({ title, children }: { title: string; chil
   const [name, setName] = useState('Employee');
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [linked, setLinked] = useState(true);
+  const [isHr, setIsHr] = useState(false);
 
   useEffect(() => {
     if (!supabaseConfigured) return;
@@ -36,13 +37,14 @@ export default function EmployeeShell({ title, children }: { title: string; chil
         .eq('id', data.session.user.id)
         .single();
       if (!active) return;
-      if (!profile || profile.role !== 'employee') {
-        // Admin/HR accounts have their own dashboard — this shell is
-        // employee-only.
+      if (!profile || (profile.role !== 'employee' && profile.role !== 'hr')) {
+        // Admin has its own dashboard only — HR is also staff, so it gets
+        // both this shell (their own check-in) and the admin console.
         setStatus('redirecting');
         router.replace('/');
         return;
       }
+      setIsHr(profile.role === 'hr');
       if (!profile.employee_id) {
         setLinked(false);
         setName(data.session.user.email?.split('@')[0] ?? 'Employee');
@@ -91,12 +93,22 @@ export default function EmployeeShell({ title, children }: { title: string; chil
             <div className="text-base font-semibold text-ink">{name}</div>
           </div>
         </div>
-        <button
-          onClick={handleSignOut}
-          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-        >
-          Sign out
-        </button>
+        <div className="flex items-center gap-2">
+          {isHr && (
+            <Link
+              href="/"
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            >
+              Admin Dashboard
+            </Link>
+          )}
+          <button
+            onClick={handleSignOut}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+          >
+            Sign out
+          </button>
+        </div>
       </header>
 
       {!linked && (
