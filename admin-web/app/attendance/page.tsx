@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
+import StatCard from '@/components/StatCard';
 import type { AttendanceLog, Device, Employee, PayrollSummary } from '@/lib/types';
 
 type Row = {
@@ -31,6 +31,26 @@ function isoDaysAgo(n: number) {
   return d.toISOString().slice(0, 10);
 }
 
+function isoWeekStart() {
+  const d = new Date();
+  const day = d.getUTCDay(); // 0 = Sun … 6 = Sat
+  const diff = (day === 0 ? -6 : 1) - day; // shift back to Monday
+  const monday = new Date(d);
+  monday.setUTCDate(d.getUTCDate() + diff);
+  return monday.toISOString().slice(0, 10);
+}
+
+function isoMonthStart() {
+  const d = new Date();
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString().slice(0, 10);
+}
+
+const PRESETS = [
+  { key: 'today', label: 'Today', from: () => isoDaysAgo(0), to: () => isoDaysAgo(0) },
+  { key: 'week', label: 'This Week', from: isoWeekStart, to: () => isoDaysAgo(0) },
+  { key: 'month', label: 'This Month', from: isoMonthStart, to: () => isoDaysAgo(0) },
+] as const;
+
 export default function AttendancePage() {
   return (
     <Suspense fallback={null}>
@@ -41,22 +61,21 @@ export default function AttendancePage() {
 
 function AttendanceView() {
   const searchParams = useSearchParams();
-  const employeeFilter = searchParams.get('employee');
+  const initialEmployeeId = searchParams.get('employee');
   const [from, setFrom] = useState(isoDaysAgo(6));
   const [to, setTo] = useState(isoDaysAgo(0));
+  const [activePreset, setActivePreset] = useState<string | null>(null);
   const [status, setStatus] = useState<'All' | 'Present' | 'Late' | 'Absent'>('All');
+  const [employeeId, setEmployeeId] = useState<string>(initialEmployeeId ?? 'all');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
 
   useEffect(() => {
-    const query = employeeFilter
-      ? supabase.from('employees').select('*').eq('id', employeeFilter)
-      : supabase.from('employees').select('*').eq('status', 'active');
-    query.then(({ data }) => setEmployees(data ?? []));
+    supabase.from('employees').select('*').eq('status', 'active').order('name').then(({ data }) => setEmployees(data ?? []));
     supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
-  }, [employeeFilter]);
+  }, []);
 
   useEffect(() => {
     supabase
@@ -73,6 +92,17 @@ function AttendanceView() {
       .then(({ data }) => setLogs(data ?? []));
   }, [from, to]);
 
+  function applyPreset(preset: (typeof PRESETS)[number]) {
+    setFrom(preset.from());
+    setTo(preset.to());
+    setActivePreset(preset.key);
+  }
+
+  const scopedEmployees = useMemo(
+    () => (employeeId === 'all' ? employees : employees.filter(e => e.id === employeeId)),
+    [employees, employeeId]
+  );
+
   const rows: Row[] = useMemo(() => {
     const deviceName = (id: string | null) => devices.find(d => d.id === id)?.name ?? 'Mobile / QR / Selfie';
     const days: string[] = [];
@@ -85,7 +115,7 @@ function AttendanceView() {
 
     const out: Row[] = [];
     for (const day of days) {
-      for (const emp of employees) {
+      for (const emp of scopedEmployees) {
         const summary = summaries.find(s => s.employee_id === emp.id && s.work_date === day);
         const dayLogs = logs
           .filter(l => l.employee_id === emp.id && l.punch_time.slice(0, 10) === day)
@@ -136,7 +166,15 @@ function AttendanceView() {
       }
     }
     return out.filter(r => status === 'All' || r.status === status).sort((a, b) => b.date.localeCompare(a.date));
-  }, [employees, summaries, logs, devices, from, to, status]);
+  }, [scopedEmployees, summaries, logs, devices, from, to, status]);
+
+  const summaryCounts = useMemo(() => {
+    const present = rows.filter(r => r.status === 'Present' && !r.pending).length;
+    const late = rows.filter(r => r.status === 'Late').length;
+    const absent = rows.filter(r => r.status === 'Absent').length;
+    const totalHours = rows.reduce((sum, r) => sum + (r.pending ? 0 : r.hours), 0);
+    return { present, late, absent, totalHours };
+  }, [rows]);
 
   function exportCsv() {
     const header = ['Date', 'Employee', 'Device', 'Check-In', 'Check-Out', 'Hours Worked', 'Status', 'Overtime'];
@@ -165,22 +203,34 @@ function AttendanceView() {
   }
 
   return (
-    <AppShell title="Biometric Attendance Logs">
-      {employeeFilter && (
-        <div className="mb-4 flex items-center justify-between rounded-lg bg-accent/10 px-4 py-2 text-sm">
-          <span className="text-ink">
-            Showing records for <span className="font-semibold">{employees[0]?.name ?? 'this employee'}</span>
-          </span>
-          <Link href="/attendance" className="font-medium text-accent hover:underline">
-            Clear filter
-          </Link>
-        </div>
-      )}
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <AppShell title="Attendance Report">
+      <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard label="Present" value={String(summaryCounts.present)} />
+        <StatCard label="Late" value={String(summaryCounts.late)} />
+        <StatCard label="Absent" value={String(summaryCounts.absent)} />
+        <StatCard label="Total Hours" value={summaryCounts.totalHours.toFixed(1)} />
+      </div>
+
+      <div className="mb-5 space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-          <span className="text-slate-400">–</span>
-          <input type="date" value={to} onChange={e => setTo(e.target.value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+          <select
+            value={employeeId}
+            onChange={e => setEmployeeId(e.target.value)}
+            className="min-w-[10rem] rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          >
+            <option value="all">All Employees</option>
+            {employees.map(e => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+              </option>
+            ))}
+          </select>
+          {employeeId !== 'all' && (
+            <button onClick={() => setEmployeeId('all')} className="text-xs font-medium text-accent hover:underline">
+              Clear employee filter
+            </button>
+          )}
+
           <select
             value={status}
             onChange={e => setStatus(e.target.value as typeof status)}
@@ -191,10 +241,50 @@ function AttendanceView() {
             <option value="Late">Late</option>
             <option value="Absent">Absent</option>
           </select>
+
+          <button
+            onClick={exportCsv}
+            className="ml-auto rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            ⭳ Export CSV
+          </button>
         </div>
-        <button onClick={exportCsv} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-          ⭳ Export CSV
-        </button>
+
+        <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
+          <div className="flex gap-1.5">
+            {PRESETS.map(p => (
+              <button
+                key={p.key}
+                onClick={() => applyPreset(p)}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+                  activePreset === p.key ? 'bg-accent text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs text-slate-400">or pick dates manually</span>
+          <input
+            type="date"
+            value={from}
+            onChange={e => {
+              setFrom(e.target.value);
+              setActivePreset(null);
+            }}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          />
+          <span className="text-slate-400">–</span>
+          <input
+            type="date"
+            value={to}
+            onChange={e => {
+              setTo(e.target.value);
+              setActivePreset(null);
+            }}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          />
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
