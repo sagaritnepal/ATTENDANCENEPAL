@@ -503,6 +503,12 @@ export default function EmployeesPage() {
                     <Link href={`/employees/${emp.id}`} className="block truncate font-medium text-ink hover:text-accent hover:underline">
                       {emp.name}
                     </Link>
+                    <div className="mt-0.5 truncate text-xs text-slate-400">
+                      {emp.phone ?? '—'} {emp.email && <>· {emp.email}</>}
+                    </div>
+                    <div className="truncate text-xs text-slate-400">
+                      {emp.designation ?? '—'} {emp.department && <>· {emp.department}</>}
+                    </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
@@ -628,9 +634,17 @@ export default function EmployeesPage() {
                             <span className="flex h-full w-full items-center justify-center">{emp.name.slice(0, 1)}</span>
                           )}
                         </button>
-                        <Link href={`/employees/${emp.id}`} className="font-medium text-ink hover:text-accent hover:underline">
-                          {emp.name}
-                        </Link>
+                        <div className="min-w-0">
+                          <Link href={`/employees/${emp.id}`} className="block truncate font-medium text-ink hover:text-accent hover:underline">
+                            {emp.name}
+                          </Link>
+                          <div className="truncate text-xs text-slate-400">
+                            {emp.phone ?? '—'} {emp.email && <>· {emp.email}</>}
+                          </div>
+                          <div className="truncate text-xs text-slate-400">
+                            {emp.designation ?? '—'} {emp.department && <>· {emp.department}</>}
+                          </div>
+                        </div>
                       </div>
                     </td>
                     <td className="px-3 py-3 text-slate-600">{emp.fingerprint_id ?? '—'}</td>
