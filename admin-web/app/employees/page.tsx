@@ -672,9 +672,12 @@ export default function EmployeesPage() {
                       </select>
                     </td>
                     <td className="px-3 py-3">
-                      <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
-                        {emp.fingerprint_id ? 'Registered' : 'Pending'}
-                      </Badge>
+                      <div className="flex flex-col items-start gap-1">
+                        <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
+                          {emp.fingerprint_id ? 'Registered' : 'Pending'}
+                        </Badge>
+                        {linkedEmployeeIds.has(emp.id) && <Badge tone="info">Login Active</Badge>}
+                      </div>
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex flex-wrap items-center gap-2">
