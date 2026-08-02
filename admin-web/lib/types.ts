@@ -52,6 +52,17 @@ export type Device = {
   last_sync: string | null;
 };
 
+export type DeviceSyncEvent = {
+  id: string;
+  device_id: string;
+  sync_type: 'users' | 'logs';
+  status: 'pending' | 'running' | 'success' | 'failed';
+  requested_at: string;
+  completed_at: string | null;
+  summary: string | null;
+  error: string | null;
+};
+
 export type Shift = {
   id: string;
   name: string;

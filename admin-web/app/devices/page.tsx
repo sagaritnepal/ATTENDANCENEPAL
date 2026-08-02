@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
-import type { AttendanceLog, Branch, Device, Employee } from '@/lib/types';
+import type { AttendanceLog, Branch, Device, DeviceSyncEvent, Employee } from '@/lib/types';
 
 const EMPTY_FORM = { name: '', branch_id: '', ip_address: '192.168.1.201', port: 4370 };
 
@@ -13,15 +13,23 @@ export default function DevicesPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
+  const [syncEvents, setSyncEvents] = useState<DeviceSyncEvent[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [queuing, setQueuing] = useState<string | null>(null);
 
   function reload() {
     supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
     supabase.from('branches').select('*').then(({ data }) => setBranches(data ?? []));
     supabase.from('employees').select('*').then(({ data }) => setEmployees(data ?? []));
     supabase.from('attendance_logs').select('*').eq('method', 'zkteco').then(({ data }) => setLogs(data ?? []));
+    supabase
+      .from('device_sync_events')
+      .select('*')
+      .order('requested_at', { ascending: false })
+      .limit(50)
+      .then(({ data }) => setSyncEvents(data ?? []));
   }
   useEffect(reload, []);
 
@@ -48,6 +56,30 @@ export default function DevicesPage() {
     };
   }, []);
 
+  // While anything is still queued/running, poll every 3s so a click on
+  // "Sync Users"/"Sync Log" reflects zkteco-bridge picking it up and
+  // finishing without the admin having to hit Refresh themselves.
+  useEffect(() => {
+    if (!syncEvents.some(e => e.status === 'pending' || e.status === 'running')) return;
+    const id = setInterval(reload, 3000);
+    return () => clearInterval(id);
+  }, [syncEvents]);
+
+  async function queueSync(deviceId: string, syncType: 'users' | 'logs') {
+    setQueuing(`${deviceId}-${syncType}`);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { error } = await supabase.from('device_sync_events').insert({
+      device_id: deviceId,
+      sync_type: syncType,
+      requested_by: user?.id ?? null,
+    });
+    setQueuing(null);
+    if (error) alert(`Could not queue sync: ${error.message}`);
+    reload();
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -73,9 +105,10 @@ export default function DevicesPage() {
   return (
     <AppShell title="Biometric Sync Devices">
       <div className="mb-5 flex items-center justify-between">
-        <p className="text-sm text-slate-500">
-          Biometric terminal integrations — <code className="rounded bg-slate-100 px-1.5 py-0.5">zkteco-bridge</code> polls each device
-          every 15 seconds and writes here.
+        <p className="text-sm text-slate-500 max-w-2xl">
+          Biometric terminal integrations — <code className="rounded bg-slate-100 px-1.5 py-0.5">zkteco-bridge</code> polls every device
+          every 15 seconds and writes here. "Sync Users"/"Sync Log" queue an on-demand request that the bridge — running on a
+          machine on the same network as the device — picks up right away.
         </p>
         <div className="flex gap-2">
           <button onClick={reload} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
@@ -92,6 +125,9 @@ export default function DevicesPage() {
           const branch = branches.find(b => b.id === d.branch_id);
           const registered = employees.filter(e => e.branch_id === d.branch_id && e.fingerprint_id).length;
           const fetched = logs.filter(l => l.device_id === d.id).length;
+          const history = syncEvents.filter(e => e.device_id === d.id).slice(0, 5);
+          const busy = (type: 'users' | 'logs') =>
+            queuing === `${d.id}-${type}` || history.some(e => e.sync_type === type && (e.status === 'pending' || e.status === 'running'));
           return (
             <div key={d.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-2 flex items-center justify-between">
@@ -109,6 +145,47 @@ export default function DevicesPage() {
                 <button onClick={() => handleDelete(d.id)} className="text-xs font-medium text-critical hover:underline">
                   Remove
                 </button>
+              </div>
+
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => queueSync(d.id, 'users')}
+                  disabled={busy('users')}
+                  className="flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                >
+                  {busy('users') ? 'Syncing users…' : '👥 Sync Users'}
+                </button>
+                <button
+                  onClick={() => queueSync(d.id, 'logs')}
+                  disabled={busy('logs')}
+                  className="flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                >
+                  {busy('logs') ? 'Syncing log…' : '🕐 Sync Log'}
+                </button>
+              </div>
+
+              <div className="mt-4 border-t border-slate-100 pt-3">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">History</p>
+                {history.length === 0 && <p className="text-xs text-slate-400">No sync requests yet.</p>}
+                <ul className="space-y-1.5">
+                  {history.map(e => (
+                    <li key={e.id} className="flex items-start justify-between gap-2 text-xs">
+                      <div className="min-w-0">
+                        <span className="font-medium text-ink">{e.sync_type === 'users' ? 'Users' : 'Log'}</span>{' '}
+                        <span className="text-slate-400">{new Date(e.requested_at).toLocaleString()}</span>
+                        {e.summary && <div className="text-slate-500">{e.summary}</div>}
+                        {e.error && <div className="text-critical">{e.error}</div>}
+                      </div>
+                      <Badge
+                        tone={
+                          e.status === 'success' ? 'good' : e.status === 'failed' ? 'critical' : e.status === 'running' ? 'info' : 'neutral'
+                        }
+                      >
+                        {e.status}
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
               </div>
             </div>
           );
