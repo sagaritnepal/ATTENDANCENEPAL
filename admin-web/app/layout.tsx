@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'AttendX Admin',
+  title: 'Attendance Nepal Admin',
   description: 'Attendance, payroll, and biometric device console',
 };
 

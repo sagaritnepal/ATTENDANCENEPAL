@@ -46,12 +46,9 @@ export default function Sidebar({ role, adminName, drawerOpen, onCloseDrawer }: 
         }`}
       >
         <div className="flex items-center gap-2 px-5 py-6">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent font-bold text-white">
-            X
-          </div>
-          <span className="text-lg font-semibold text-white">
-            Attend<span className="text-accent">X</span>
-          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-mark.png" alt="Attendance Nepal" className="h-8 w-8 shrink-0" />
+          <span className="text-lg font-semibold text-white">Attendance Nepal</span>
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3">
