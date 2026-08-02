@@ -169,12 +169,6 @@ export default function EmployeesPage() {
     reload();
   }
 
-  async function handleDateOfJoiningChange(employeeId: string, date: string) {
-    const { error } = await supabase.from('employees').update({ date_of_joining: date || null }).eq('id', employeeId);
-    if (error) alert(`Could not update date of joining: ${error.message}`);
-    reload();
-  }
-
   async function handleDelete(id: string) {
     if (!confirm('Remove this employee?')) return;
     const { error } = await supabase.from('employees').delete().eq('id', id);
@@ -546,16 +540,12 @@ export default function EmployeesPage() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-                <th className="px-5 py-3 font-medium">Employee</th>
-                <th className="px-5 py-3 font-medium">Contact</th>
-                <th className="px-5 py-3 font-medium">Biometric ID</th>
-                <th className="px-5 py-3 font-medium">Department</th>
-                <th className="px-5 py-3 font-medium">Branch</th>
-                <th className="px-5 py-3 font-medium">Joined</th>
-                <th className="px-5 py-3 font-medium">Designation</th>
-                <th className="px-5 py-3 font-medium">Shift</th>
-                <th className="px-5 py-3 font-medium">Bio Enrollment</th>
-                <th className="px-5 py-3 font-medium">Actions</th>
+                <th className="px-3 py-3 font-medium">Employee</th>
+                <th className="px-3 py-3 font-medium">Biometric ID</th>
+                <th className="px-3 py-3 font-medium">Branch</th>
+                <th className="px-3 py-3 font-medium">Shift</th>
+                <th className="px-3 py-3 font-medium">Bio Enrollment</th>
+                <th className="px-3 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -565,8 +555,8 @@ export default function EmployeesPage() {
                 const deptDefaultShift = resolveShift(emp, shifts.filter(s => s.employee_id !== emp.id));
                 return (
                   <tr key={emp.id} className="border-b border-slate-100 last:border-0">
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-2">
                         <button
                           onClick={() => openPhotoPicker(emp.id)}
                           title="Upload photo"
@@ -586,17 +576,12 @@ export default function EmployeesPage() {
                         </Link>
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-slate-600">
-                      <div>{emp.phone ?? '—'}</div>
-                      <div className="text-xs text-slate-400">{emp.email ?? ''}</div>
-                    </td>
-                    <td className="px-5 py-3 text-slate-600">{emp.fingerprint_id ?? '—'}</td>
-                    <td className="px-5 py-3 text-slate-600">{emp.department ?? '—'}</td>
-                    <td className="px-5 py-3">
+                    <td className="px-3 py-3 text-slate-600">{emp.fingerprint_id ?? '—'}</td>
+                    <td className="px-3 py-3">
                       <select
                         value={emp.branch_id ?? ''}
                         onChange={e => handleBranchChange(emp.id, e.target.value)}
-                        className={`rounded-md border px-2 py-1 text-xs ${
+                        className={`w-full rounded-md border px-2 py-1 text-xs ${
                           emp.branch_id ? 'border-slate-200 text-slate-600' : 'border-warning text-warning-text'
                         }`}
                       >
@@ -608,16 +593,7 @@ export default function EmployeesPage() {
                         ))}
                       </select>
                     </td>
-                    <td className="px-5 py-3">
-                      <input
-                        type="date"
-                        value={emp.date_of_joining ?? ''}
-                        onChange={e => handleDateOfJoiningChange(emp.id, e.target.value)}
-                        className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
-                      />
-                    </td>
-                    <td className="px-5 py-3 text-slate-600">{emp.designation ?? '—'}</td>
-                    <td className="px-5 py-3">
+                    <td className="px-3 py-3">
                       <select
                         value={
                           hasOwnShift
@@ -627,7 +603,7 @@ export default function EmployeesPage() {
                             : ''
                         }
                         onChange={e => handleShiftChange(emp.id, e.target.value)}
-                        className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                        className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
                       >
                         <option value="">Default ({formatShiftHours(deptDefaultShift)})</option>
                         {templateShifts.map(t => (
@@ -637,13 +613,13 @@ export default function EmployeesPage() {
                         ))}
                       </select>
                     </td>
-                    <td className="px-5 py-3">
+                    <td className="px-3 py-3">
                       <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
                         {emp.fingerprint_id ? 'Registered' : 'Pending'}
                       </Badge>
                     </td>
-                    <td className="px-5 py-3">
-                      <div className="flex flex-wrap items-center gap-3">
+                    <td className="px-3 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
                         {linkedEmployeeIds.has(emp.id) ? (
                           <>
                             <span className="text-xs font-medium text-good">Login active</span>
@@ -671,7 +647,7 @@ export default function EmployeesPage() {
               })}
               {pageItems.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-5 py-8 text-center text-slate-400">
+                  <td colSpan={6} className="px-3 py-8 text-center text-slate-400">
                     No employees match this filter.
                   </td>
                 </tr>
