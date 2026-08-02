@@ -172,14 +172,15 @@ export default function EmployeesPage() {
 
     const term = search.trim().toLowerCase();
     if (term) {
-      list = list.filter(e =>
-        [e.name, e.employee_code, e.phone, e.email, e.department, e.designation, e.fingerprint_id]
+      list = list.filter(e => {
+        const shift = resolveShift(e, shifts);
+        return [e.name, e.employee_code, e.phone, e.email, e.department, e.designation, e.fingerprint_id, shift.name, formatShiftHours(shift)]
           .filter(Boolean)
-          .some(v => (v as string).toLowerCase().includes(term))
-      );
+          .some(v => (v as string).toLowerCase().includes(term));
+      });
     }
     return list;
-  }, [employees, filter, search]);
+  }, [employees, shifts, filter, search]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -584,7 +585,7 @@ export default function EmployeesPage() {
                   <div>
                     <dt className="text-xs text-slate-400">Shift</dt>
                     <dd>
-                      <select
+                      <ShiftPicker
                         value={
                           pendingShift[emp.id] ??
                           (hasOwnShift
@@ -593,16 +594,12 @@ export default function EmployeesPage() {
                               )?.id ?? ''
                             : '')
                         }
-                        onChange={e => setPendingShift(p => ({ ...p, [emp.id]: e.target.value }))}
-                        className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
-                      >
-                        <option value="">Default ({formatShiftHours(deptDefaultShift)})</option>
-                        {templateShifts.map(t => (
-                          <option key={t.id} value={t.id}>
-                            {t.name} ({formatShiftHours(t)})
-                          </option>
-                        ))}
-                      </select>
+                        onChange={id => setPendingShift(p => ({ ...p, [emp.id]: id }))}
+                        options={[
+                          { id: '', label: 'Default', hours: formatShiftHours(deptDefaultShift) },
+                          ...templateShifts.map(t => ({ id: t.id, label: t.name, hours: formatShiftHours(t) })),
+                        ]}
+                      />
                     </dd>
                   </div>
                   <div>
@@ -661,7 +658,7 @@ export default function EmployeesPage() {
                 <th className="px-3 py-3 font-medium">Employee Name</th>
                 <th className="px-2 py-3 font-medium">ID</th>
                 <th className="w-28 px-2 py-3 font-medium">Branch</th>
-                <th className="w-28 px-2 py-3 font-medium">Shift</th>
+                <th className="w-32 px-2 py-3 font-medium">Shift</th>
                 <th className="px-3 py-3 font-medium">Bio Enrollment</th>
                 <th className="px-3 py-3 font-medium">Actions</th>
               </tr>
@@ -719,8 +716,8 @@ export default function EmployeesPage() {
                         ))}
                       </select>
                     </td>
-                    <td className="w-28 px-2 py-3">
-                      <select
+                    <td className="w-32 px-2 py-3">
+                      <ShiftPicker
                         value={
                           pendingShift[emp.id] ??
                           (hasOwnShift
@@ -729,16 +726,12 @@ export default function EmployeesPage() {
                               )?.id ?? ''
                             : '')
                         }
-                        onChange={e => setPendingShift(p => ({ ...p, [emp.id]: e.target.value }))}
-                        className="w-full max-w-[7rem] rounded-md border border-slate-200 px-1.5 py-1 text-xs text-slate-600"
-                      >
-                        <option value="">Default ({formatShiftHours(deptDefaultShift)})</option>
-                        {templateShifts.map(t => (
-                          <option key={t.id} value={t.id}>
-                            {t.name} ({formatShiftHours(t)})
-                          </option>
-                        ))}
-                      </select>
+                        onChange={id => setPendingShift(p => ({ ...p, [emp.id]: id }))}
+                        options={[
+                          { id: '', label: 'Default', hours: formatShiftHours(deptDefaultShift) },
+                          ...templateShifts.map(t => ({ id: t.id, label: t.name, hours: formatShiftHours(t) })),
+                        ]}
+                      />
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex flex-col items-start gap-1">
@@ -1061,6 +1054,66 @@ export default function EmployeesPage() {
         </div>
       )}
     </AppShell>
+  );
+}
+
+type ShiftOption = { id: string; label: string; hours: string };
+
+// A native <select> can only show one line of plain text for the current
+// value, so it can't surface the shift's time range without truncating the
+// name. This renders the trigger and each option as two lines (name, then
+// time) so the assigned hours are visible at a glance.
+function ShiftPicker({
+  options,
+  value,
+  onChange,
+}: {
+  options: ShiftOption[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selected = options.find(o => o.id === value) ?? options[0];
+
+  return (
+    <div
+      ref={rootRef}
+      tabIndex={-1}
+      onBlur={e => {
+        if (!rootRef.current?.contains(e.relatedTarget as Node)) setOpen(false);
+      }}
+      className="relative"
+    >
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex w-full flex-col items-start rounded-md border border-slate-200 px-2 py-1 text-left hover:bg-slate-50"
+      >
+        <span className="max-w-full truncate text-xs font-medium text-slate-700">{selected?.label}</span>
+        <span className="max-w-full truncate text-[10px] text-slate-400">{selected?.hours}</span>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1 max-h-56 w-44 overflow-y-auto rounded-md border border-slate-200 bg-white py-1 shadow-lg">
+          {options.map(o => (
+            <button
+              key={o.id}
+              type="button"
+              onClick={() => {
+                onChange(o.id);
+                setOpen(false);
+              }}
+              className={`flex w-full flex-col items-start px-2.5 py-1.5 text-left hover:bg-slate-50 ${
+                o.id === value ? 'bg-accent/5' : ''
+              }`}
+            >
+              <span className="text-xs font-medium text-slate-700">{o.label}</span>
+              <span className="text-[10px] text-slate-400">{o.hours}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
