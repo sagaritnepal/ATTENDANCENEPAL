@@ -78,6 +78,7 @@ export default function EmployeesPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [filter, setFilter] = useState('All');
+  const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -154,10 +155,20 @@ export default function EmployeesPage() {
   const templateShifts = useMemo(() => shifts.filter(s => s.employee_id === null), [shifts]);
 
   const filtered = useMemo(() => {
-    if (filter === 'All') return employees;
-    if (filter === 'Unenrolled') return employees.filter(e => !e.fingerprint_id);
-    return employees.filter(e => e.department === filter);
-  }, [employees, filter]);
+    let list = employees;
+    if (filter === 'Unenrolled') list = list.filter(e => !e.fingerprint_id);
+    else if (filter !== 'All') list = list.filter(e => e.department === filter);
+
+    const term = search.trim().toLowerCase();
+    if (term) {
+      list = list.filter(e =>
+        [e.name, e.employee_code, e.phone, e.email, e.department, e.designation, e.fingerprint_id]
+          .filter(Boolean)
+          .some(v => (v as string).toLowerCase().includes(term))
+      );
+    }
+    return list;
+  }, [employees, filter, search]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -405,7 +416,17 @@ export default function EmployeesPage() {
   }
 
   return (
-    <AppShell title="Employee Directory">
+    <AppShell
+      title="Employee Directory"
+      search={{
+        value: search,
+        onChange: v => {
+          setSearch(v);
+          setPage(1);
+        },
+        placeholder: 'Search employees...',
+      }}
+    >
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           {['All', ...departments, 'Unenrolled'].map(f => (
@@ -546,7 +567,7 @@ export default function EmployeesPage() {
 
                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
                   <div>
-                    <dt className="text-xs text-slate-400">Biometric ID</dt>
+                    <dt className="text-xs text-slate-400">ID</dt>
                     <dd className="text-slate-600">{emp.fingerprint_id ?? '—'}</dd>
                   </div>
                   <div>
@@ -626,10 +647,10 @@ export default function EmployeesPage() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-                <th className="px-3 py-3 font-medium">Employee</th>
-                <th className="px-3 py-3 font-medium">Biometric ID</th>
-                <th className="px-3 py-3 font-medium">Branch</th>
-                <th className="px-3 py-3 font-medium">Shift</th>
+                <th className="px-3 py-3 font-medium">Employee Name</th>
+                <th className="px-2 py-3 font-medium">ID</th>
+                <th className="w-28 px-2 py-3 font-medium">Branch</th>
+                <th className="w-28 px-2 py-3 font-medium">Shift</th>
                 <th className="px-3 py-3 font-medium">Bio Enrollment</th>
                 <th className="px-3 py-3 font-medium">Actions</th>
               </tr>
@@ -670,12 +691,12 @@ export default function EmployeesPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-3 py-3 text-slate-600">{emp.fingerprint_id ?? '—'}</td>
-                    <td className="px-3 py-3">
+                    <td className="px-2 py-3 text-slate-600">{emp.fingerprint_id ?? '—'}</td>
+                    <td className="w-28 px-2 py-3">
                       <select
                         value={pendingBranch[emp.id] ?? (emp.branch_id ?? '')}
                         onChange={e => setPendingBranch(p => ({ ...p, [emp.id]: e.target.value }))}
-                        className={`w-full rounded-md border px-2 py-1 text-xs ${
+                        className={`w-full max-w-[7rem] rounded-md border px-1.5 py-1 text-xs ${
                           (pendingBranch[emp.id] ?? emp.branch_id) ? 'border-slate-200 text-slate-600' : 'border-warning text-warning-text'
                         }`}
                       >
@@ -687,7 +708,7 @@ export default function EmployeesPage() {
                         ))}
                       </select>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="w-28 px-2 py-3">
                       <select
                         value={
                           pendingShift[emp.id] ??
@@ -698,7 +719,7 @@ export default function EmployeesPage() {
                             : '')
                         }
                         onChange={e => setPendingShift(p => ({ ...p, [emp.id]: e.target.value }))}
-                        className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                        className="w-full max-w-[7rem] rounded-md border border-slate-200 px-1.5 py-1 text-xs text-slate-600"
                       >
                         <option value="">Default ({formatShiftHours(deptDefaultShift)})</option>
                         {templateShifts.map(t => (

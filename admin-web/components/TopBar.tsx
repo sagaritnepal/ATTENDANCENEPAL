@@ -3,7 +3,17 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
-export default function TopBar({ title, onOpenMenu }: { title: string; onOpenMenu: () => void }) {
+type SearchProps = { value: string; onChange: (value: string) => void; placeholder?: string };
+
+export default function TopBar({
+  title,
+  onOpenMenu,
+  search,
+}: {
+  title: string;
+  onOpenMenu: () => void;
+  search?: SearchProps;
+}) {
   const [deviceCounts, setDeviceCounts] = useState<{ online: number; total: number }>({ online: 0, total: 0 });
 
   useEffect(() => {
@@ -34,8 +44,11 @@ export default function TopBar({ title, onOpenMenu }: { title: string; onOpenMen
           <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Search anything..."
-            className="w-64 rounded-full border border-slate-200 bg-slate-50 py-2 pl-9 pr-4 text-sm text-ink placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-accent/30"
+            placeholder={search?.placeholder ?? 'Search anything...'}
+            value={search?.value ?? ''}
+            onChange={e => search?.onChange(e.target.value)}
+            disabled={!search}
+            className="w-64 rounded-full border border-slate-200 bg-slate-50 py-2 pl-9 pr-4 text-sm text-ink placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
           />
         </div>
 
