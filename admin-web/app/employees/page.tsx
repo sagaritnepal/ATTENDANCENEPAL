@@ -643,7 +643,7 @@ export default function EmployeesPage() {
                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
                   <div>
                     <dt className="text-xs text-slate-400">ID</dt>
-                    <dd className="text-slate-600">{emp.fingerprint_id ?? '—'}</dd>
+                    <dd className="font-semibold text-ink">{emp.fingerprint_id ?? '—'}</dd>
                   </div>
                   <div>
                     <dt className="text-xs text-slate-400">Username</dt>
@@ -675,14 +675,19 @@ export default function EmployeesPage() {
                             </button>
                           </div>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => startEditUsername(emp)}
-                            title="Click to edit"
-                            className="truncate text-left text-sm font-semibold text-ink hover:text-accent hover:underline"
-                          >
-                            {loginEmailByEmployee[emp.id] ?? '—'}
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate text-sm font-semibold text-ink">
+                              {loginEmailByEmployee[emp.id] ?? '—'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => startEditUsername(emp)}
+                              title="Edit username"
+                              className="shrink-0 text-slate-400 hover:text-accent"
+                            >
+                              <PencilIcon className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         )
                       ) : (
                         <span className="text-xs text-slate-300">—</span>
@@ -807,7 +812,7 @@ export default function EmployeesPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-2 py-3 text-slate-600">{emp.fingerprint_id ?? '—'}</td>
+                    <td className="px-2 py-3 text-sm font-semibold text-ink">{emp.fingerprint_id ?? '—'}</td>
                     <td className="w-44 px-2 py-3">
                       {linkedEmployeeIds.has(emp.id) ? (
                         editingUsernameId === emp.id ? (
@@ -823,31 +828,32 @@ export default function EmployeesPage() {
                               type="button"
                               onClick={() => saveUsername(emp)}
                               disabled={savingUsername}
-                              aria-label="Save username"
-                              title="Save"
-                              className="shrink-0 text-good hover:text-good-text disabled:opacity-60"
+                              className="shrink-0 text-xs font-medium text-accent hover:underline disabled:opacity-60"
                             >
-                              <CheckIcon className="h-4 w-4" />
+                              {savingUsername ? 'Saving…' : 'Save'}
                             </button>
                             <button
                               type="button"
                               onClick={cancelEditUsername}
-                              aria-label="Cancel"
-                              title="Cancel"
-                              className="shrink-0 text-slate-400 hover:text-slate-600"
+                              className="shrink-0 text-xs font-medium text-slate-400 hover:underline"
                             >
-                              <CloseIcon className="h-4 w-4" />
+                              Cancel
                             </button>
                           </div>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => startEditUsername(emp)}
-                            title="Click to edit"
-                            className="max-w-[10rem] truncate text-left text-sm font-semibold text-ink hover:text-accent hover:underline"
-                          >
-                            {loginEmailByEmployee[emp.id] ?? '—'}
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <span className="max-w-[8rem] truncate text-sm font-semibold text-ink">
+                              {loginEmailByEmployee[emp.id] ?? '—'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => startEditUsername(emp)}
+                              title="Edit username"
+                              className="shrink-0 text-slate-400 hover:text-accent"
+                            >
+                              <PencilIcon className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         )
                       ) : (
                         <span className="text-xs text-slate-300">—</span>
@@ -1234,12 +1240,12 @@ function ShiftPicker({
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="flex w-full items-center gap-1.5 rounded-lg border border-accent/20 bg-accent/5 px-2 py-1.5 text-left transition-colors hover:border-accent/40 hover:bg-accent/10"
+        className="flex w-full flex-col items-center gap-0.5 rounded-lg border border-accent/20 bg-accent/5 px-2 py-1.5 text-center transition-colors hover:border-accent/40 hover:bg-accent/10"
       >
-        <ClockIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
-        <span className="min-w-0 flex-1">
-          <span className="block max-w-full truncate text-xs font-semibold text-ink">{selected?.label}</span>
-          <span className="block max-w-full truncate text-[10px] font-medium text-accent">{selected?.hours}</span>
+        <span className="max-w-full truncate text-xs font-semibold text-ink">{selected?.label}</span>
+        <span className="flex max-w-full items-center gap-1 truncate text-[10px] font-medium text-accent">
+          <ClockIcon className="h-3 w-3 shrink-0" />
+          {selected?.hours}
         </span>
       </button>
       {open && (
@@ -1281,6 +1287,14 @@ function CheckIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+    </svg>
+  );
+}
+
+function PencilIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
     </svg>
   );
 }
