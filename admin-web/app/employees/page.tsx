@@ -142,6 +142,17 @@ export default function EmployeesPage() {
 
   useEffect(reload, []);
 
+  // Let Escape close the Add Employee modal — the mobile/back-button
+  // expectation for a modal that otherwise only closes via its own buttons.
+  useEffect(() => {
+    if (!showForm) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setShowForm(false);
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showForm]);
+
   const departments = useMemo(
     () => Array.from(new Set(employees.map(e => e.department).filter(Boolean))) as string[],
     [employees]
@@ -804,56 +815,80 @@ export default function EmployeesPage() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
-          <form onSubmit={handleAddEmployee} className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
-            <h3 className="mb-4 text-lg font-semibold text-ink">Add Employee</h3>
-            {(
-              [
-                ['employee_code', 'Employee code', true],
-                ['name', 'Full name', true],
-                ['email', 'Email', false],
-                ['phone', 'Contact number', false],
-                ['department', 'Department', false],
-                ['designation', 'Designation', false],
-                ['fingerprint_id', 'Fingerprint / Biometric ID', false],
-              ] as const
-            ).map(([key, label, required]) => (
-              <div key={key} className="mb-3">
-                <label className="mb-1 block text-xs font-medium text-slate-600">{label}</label>
-                <input
-                  required={required}
-                  value={form[key]}
-                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
-                />
-              </div>
-            ))}
-            <div className="mb-3">
-              <label className="mb-1 block text-xs font-medium text-slate-600">Branch</label>
-              <select
-                value={form.branch_id}
-                onChange={e => setForm(f => ({ ...f, branch_id: e.target.value }))}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+        <div
+          className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4"
+          onClick={() => setShowForm(false)}
+        >
+          <form
+            onSubmit={handleAddEmployee}
+            onClick={e => e.stopPropagation()}
+            className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-lg"
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-6 py-4">
+              <h3 className="text-lg font-semibold text-ink">Add Employee</h3>
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                aria-label="Close"
+                className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
               >
-                <option value="">Unassigned (GPS check-in won&apos;t work until set)</option>
-                {branches.map(b => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
+                <CloseIcon className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto px-6 py-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {(
+                  [
+                    ['employee_code', 'Employee code', true],
+                    ['name', 'Full name', true],
+                    ['email', 'Email', false],
+                    ['phone', 'Contact number', false],
+                    ['department', 'Department', false],
+                    ['designation', 'Designation', false],
+                    ['fingerprint_id', 'Fingerprint / Biometric ID', false],
+                  ] as const
+                ).map(([key, label, required]) => (
+                  <div key={key}>
+                    <label className="mb-1 block text-xs font-medium text-slate-600">{label}</label>
+                    <input
+                      required={required}
+                      value={form[key]}
+                      onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+                    />
+                  </div>
                 ))}
-              </select>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Branch</label>
+                  <select
+                    value={form.branch_id}
+                    onChange={e => setForm(f => ({ ...f, branch_id: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+                  >
+                    <option value="">Unassigned</option>
+                    {branches.map(b => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                  {!form.branch_id && <p className="mt-1 text-xs text-slate-400">GPS check-in won&apos;t work until set.</p>}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Date of joining</label>
+                  <input
+                    type="date"
+                    value={form.date_of_joining}
+                    onChange={e => setForm(f => ({ ...f, date_of_joining: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+                  />
+                </div>
+              </div>
+              {formError && <p className="mt-3 text-sm text-critical">{formError}</p>}
             </div>
-            <div className="mb-3">
-              <label className="mb-1 block text-xs font-medium text-slate-600">Date of joining</label>
-              <input
-                type="date"
-                value={form.date_of_joining}
-                onChange={e => setForm(f => ({ ...f, date_of_joining: e.target.value }))}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
-              />
-            </div>
-            {formError && <p className="mb-3 text-sm text-critical">{formError}</p>}
-            <div className="mt-4 flex justify-end gap-2">
+
+            <div className="flex shrink-0 justify-end gap-2 border-t border-slate-100 px-6 py-4">
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
@@ -1026,5 +1061,13 @@ export default function EmployeesPage() {
         </div>
       )}
     </AppShell>
+  );
+}
+
+function CloseIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M18 6 6 18M6 6l12 12" />
+    </svg>
   );
 }
