@@ -504,9 +504,12 @@ export default function EmployeesPage() {
                       {emp.name}
                     </Link>
                   </div>
-                  <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
-                    {emp.fingerprint_id ? 'Registered' : 'Pending'}
-                  </Badge>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
+                      {emp.fingerprint_id ? 'Registered' : 'Pending'}
+                    </Badge>
+                    {linkedEmployeeIds.has(emp.id) && <Badge tone="info">Login Active</Badge>}
+                  </div>
                 </div>
 
                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
