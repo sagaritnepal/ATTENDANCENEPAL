@@ -417,7 +417,6 @@ export default function EmployeesPage() {
                     <Link href={`/employees/${emp.id}`} className="block truncate font-medium text-ink hover:text-accent hover:underline">
                       {emp.name}
                     </Link>
-                    <div className="truncate text-xs text-slate-400">{emp.designation ?? '—'} · {emp.department ?? '—'}</div>
                   </div>
                   <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
                     {emp.fingerprint_id ? 'Registered' : 'Pending'}
@@ -425,10 +424,6 @@ export default function EmployeesPage() {
                 </div>
 
                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-                  <div className="col-span-2">
-                    <dt className="text-xs text-slate-400">Contact</dt>
-                    <dd className="text-slate-600">{emp.phone ?? '—'} {emp.email && <span className="text-xs text-slate-400">· {emp.email}</span>}</dd>
-                  </div>
                   <div>
                     <dt className="text-xs text-slate-400">Biometric ID</dt>
                     <dd className="text-slate-600">{emp.fingerprint_id ?? '—'}</dd>
@@ -473,17 +468,6 @@ export default function EmployeesPage() {
                           </option>
                         ))}
                       </select>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-slate-400">Joined</dt>
-                    <dd>
-                      <input
-                        type="date"
-                        value={emp.date_of_joining ?? ''}
-                        onChange={e => handleDateOfJoiningChange(emp.id, e.target.value)}
-                        className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
-                      />
                     </dd>
                   </div>
                 </dl>
