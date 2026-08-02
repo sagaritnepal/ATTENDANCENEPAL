@@ -182,6 +182,21 @@ export default function EmployeesPage() {
     return list;
   }, [employees, shifts, filter, search]);
 
+  const searchSuggestions = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return [];
+    const seen = new Set<string>();
+    const matches: string[] = [];
+    for (const e of employees) {
+      if (e.name.toLowerCase().includes(term) && !seen.has(e.name)) {
+        seen.add(e.name);
+        matches.push(e.name);
+        if (matches.length >= 6) break;
+      }
+    }
+    return matches;
+  }, [employees, search]);
+
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -437,6 +452,7 @@ export default function EmployeesPage() {
           setPage(1);
         },
         placeholder: 'Search employees...',
+        suggestions: searchSuggestions,
       }}
     >
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -553,6 +569,9 @@ export default function EmployeesPage() {
                     <Link href={`/employees/${emp.id}`} className="block truncate font-medium text-ink hover:text-accent hover:underline">
                       {emp.name}
                     </Link>
+                    {loginEmailByEmployee[emp.id] && (
+                      <div className="truncate text-xs text-accent">{loginEmailByEmployee[emp.id]}</div>
+                    )}
                     <div className="mt-0.5 truncate text-xs text-slate-400">
                       {emp.phone ?? '—'} {emp.email && <>· {emp.email}</>}
                     </div>
@@ -564,16 +583,7 @@ export default function EmployeesPage() {
                     <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
                       {emp.fingerprint_id ? 'Registered' : 'Pending'}
                     </Badge>
-                    {linkedEmployeeIds.has(emp.id) && (
-                      <>
-                        <Badge tone="good">Login Active</Badge>
-                        {loginEmailByEmployee[emp.id] && (
-                          <span className="max-w-[10rem] truncate text-right text-xs text-slate-400">
-                            {loginEmailByEmployee[emp.id]}
-                          </span>
-                        )}
-                      </>
-                    )}
+                    {linkedEmployeeIds.has(emp.id) && <Badge tone="good">Login Active</Badge>}
                   </div>
                 </div>
 
@@ -690,6 +700,9 @@ export default function EmployeesPage() {
                           <Link href={`/employees/${emp.id}`} className="block truncate font-medium text-ink hover:text-accent hover:underline">
                             {emp.name}
                           </Link>
+                          {loginEmailByEmployee[emp.id] && (
+                            <div className="truncate text-xs text-accent">{loginEmailByEmployee[emp.id]}</div>
+                          )}
                           <div className="truncate text-xs text-slate-400">
                             {emp.phone ?? '—'} {emp.email && <>· {emp.email}</>}
                           </div>
@@ -738,14 +751,7 @@ export default function EmployeesPage() {
                         <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
                           {emp.fingerprint_id ? 'Registered' : 'Pending'}
                         </Badge>
-                        {linkedEmployeeIds.has(emp.id) && (
-                          <>
-                            <Badge tone="good">Login Active</Badge>
-                            {loginEmailByEmployee[emp.id] && (
-                              <span className="max-w-[10rem] truncate text-xs text-slate-400">{loginEmailByEmployee[emp.id]}</span>
-                            )}
-                          </>
-                        )}
+                        {linkedEmployeeIds.has(emp.id) && <Badge tone="good">Login Active</Badge>}
                       </div>
                     </td>
                     <td className="px-3 py-3">

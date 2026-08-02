@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
-type SearchProps = { value: string; onChange: (value: string) => void; placeholder?: string };
+type SearchProps = { value: string; onChange: (value: string) => void; placeholder?: string; suggestions?: string[] };
 
 export default function TopBar({
   title,
@@ -15,6 +15,8 @@ export default function TopBar({
   search?: SearchProps;
 }) {
   const [deviceCounts, setDeviceCounts] = useState<{ online: number; total: number }>({ online: 0, total: 0 });
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const searchBoxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     supabase
@@ -40,16 +42,44 @@ export default function TopBar({
       </div>
 
       <div className="flex items-center gap-3 sm:gap-5">
-        <div className="relative hidden md:block">
+        <div
+          ref={searchBoxRef}
+          tabIndex={-1}
+          onBlur={e => {
+            if (!searchBoxRef.current?.contains(e.relatedTarget as Node)) setSuggestionsOpen(false);
+          }}
+          className="relative hidden md:block"
+        >
           <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             placeholder={search?.placeholder ?? 'Search anything...'}
             value={search?.value ?? ''}
-            onChange={e => search?.onChange(e.target.value)}
+            onChange={e => {
+              search?.onChange(e.target.value);
+              setSuggestionsOpen(true);
+            }}
+            onFocus={() => setSuggestionsOpen(true)}
             disabled={!search}
             className="w-64 rounded-full border border-slate-200 bg-slate-50 py-2 pl-9 pr-4 text-sm text-ink placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
           />
+          {suggestionsOpen && search && search.suggestions && search.suggestions.length > 0 && (
+            <div className="absolute left-0 top-full z-20 mt-1 w-64 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+              {search.suggestions.map(s => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => {
+                    search.onChange(s);
+                    setSuggestionsOpen(false);
+                  }}
+                  className="block w-full truncate px-3 py-2 text-left text-sm text-ink hover:bg-slate-50"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <span className="hidden items-center gap-1.5 rounded-full bg-good-bg px-3 py-1.5 text-xs font-medium text-good-text lg:flex">

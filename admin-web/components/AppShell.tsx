@@ -9,7 +9,7 @@ import ConfigWarning from './ConfigWarning';
 
 type Role = 'admin' | 'hr';
 
-type SearchProps = { value: string; onChange: (value: string) => void; placeholder?: string };
+type SearchProps = { value: string; onChange: (value: string) => void; placeholder?: string; suggestions?: string[] };
 
 export default function AppShell({
   title,
