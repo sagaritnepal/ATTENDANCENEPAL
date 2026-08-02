@@ -95,6 +95,14 @@ export default function EmployeesPage() {
   const [photoTargetId, setPhotoTargetId] = useState<string | null>(null);
   const [uploadingPhotoId, setUploadingPhotoId] = useState<string | null>(null);
 
+  // Branch/Shift edits are staged here rather than saved immediately on
+  // change — a Save/Cancel bar appears above the table once anything's
+  // pending, so a stray click on a dropdown can't silently write to the
+  // database.
+  const [pendingBranch, setPendingBranch] = useState<Record<string, string>>({});
+  const [pendingShift, setPendingShift] = useState<Record<string, string>>({});
+  const [savingPending, setSavingPending] = useState(false);
+
   const [loginModalEmployee, setLoginModalEmployee] = useState<Employee | null>(null);
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [creatingLogin, setCreatingLogin] = useState(false);
@@ -163,10 +171,9 @@ export default function EmployeesPage() {
     reload();
   }
 
-  async function handleBranchChange(employeeId: string, branchId: string) {
+  async function applyBranchChange(employeeId: string, branchId: string) {
     const { error } = await supabase.from('employees').update({ branch_id: branchId || null }).eq('id', employeeId);
-    if (error) alert(`Could not update branch: ${error.message}`);
-    reload();
+    return error;
   }
 
   async function handleDelete(id: string) {
@@ -266,15 +273,13 @@ export default function EmployeesPage() {
   // Shift *templates* are designed on the Shifts page; here we only pick
   // which template (if any) applies to this one employee — an upsert into
   // the same employee-scoped shifts row the old "Assign shift" modal used.
-  async function handleShiftChange(employeeId: string, templateId: string) {
+  async function applyShiftChange(employeeId: string, templateId: string) {
     if (!templateId) {
       const { error } = await supabase.from('shifts').delete().eq('employee_id', employeeId);
-      if (error) alert(`Could not update shift: ${error.message}`);
-      reload();
-      return;
+      return error;
     }
     const template = templateShifts.find(t => t.id === templateId);
-    if (!template) return;
+    if (!template) return null;
     const { error } = await supabase.from('shifts').upsert(
       {
         employee_id: employeeId,
@@ -287,7 +292,31 @@ export default function EmployeesPage() {
       },
       { onConflict: 'employee_id' }
     );
-    if (error) alert(`Could not update shift: ${error.message}`);
+    return error;
+  }
+
+  const pendingCount = Object.keys(pendingBranch).length + Object.keys(pendingShift).length;
+
+  function handleCancelPending() {
+    setPendingBranch({});
+    setPendingShift({});
+  }
+
+  async function handleSavePending() {
+    setSavingPending(true);
+    const errors: string[] = [];
+    for (const [employeeId, branchId] of Object.entries(pendingBranch)) {
+      const error = await applyBranchChange(employeeId, branchId);
+      if (error) errors.push(`Branch: ${error.message}`);
+    }
+    for (const [employeeId, templateId] of Object.entries(pendingShift)) {
+      const error = await applyShiftChange(employeeId, templateId);
+      if (error) errors.push(`Shift: ${error.message}`);
+    }
+    setSavingPending(false);
+    setPendingBranch({});
+    setPendingShift({});
+    if (errors.length > 0) alert(`Some changes could not be saved:\n${errors.join('\n')}`);
     reload();
   }
 
@@ -422,6 +451,30 @@ export default function EmployeesPage() {
 
       <input ref={photoInputRef} type="file" accept="image/*" onChange={handlePhotoSelected} className="hidden" />
 
+      {pendingCount > 0 && (
+        <div className="mb-3 flex items-center justify-between rounded-xl border border-accent/30 bg-accent/5 px-4 py-2.5">
+          <span className="text-sm font-medium text-ink">
+            {pendingCount} unsaved change{pendingCount === 1 ? '' : 's'}
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={handleCancelPending}
+              disabled={savingPending}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSavePending}
+              disabled={savingPending}
+              className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+            >
+              {savingPending ? 'Saving…' : 'Save changes'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         {/* Mobile: one stacked card per employee — no side-scrolling. */}
         <div className="divide-y divide-slate-100 md:hidden">
@@ -466,13 +519,14 @@ export default function EmployeesPage() {
                     <dd>
                       <select
                         value={
-                          hasOwnShift
+                          pendingShift[emp.id] ??
+                          (hasOwnShift
                             ? templateShifts.find(
                                 t => t.name === shift.name && t.start_time === shift.start_time && t.end_time === shift.end_time
                               )?.id ?? ''
-                            : ''
+                            : '')
                         }
-                        onChange={e => handleShiftChange(emp.id, e.target.value)}
+                        onChange={e => setPendingShift(p => ({ ...p, [emp.id]: e.target.value }))}
                         className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
                       >
                         <option value="">Default ({formatShiftHours(deptDefaultShift)})</option>
@@ -488,10 +542,10 @@ export default function EmployeesPage() {
                     <dt className="text-xs text-slate-400">Branch</dt>
                     <dd>
                       <select
-                        value={emp.branch_id ?? ''}
-                        onChange={e => handleBranchChange(emp.id, e.target.value)}
+                        value={pendingBranch[emp.id] ?? (emp.branch_id ?? '')}
+                        onChange={e => setPendingBranch(p => ({ ...p, [emp.id]: e.target.value }))}
                         className={`w-full rounded-md border px-2 py-1 text-xs ${
-                          emp.branch_id ? 'border-slate-200 text-slate-600' : 'border-warning text-warning-text'
+                          (pendingBranch[emp.id] ?? emp.branch_id) ? 'border-slate-200 text-slate-600' : 'border-warning text-warning-text'
                         }`}
                       >
                         <option value="">Unassigned</option>
@@ -579,10 +633,10 @@ export default function EmployeesPage() {
                     <td className="px-3 py-3 text-slate-600">{emp.fingerprint_id ?? '—'}</td>
                     <td className="px-3 py-3">
                       <select
-                        value={emp.branch_id ?? ''}
-                        onChange={e => handleBranchChange(emp.id, e.target.value)}
+                        value={pendingBranch[emp.id] ?? (emp.branch_id ?? '')}
+                        onChange={e => setPendingBranch(p => ({ ...p, [emp.id]: e.target.value }))}
                         className={`w-full rounded-md border px-2 py-1 text-xs ${
-                          emp.branch_id ? 'border-slate-200 text-slate-600' : 'border-warning text-warning-text'
+                          (pendingBranch[emp.id] ?? emp.branch_id) ? 'border-slate-200 text-slate-600' : 'border-warning text-warning-text'
                         }`}
                       >
                         <option value="">Unassigned</option>
@@ -596,13 +650,14 @@ export default function EmployeesPage() {
                     <td className="px-3 py-3">
                       <select
                         value={
-                          hasOwnShift
+                          pendingShift[emp.id] ??
+                          (hasOwnShift
                             ? templateShifts.find(
                                 t => t.name === shift.name && t.start_time === shift.start_time && t.end_time === shift.end_time
                               )?.id ?? ''
-                            : ''
+                            : '')
                         }
-                        onChange={e => handleShiftChange(emp.id, e.target.value)}
+                        onChange={e => setPendingShift(p => ({ ...p, [emp.id]: e.target.value }))}
                         className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
                       >
                         <option value="">Default ({formatShiftHours(deptDefaultShift)})</option>
