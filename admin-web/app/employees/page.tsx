@@ -118,6 +118,10 @@ export default function EmployeesPage() {
 
   const [loginEmailByEmployee, setLoginEmailByEmployee] = useState<Record<string, string>>({});
 
+  const [editingUsernameId, setEditingUsernameId] = useState<string | null>(null);
+  const [usernameDraft, setUsernameDraft] = useState('');
+  const [savingUsername, setSavingUsername] = useState(false);
+
   function reload() {
     supabase.from('employees').select('*').order('created_at', { ascending: false }).then(({ data }) => setEmployees(data ?? []));
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
@@ -138,6 +142,45 @@ export default function EmployeesPage() {
       if (acc.employeeId) map[acc.employeeId] = acc.email;
     }
     setLoginEmailByEmployee(map);
+  }
+
+  function startEditUsername(emp: Employee) {
+    setEditingUsernameId(emp.id);
+    setUsernameDraft(loginEmailByEmployee[emp.id] ?? '');
+  }
+
+  function cancelEditUsername() {
+    setEditingUsernameId(null);
+    setUsernameDraft('');
+  }
+
+  async function saveUsername(emp: Employee) {
+    const email = usernameDraft.trim();
+    if (!email) {
+      alert('Username cannot be empty.');
+      return;
+    }
+    setSavingUsername(true);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setSavingUsername(false);
+      alert('Your session expired — please sign in again.');
+      return;
+    }
+    const res = await fetch('/api/update-login-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ employeeId: emp.id, email }),
+    });
+    const body = await res.json().catch(() => ({}));
+    setSavingUsername(false);
+    if (!res.ok) {
+      alert(`Could not update the username: ${body.error ?? 'unknown error'}`);
+      return;
+    }
+    setEditingUsernameId(null);
+    loadLoginEmails();
   }
 
   useEffect(reload, []);
@@ -569,9 +612,6 @@ export default function EmployeesPage() {
                     <Link href={`/employees/${emp.id}`} className="block truncate font-medium text-ink hover:text-accent hover:underline">
                       {emp.name}
                     </Link>
-                    {loginEmailByEmployee[emp.id] && (
-                      <div className="truncate text-xs text-accent">{loginEmailByEmployee[emp.id]}</div>
-                    )}
                     <div className="mt-0.5 truncate text-xs text-slate-400">
                       {emp.phone ?? '—'} {emp.email && <>· {emp.email}</>}
                     </div>
@@ -591,6 +631,49 @@ export default function EmployeesPage() {
                   <div>
                     <dt className="text-xs text-slate-400">ID</dt>
                     <dd className="text-slate-600">{emp.fingerprint_id ?? '—'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-400">Username</dt>
+                    <dd>
+                      {linkedEmployeeIds.has(emp.id) ? (
+                        editingUsernameId === emp.id ? (
+                          <div className="flex flex-wrap items-center gap-1">
+                            <input
+                              type="email"
+                              autoFocus
+                              value={usernameDraft}
+                              onChange={e => setUsernameDraft(e.target.value)}
+                              className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => saveUsername(emp)}
+                              disabled={savingUsername}
+                              className="shrink-0 text-xs font-medium text-accent hover:underline disabled:opacity-60"
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEditUsername}
+                              className="shrink-0 text-xs font-medium text-slate-400 hover:underline"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => startEditUsername(emp)}
+                            className="truncate text-left text-xs text-slate-600 hover:text-accent hover:underline"
+                          >
+                            {loginEmailByEmployee[emp.id] ?? '—'}
+                          </button>
+                        )
+                      ) : (
+                        <span className="text-xs text-slate-300">—</span>
+                      )}
+                    </dd>
                   </div>
                   <div>
                     <dt className="text-xs text-slate-400">Shift</dt>
@@ -667,6 +750,7 @@ export default function EmployeesPage() {
               <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                 <th className="px-3 py-3 font-medium">Employee Name</th>
                 <th className="px-2 py-3 font-medium">ID</th>
+                <th className="w-40 px-2 py-3 font-medium">Username</th>
                 <th className="w-28 px-2 py-3 font-medium">Branch</th>
                 <th className="w-32 px-2 py-3 font-medium">Shift</th>
                 <th className="px-3 py-3 font-medium">Bio Enrollment</th>
@@ -700,9 +784,6 @@ export default function EmployeesPage() {
                           <Link href={`/employees/${emp.id}`} className="block truncate font-medium text-ink hover:text-accent hover:underline">
                             {emp.name}
                           </Link>
-                          {loginEmailByEmployee[emp.id] && (
-                            <div className="truncate text-xs text-accent">{loginEmailByEmployee[emp.id]}</div>
-                          )}
                           <div className="truncate text-xs text-slate-400">
                             {emp.phone ?? '—'} {emp.email && <>· {emp.email}</>}
                           </div>
@@ -713,6 +794,51 @@ export default function EmployeesPage() {
                       </div>
                     </td>
                     <td className="px-2 py-3 text-slate-600">{emp.fingerprint_id ?? '—'}</td>
+                    <td className="w-40 px-2 py-3">
+                      {linkedEmployeeIds.has(emp.id) ? (
+                        editingUsernameId === emp.id ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="email"
+                              autoFocus
+                              value={usernameDraft}
+                              onChange={e => setUsernameDraft(e.target.value)}
+                              className="w-full max-w-[9rem] rounded-md border border-slate-200 px-1.5 py-1 text-xs"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => saveUsername(emp)}
+                              disabled={savingUsername}
+                              aria-label="Save username"
+                              title="Save"
+                              className="shrink-0 text-good hover:text-good-text disabled:opacity-60"
+                            >
+                              <CheckIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEditUsername}
+                              aria-label="Cancel"
+                              title="Cancel"
+                              className="shrink-0 text-slate-400 hover:text-slate-600"
+                            >
+                              <CloseIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => startEditUsername(emp)}
+                            title="Click to edit"
+                            className="max-w-[9rem] truncate text-left text-xs text-slate-600 hover:text-accent hover:underline"
+                          >
+                            {loginEmailByEmployee[emp.id] ?? '—'}
+                          </button>
+                        )
+                      ) : (
+                        <span className="text-xs text-slate-300">—</span>
+                      )}
+                    </td>
                     <td className="w-28 px-2 py-3">
                       <select
                         value={pendingBranch[emp.id] ?? (emp.branch_id ?? '')}
@@ -780,7 +906,7 @@ export default function EmployeesPage() {
               })}
               {pageItems.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-3 py-8 text-center text-slate-400">
+                  <td colSpan={7} className="px-3 py-8 text-center text-slate-400">
                     No employees match this filter.
                   </td>
                 </tr>
@@ -1127,6 +1253,14 @@ function CloseIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
     </svg>
   );
 }
