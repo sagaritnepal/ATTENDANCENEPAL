@@ -96,18 +96,19 @@ export default function EmployeesPage() {
   const [photoTargetId, setPhotoTargetId] = useState<string | null>(null);
   const [uploadingPhotoId, setUploadingPhotoId] = useState<string | null>(null);
 
-  // Branch/Shift/Username edits are staged here rather than saved
-  // immediately on change — a Save/Cancel bar appears above the table once
-  // anything's pending, so a stray click can't silently write to the
+  // Branch/Shift edits are staged here rather than saved immediately on
+  // change — a Save/Cancel bar appears above the table once anything's
+  // pending, so a stray click on a dropdown can't silently write to the
   // database.
   const [pendingBranch, setPendingBranch] = useState<Record<string, string>>({});
   const [pendingShift, setPendingShift] = useState<Record<string, string>>({});
-  const [pendingUsername, setPendingUsername] = useState<Record<string, string>>({});
   const [savingPending, setSavingPending] = useState(false);
 
-  // Which rows currently show the Username field as an editable input
-  // (toggled by the pencil button) rather than plain text.
-  const [editingUsernameIds, setEditingUsernameIds] = useState<Set<string>>(new Set());
+  // Username edits its own row, with its own Save/Cancel (not staged with
+  // Branch/Shift) since it's a sensitive, immediate auth-email change.
+  const [editingUsernameId, setEditingUsernameId] = useState<string | null>(null);
+  const [usernameDraft, setUsernameDraft] = useState('');
+  const [savingUsername, setSavingUsername] = useState(false);
 
   const [loginModalEmployee, setLoginModalEmployee] = useState<Employee | null>(null);
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
@@ -145,38 +146,53 @@ export default function EmployeesPage() {
     setLoginEmailByEmployee(map);
   }
 
-  function openUsernameEditor(employeeId: string) {
-    setEditingUsernameIds(prev => new Set(prev).add(employeeId));
+  function startEditUsername(emp: Employee) {
+    setEditingUsernameId(emp.id);
+    setUsernameDraft(loginEmailByEmployee[emp.id] ?? '');
   }
 
-  function handleUsernameDraftChange(employeeId: string, value: string) {
-    const original = loginEmailByEmployee[employeeId] ?? '';
-    setPendingUsername(prev => {
-      if (value === original) {
-        const { [employeeId]: _dropped, ...rest } = prev;
-        return rest;
-      }
-      return { ...prev, [employeeId]: value };
-    });
+  function cancelEditUsername() {
+    setEditingUsernameId(null);
+    setUsernameDraft('');
   }
 
-  async function applyUsernameChange(employeeId: string, email: string) {
-    const trimmed = email.trim();
-    if (!trimmed) return 'Username cannot be empty.';
+  async function saveUsername(emp: Employee) {
+    const email = usernameDraft.trim();
+    if (!email) {
+      alert('Username cannot be empty.');
+      return;
+    }
+    if (email === (loginEmailByEmployee[emp.id] ?? '')) {
+      // Unchanged — nothing to save, just close the editor.
+      setEditingUsernameId(null);
+      return;
+    }
+    setSavingUsername(true);
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
-    if (!token) return 'Your session expired — please sign in again.';
+    if (!token) {
+      setSavingUsername(false);
+      alert('Your session expired — please sign in again.');
+      return;
+    }
     const res = await fetch('/api/update-login-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ employeeId, email: trimmed }),
+      body: JSON.stringify({ employeeId: emp.id, email }),
     });
     const body = await res.json().catch(() => ({}));
-    if (res.ok) return null;
-    const message: string = body.error ?? 'unknown error';
-    return /already been registered|already exists|duplicate/i.test(message)
-      ? 'that username is already used by another login — usernames must be unique.'
-      : message;
+    setSavingUsername(false);
+    if (!res.ok) {
+      const message: string = body.error ?? 'unknown error';
+      alert(
+        /already been registered|already exists|duplicate/i.test(message)
+          ? 'That username is already used by another login — usernames must be unique.'
+          : `Could not update the username: ${message}`
+      );
+      return;
+    }
+    setEditingUsernameId(null);
+    loadLoginEmails();
   }
 
   useEffect(reload, []);
@@ -404,13 +420,11 @@ export default function EmployeesPage() {
     return error;
   }
 
-  const pendingCount = Object.keys(pendingBranch).length + Object.keys(pendingShift).length + Object.keys(pendingUsername).length;
+  const pendingCount = Object.keys(pendingBranch).length + Object.keys(pendingShift).length;
 
   function handleCancelPending() {
     setPendingBranch({});
     setPendingShift({});
-    setPendingUsername({});
-    setEditingUsernameIds(new Set());
   }
 
   async function handleSavePending() {
@@ -424,15 +438,9 @@ export default function EmployeesPage() {
       const error = await applyShiftChange(employeeId, templateId);
       if (error) errors.push(`Shift: ${error.message}`);
     }
-    for (const [employeeId, email] of Object.entries(pendingUsername)) {
-      const error = await applyUsernameChange(employeeId, email);
-      if (error) errors.push(`Username: ${error}`);
-    }
     setSavingPending(false);
     setPendingBranch({});
     setPendingShift({});
-    setPendingUsername({});
-    setEditingUsernameIds(new Set());
     if (errors.length > 0) alert(`Some changes could not be saved:\n${errors.join('\n')}`);
     reload();
   }
@@ -651,28 +659,45 @@ export default function EmployeesPage() {
                     <dt className="text-xs text-slate-400">ID</dt>
                     <dd className="font-semibold text-ink">{emp.fingerprint_id ?? '—'}</dd>
                   </div>
-                  <div>
+                  <div className="col-span-2">
                     <dt className="text-xs text-slate-400">Username</dt>
                     <dd>
                       {linkedEmployeeIds.has(emp.id) ? (
-                        editingUsernameIds.has(emp.id) ? (
-                          <input
-                            type="email"
-                            autoFocus
-                            value={pendingUsername[emp.id] ?? loginEmailByEmployee[emp.id] ?? ''}
-                            onChange={e => handleUsernameDraftChange(emp.id, e.target.value)}
-                            className={`w-full rounded-md border px-2 py-1 text-sm font-semibold text-ink ${
-                              emp.id in pendingUsername ? 'border-accent' : 'border-slate-200'
-                            }`}
-                          />
+                        editingUsernameId === emp.id ? (
+                          <div className="flex flex-col items-start gap-1.5">
+                            <input
+                              type="email"
+                              autoFocus
+                              value={usernameDraft}
+                              onChange={e => setUsernameDraft(e.target.value)}
+                              className="w-full rounded-md border border-slate-200 px-2 py-1 text-sm font-semibold text-ink"
+                            />
+                            <div className="flex gap-3">
+                              <button
+                                type="button"
+                                onClick={() => saveUsername(emp)}
+                                disabled={savingUsername}
+                                className="text-xs font-medium text-accent hover:underline disabled:opacity-60"
+                              >
+                                {savingUsername ? 'Saving…' : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEditUsername}
+                                className="text-xs font-medium text-slate-400 hover:underline"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
                         ) : (
-                          <div className="flex items-center gap-1.5">
-                            <span className="truncate text-sm font-semibold text-ink">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="break-all text-sm font-semibold text-ink">
                               {loginEmailByEmployee[emp.id] ?? '—'}
                             </span>
                             <button
                               type="button"
-                              onClick={() => openUsernameEditor(emp.id)}
+                              onClick={() => startEditUsername(emp)}
                               title="Edit username"
                               className="shrink-0 text-slate-400 hover:text-accent"
                             >
@@ -760,7 +785,7 @@ export default function EmployeesPage() {
               <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                 <th className="px-2 py-3 text-center font-medium">ID</th>
                 <th className="px-3 py-3 text-center font-medium">Employee Name</th>
-                <th className="w-44 px-2 py-3 text-center font-medium">Username</th>
+                <th className="px-2 py-3 text-center font-medium">Username</th>
                 <th className="w-28 px-2 py-3 text-center font-medium">Branch</th>
                 <th className="w-32 px-2 py-3 text-center font-medium">Shift</th>
                 <th className="px-3 py-3 text-center font-medium">Bio Enrollment</th>
@@ -804,26 +829,43 @@ export default function EmployeesPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="w-44 px-2 py-3">
+                    <td className="px-2 py-3">
                       {linkedEmployeeIds.has(emp.id) ? (
-                        editingUsernameIds.has(emp.id) ? (
-                          <input
-                            type="email"
-                            autoFocus
-                            value={pendingUsername[emp.id] ?? loginEmailByEmployee[emp.id] ?? ''}
-                            onChange={e => handleUsernameDraftChange(emp.id, e.target.value)}
-                            className={`w-full max-w-[10rem] rounded-md border px-1.5 py-1 text-sm font-semibold text-ink ${
-                              emp.id in pendingUsername ? 'border-accent' : 'border-slate-200'
-                            }`}
-                          />
+                        editingUsernameId === emp.id ? (
+                          <div className="flex flex-col items-start gap-1.5">
+                            <input
+                              type="email"
+                              autoFocus
+                              value={usernameDraft}
+                              onChange={e => setUsernameDraft(e.target.value)}
+                              className="w-full min-w-[12rem] rounded-md border border-slate-200 px-1.5 py-1 text-sm font-semibold text-ink"
+                            />
+                            <div className="flex gap-3">
+                              <button
+                                type="button"
+                                onClick={() => saveUsername(emp)}
+                                disabled={savingUsername}
+                                className="text-xs font-medium text-accent hover:underline disabled:opacity-60"
+                              >
+                                {savingUsername ? 'Saving…' : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEditUsername}
+                                className="text-xs font-medium text-slate-400 hover:underline"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
                         ) : (
                           <div className="flex items-center gap-1.5">
-                            <span className="max-w-[8rem] truncate text-sm font-semibold text-ink">
+                            <span className="whitespace-nowrap text-sm font-semibold text-ink">
                               {loginEmailByEmployee[emp.id] ?? '—'}
                             </span>
                             <button
                               type="button"
-                              onClick={() => openUsernameEditor(emp.id)}
+                              onClick={() => startEditUsername(emp)}
                               title="Edit username"
                               className="shrink-0 text-slate-400 hover:text-accent"
                             >
