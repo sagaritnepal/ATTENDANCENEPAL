@@ -115,11 +115,28 @@ export default function EmployeesPage() {
   const [resetError, setResetError] = useState<string | null>(null);
   const [resetResult, setResetResult] = useState<string | null>(null);
 
+  const [loginEmailByEmployee, setLoginEmailByEmployee] = useState<Record<string, string>>({});
+
   function reload() {
     supabase.from('employees').select('*').order('created_at', { ascending: false }).then(({ data }) => setEmployees(data ?? []));
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
     supabase.from('profiles').select('id, employee_id, role').then(({ data }) => setProfiles(data ?? []));
     supabase.from('branches').select('*').order('name').then(({ data }) => setBranches(data ?? []));
+    loadLoginEmails();
+  }
+
+  async function loadLoginEmails() {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) return;
+    const res = await fetch('/api/accounts?scope=employees', { headers: { Authorization: `Bearer ${token}` } });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) return;
+    const map: Record<string, string> = {};
+    for (const acc of body.accounts ?? []) {
+      if (acc.employeeId) map[acc.employeeId] = acc.email;
+    }
+    setLoginEmailByEmployee(map);
   }
 
   useEffect(reload, []);
@@ -514,7 +531,16 @@ export default function EmployeesPage() {
                     <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
                       {emp.fingerprint_id ? 'Registered' : 'Pending'}
                     </Badge>
-                    {linkedEmployeeIds.has(emp.id) && <Badge tone="good">Login Active</Badge>}
+                    {linkedEmployeeIds.has(emp.id) && (
+                      <>
+                        <Badge tone="good">Login Active</Badge>
+                        {loginEmailByEmployee[emp.id] && (
+                          <span className="max-w-[10rem] truncate text-right text-xs text-slate-400">
+                            {loginEmailByEmployee[emp.id]}
+                          </span>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -570,12 +596,9 @@ export default function EmployeesPage() {
 
                 <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
                   {linkedEmployeeIds.has(emp.id) ? (
-                    <>
-                      <span className="text-xs font-medium text-good">Login active</span>
-                      <button onClick={() => openResetModal(emp)} className="text-xs font-medium text-accent hover:underline">
-                        Reset password
-                      </button>
-                    </>
+                    <button onClick={() => openResetModal(emp)} className="text-xs font-medium text-accent hover:underline">
+                      Reset password
+                    </button>
                   ) : (
                     <button onClick={() => openLoginModal(emp)} className="text-xs font-medium text-accent hover:underline">
                       Create login
@@ -690,18 +713,22 @@ export default function EmployeesPage() {
                         <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
                           {emp.fingerprint_id ? 'Registered' : 'Pending'}
                         </Badge>
-                        {linkedEmployeeIds.has(emp.id) && <Badge tone="good">Login Active</Badge>}
+                        {linkedEmployeeIds.has(emp.id) && (
+                          <>
+                            <Badge tone="good">Login Active</Badge>
+                            {loginEmailByEmployee[emp.id] && (
+                              <span className="max-w-[10rem] truncate text-xs text-slate-400">{loginEmailByEmployee[emp.id]}</span>
+                            )}
+                          </>
+                        )}
                       </div>
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex flex-wrap items-center gap-2">
                         {linkedEmployeeIds.has(emp.id) ? (
-                          <>
-                            <span className="text-xs font-medium text-good">Login active</span>
-                            <button onClick={() => openResetModal(emp)} className="text-xs font-medium text-accent hover:underline">
-                              Reset password
-                            </button>
-                          </>
+                          <button onClick={() => openResetModal(emp)} className="text-xs font-medium text-accent hover:underline">
+                            Reset password
+                          </button>
                         ) : (
                           <button onClick={() => openLoginModal(emp)} className="text-xs font-medium text-accent hover:underline">
                             Create login
