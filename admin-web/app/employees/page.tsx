@@ -171,7 +171,29 @@ export default function EmployeesPage() {
 
   async function handleDelete(id: string) {
     if (!confirm('Remove this employee?')) return;
-    await supabase.from('employees').delete().eq('id', id);
+    const { error } = await supabase.from('employees').delete().eq('id', id);
+    if (error) {
+      if (error.code === '23503') {
+        alert(
+          'Could not remove: this employee already has attendance, tasks, shifts, leave, or other records tied to them, ' +
+            'so deleting would break that history. Use "Mark Resigned" instead — it keeps their history but removes them ' +
+            'from active views.'
+        );
+      } else {
+        alert(`Could not remove: ${error.message}`);
+      }
+      return;
+    }
+    reload();
+  }
+
+  async function handleMarkResigned(emp: Employee) {
+    if (!confirm(`Mark ${emp.name} as resigned? They'll be removed from active views but their history is kept.`)) return;
+    const { error } = await supabase
+      .from('employees')
+      .update({ status: 'inactive', resigned_at: new Date().toISOString().slice(0, 10) })
+      .eq('id', emp.id);
+    if (error) alert(`Could not update: ${error.message}`);
     reload();
   }
 
@@ -474,6 +496,11 @@ export default function EmployeesPage() {
                       Create login
                     </button>
                   )}
+                  {emp.status === 'active' && (
+                    <button onClick={() => handleMarkResigned(emp)} className="text-xs font-medium text-warning-text hover:underline">
+                      Mark Resigned
+                    </button>
+                  )}
                   <button onClick={() => handleDelete(emp.id)} className="text-xs font-medium text-critical hover:underline">
                     Remove
                   </button>
@@ -594,6 +621,11 @@ export default function EmployeesPage() {
                         ) : (
                           <button onClick={() => openLoginModal(emp)} className="text-xs font-medium text-accent hover:underline">
                             Create login
+                          </button>
+                        )}
+                        {emp.status === 'active' && (
+                          <button onClick={() => handleMarkResigned(emp)} className="text-xs font-medium text-warning-text hover:underline">
+                            Mark Resigned
                           </button>
                         )}
                         <button onClick={() => handleDelete(emp.id)} className="text-xs font-medium text-critical hover:underline">
