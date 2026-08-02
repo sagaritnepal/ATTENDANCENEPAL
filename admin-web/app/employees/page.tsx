@@ -101,6 +101,12 @@ export default function EmployeesPage() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginResult, setLoginResult] = useState<{ email: string; password: string } | null>(null);
 
+  const [resetModalEmployee, setResetModalEmployee] = useState<Employee | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetResult, setResetResult] = useState<string | null>(null);
+
   function reload() {
     supabase.from('employees').select('*').order('created_at', { ascending: false }).then(({ data }) => setEmployees(data ?? []));
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
@@ -325,6 +331,39 @@ export default function EmployeesPage() {
     reload();
   }
 
+  function openResetModal(emp: Employee) {
+    setResetPassword(generatePassword());
+    setResetError(null);
+    setResetResult(null);
+    setResetModalEmployee(emp);
+  }
+
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!resetModalEmployee) return;
+    setResettingPassword(true);
+    setResetError(null);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setResettingPassword(false);
+      setResetError('Your session expired — please sign in again.');
+      return;
+    }
+    const res = await fetch('/api/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ employeeId: resetModalEmployee.id, password: resetPassword }),
+    });
+    const body = await res.json().catch(() => ({}));
+    setResettingPassword(false);
+    if (!res.ok) {
+      setResetError(body.error ?? 'Could not reset the password.');
+      return;
+    }
+    setResetResult(resetPassword);
+  }
+
   return (
     <AppShell title="Employee Directory">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -474,7 +513,12 @@ export default function EmployeesPage() {
 
                 <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
                   {linkedEmployeeIds.has(emp.id) ? (
-                    <span className="text-xs font-medium text-good">Login active</span>
+                    <>
+                      <span className="text-xs font-medium text-good">Login active</span>
+                      <button onClick={() => openResetModal(emp)} className="text-xs font-medium text-accent hover:underline">
+                        Reset password
+                      </button>
+                    </>
                   ) : (
                     <button onClick={() => openLoginModal(emp)} className="text-xs font-medium text-accent hover:underline">
                       Create login
@@ -601,7 +645,12 @@ export default function EmployeesPage() {
                     <td className="px-5 py-3">
                       <div className="flex flex-wrap items-center gap-3">
                         {linkedEmployeeIds.has(emp.id) ? (
-                          <span className="text-xs font-medium text-good">Login active</span>
+                          <>
+                            <span className="text-xs font-medium text-good">Login active</span>
+                            <button onClick={() => openResetModal(emp)} className="text-xs font-medium text-accent hover:underline">
+                              Reset password
+                            </button>
+                          </>
                         ) : (
                           <button onClick={() => openLoginModal(emp)} className="text-xs font-medium text-accent hover:underline">
                             Create login
@@ -798,6 +847,78 @@ export default function EmployeesPage() {
                     className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
                   >
                     {creatingLogin ? 'Creating…' : 'Create login'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {resetModalEmployee && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+            {resetResult ? (
+              <>
+                <h3 className="mb-1 text-lg font-semibold text-ink">Password reset</h3>
+                <p className="mb-4 text-xs text-slate-500">
+                  Share this with {resetModalEmployee.name}. Their old password no longer works. This won&apos;t be shown
+                  again.
+                </p>
+                <div className="mb-4 space-y-2 rounded-lg bg-slate-50 p-3 text-sm">
+                  <div>
+                    <span className="text-xs uppercase text-slate-400">New password</span>
+                    <div className="font-mono font-medium text-ink">{resetResult}</div>
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setResetModalEmployee(null)}
+                    className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
+                  >
+                    Done
+                  </button>
+                </div>
+              </>
+            ) : (
+              <form onSubmit={handleResetPassword}>
+                <h3 className="mb-1 text-lg font-semibold text-ink">Reset Password</h3>
+                <p className="mb-4 text-xs text-slate-500">
+                  Sets a new password for {resetModalEmployee.name}&apos;s login. Their current password stops working
+                  immediately.
+                </p>
+                <label className="mb-1 block text-xs font-medium text-slate-600">New password</label>
+                <div className="mb-3 flex gap-2">
+                  <input
+                    required
+                    minLength={8}
+                    value={resetPassword}
+                    onChange={e => setResetPassword(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/30"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setResetPassword(generatePassword())}
+                    className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                  >
+                    Regenerate
+                  </button>
+                </div>
+                {resetError && <p className="mb-3 text-sm text-critical">{resetError}</p>}
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setResetModalEmployee(null)}
+                    className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={resettingPassword}
+                    className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+                  >
+                    {resettingPassword ? 'Resetting…' : 'Reset password'}
                   </button>
                 </div>
               </form>
