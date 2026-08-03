@@ -63,10 +63,6 @@ export default function Sidebar({ role, adminName, drawerOpen, onCloseDrawer }: 
     });
   }
 
-  function openGroup(href: string) {
-    setOpenGroups(prev => (prev.has(href) ? prev : new Set(prev).add(href)));
-  }
-
   async function handleSignOut() {
     await supabase.auth.signOut();
     router.replace('/login');
@@ -115,7 +111,7 @@ export default function Sidebar({ role, adminName, drawerOpen, onCloseDrawer }: 
                     href={item.href}
                     onClick={() => {
                       onCloseDrawer();
-                      if (hasChildren) openGroup(item.href);
+                      if (hasChildren) toggleGroup(item.href);
                     }}
                     className={`flex flex-1 items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
                       active || childActive ? 'bg-sidebar-active font-medium text-accent' : 'hover:bg-sidebar-active/60 hover:text-white'
