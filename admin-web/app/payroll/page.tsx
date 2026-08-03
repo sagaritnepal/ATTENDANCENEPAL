@@ -34,6 +34,13 @@ function monthOptionLabel(year: number, month: number, system: CalendarSystem) {
   return NepaliDate.fromAD(new Date(year, month, 1)).format('MMMM YYYY');
 }
 
+/** AD date key (YYYY-MM-DD) -> "DD/MM/YYYY" in the current calendar system. */
+function formatDdMmYyyy(adKey: string, system: CalendarSystem) {
+  const [y, m, d] = adKey.split('-').map(Number);
+  if (system === 'AD') return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
+  return NepaliDate.fromAD(new Date(y, m - 1, d)).format('DD/MM/YYYY');
+}
+
 function monthBounds(year: number, month: number) {
   const d = new Date(Date.UTC(year, month, 1));
   const start = d.toISOString().slice(0, 10);
@@ -71,6 +78,9 @@ export default function PayrollPage() {
   const [otHoursPerDay, setOtHoursPerDay] = useState(8);
   const [otMultiplier, setOtMultiplier] = useState(1.5);
   const [dataMonthRange, setDataMonthRange] = useState<{ earliest: number; latest: number } | null>(null);
+  // Overtime pay is optional per employee (some employees just aren't paid
+  // extra for it) — on by default, toggled off per row.
+  const [overtimeEnabled, setOvertimeEnabled] = useState<Record<string, boolean>>({});
 
   const { start, end } = monthBounds(anchor.year, anchor.month);
 
@@ -225,26 +235,26 @@ export default function PayrollPage() {
       0
     );
     const totalOvertimeSalary = byEmployee.reduce((s, r) => {
-      if (r.salary == null || r.overtime <= 0) return s;
+      if (r.salary == null || r.overtime <= 0 || !(overtimeEnabled[r.id] ?? true)) return s;
       const hourlyRate = r.salary / (daysInRange * otHoursPerDay);
       return s + hourlyRate * otMultiplier * r.overtime;
     }, 0);
     return { totalHours, overtimeHours, attendancePct, totalEmployeeSalary, totalSalaryPayable, totalOvertimeSalary };
-  }, [byEmployee, employees, daysInRange, otHoursPerDay, otMultiplier]);
+  }, [byEmployee, employees, daysInRange, otHoursPerDay, otMultiplier, overtimeEnabled]);
 
   function calculatedSalary(row: { salary: number | null; days: number }): number | null {
     if (row.salary == null) return null;
     return Math.round((row.salary / daysInRange) * row.days);
   }
 
-  function overtimeSalary(row: { salary: number | null; overtime: number }): number | null {
+  function overtimeSalary(row: { id: string; salary: number | null; overtime: number }): number | null {
     if (row.salary == null) return null;
-    if (row.overtime <= 0) return 0;
+    if (row.overtime <= 0 || !(overtimeEnabled[row.id] ?? true)) return 0;
     const hourlyRate = row.salary / (daysInRange * otHoursPerDay);
     return Math.round(hourlyRate * otMultiplier * row.overtime);
   }
 
-  function totalSalary(row: { salary: number | null; days: number; overtime: number }): number | null {
+  function totalSalary(row: { id: string; salary: number | null; days: number; overtime: number }): number | null {
     const calculated = calculatedSalary(row);
     if (calculated == null) return null;
     return calculated + (overtimeSalary(row) ?? 0);
@@ -321,7 +331,11 @@ export default function PayrollPage() {
               </option>
             ))}
           </select>
-          <span className="text-xs text-slate-500">{daysInRange} days selected</span>
+          <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm">
+            <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
+            {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
+            <span className="text-slate-400">({daysInRange}d)</span>
+          </div>
         </div>
         <button
           onClick={recalculateMonth}
@@ -423,33 +437,36 @@ export default function PayrollPage() {
         </div>
       )}
 
-      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-base font-semibold text-ink">This Month Salary Report</h2>
+      <div className="mt-6 rounded-xl border border-slate-200 bg-white pb-2 shadow-sm">
+        <h2 className="px-6 pt-6 text-base font-semibold text-ink">This Month Salary Report</h2>
+        <div className="mt-4 overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead>
-            <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-              <th className="py-2 font-medium">ID</th>
-              <th className="py-2 font-medium">Employee</th>
-              <th className="py-2 font-medium">Worked Days</th>
-              <th className="py-2 font-medium">Total Hours</th>
-              <th className="py-2 font-medium">Overtime</th>
-              <th className="py-2 font-medium">Late Days</th>
-              <th className="py-2 font-medium">Salary</th>
-              <th className="py-2 font-medium">Calculated Salary</th>
-              <th className="py-2 font-medium">Overtime Salary</th>
-              <th className="py-2 font-medium">Total Salary</th>
+            <tr className="border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <th className="px-4 py-3 font-medium">ID</th>
+              <th className="px-4 py-3 font-medium">Employee</th>
+              <th className="px-4 py-3 font-medium">Worked Days</th>
+              <th className="px-4 py-3 font-medium">Total Hours</th>
+              <th className="px-4 py-3 font-medium">Overtime</th>
+              <th className="px-4 py-3 font-medium">Late Days</th>
+              <th className="px-4 py-3 font-medium">Salary</th>
+              <th className="px-4 py-3 font-medium">Calculated Salary</th>
+              <th className="px-4 py-3 font-medium">Overtime Salary</th>
+              <th className="px-4 py-3 font-medium">Total Salary</th>
             </tr>
           </thead>
           <tbody>
-            {byEmployee.map(row => (
+            {byEmployee.map(row => {
+              const otOn = overtimeEnabled[row.id] ?? true;
+              return (
               <tr key={row.id} className="border-b border-slate-100 last:border-0">
-                <td className="py-2.5 text-slate-600">{row.enrollId}</td>
-                <td className="py-2.5 font-medium text-ink">{row.name}</td>
-                <td className="py-2.5 text-slate-600">{row.days}</td>
-                <td className="py-2.5 text-slate-600">{row.hours.toFixed(1)} hrs</td>
-                <td className="py-2.5 text-slate-600">{row.overtime.toFixed(1)} hrs</td>
-                <td className="py-2.5 text-slate-600">{row.lateDays}</td>
-                <td className="py-2.5">
+                <td className="px-4 py-3 text-slate-600">{row.enrollId}</td>
+                <td className="px-4 py-3 font-medium text-ink">{row.name}</td>
+                <td className="px-4 py-3 text-slate-600">{row.days}</td>
+                <td className="px-4 py-3 text-slate-600">{row.hours.toFixed(1)} hrs</td>
+                <td className="px-4 py-3 text-slate-600">{row.overtime.toFixed(1)} hrs</td>
+                <td className="px-4 py-3 text-slate-600">{row.lateDays}</td>
+                <td className="px-4 py-3">
                   {editingSalaryId === row.id ? (
                     <>
                       <input
@@ -494,24 +511,39 @@ export default function PayrollPage() {
                     </div>
                   )}
                 </td>
-                <td className="py-2.5 text-slate-600">
+                <td className="px-4 py-3 text-slate-600">
                   {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
                 </td>
-                <td className="py-2.5 text-slate-600">
-                  {overtimeSalary(row) != null ? overtimeSalary(row)!.toLocaleString() : '—'}
+                <td className="px-4 py-3 text-slate-600">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setOvertimeEnabled(m => ({ ...m, [row.id]: !otOn }))}
+                      title={otOn ? 'Overtime pay counted for this employee' : 'Overtime pay not counted for this employee'}
+                      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${otOn ? 'bg-good' : 'bg-slate-300'}`}
+                    >
+                      <span
+                        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+                          otOn ? 'translate-x-4' : 'translate-x-0.5'
+                        }`}
+                      />
+                    </button>
+                    <span>{overtimeSalary(row) != null ? overtimeSalary(row)!.toLocaleString() : '—'}</span>
+                  </div>
                 </td>
-                <td className="py-2.5 font-medium text-ink">
+                <td className="px-4 py-3 font-medium text-ink">
                   {totalSalary(row) != null ? totalSalary(row)!.toLocaleString() : '—'}
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {byEmployee.length === 0 && (
               <tr>
-                <td colSpan={10} className="py-8 text-center text-slate-400">No active employees.</td>
+                <td colSpan={10} className="px-4 py-8 text-center text-slate-400">No active employees.</td>
               </tr>
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </AppShell>
   );
@@ -521,6 +553,15 @@ function EditIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function CalendarIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path strokeLinecap="round" d="M3 10h18M8 3v4M16 3v4" />
     </svg>
   );
 }
