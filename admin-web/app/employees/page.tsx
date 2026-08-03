@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
-import type { Employee, Shift, Profile, Branch, Department } from '@/lib/types';
+import type { Employee, Shift, Profile, Branch, Department, PayrollSummary } from '@/lib/types';
 import { resolveShift, formatShiftHours } from '@/lib/shift';
 
 const PAGE_SIZE = 8;
@@ -21,7 +21,23 @@ const EMPTY_FORM = {
   fingerprint_id: '',
   branch_id: '',
   date_of_joining: '',
+  salary: '',
 };
+
+/** [start, end] AD date keys (YYYY-MM-DD) for the current calendar month,
+ * plus how many days it has — the denominator for prorating salary against
+ * attendance this month. Built from local Y/M/D (never toISOString(), which
+ * would shift the date for any timezone ahead of UTC, like Nepal's). */
+function currentMonthRange() {
+  const now = new Date();
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const toKey = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  return {
+    start: toKey(now.getFullYear(), now.getMonth(), 1),
+    end: toKey(end.getFullYear(), end.getMonth(), end.getDate()),
+    daysInMonth: end.getDate(),
+  };
+}
 
 const CSV_COLUMNS = ['employee_code', 'name', 'email', 'phone', 'department', 'designation', 'fingerprint_id'] as const;
 
@@ -79,6 +95,7 @@ export default function EmployeesPage() {
   const [profiles, setProfiles] = useState<Pick<Profile, 'id' | 'employee_id' | 'role'>[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [departmentOptions, setDepartmentOptions] = useState<Department[]>([]);
+  const [monthSummaries, setMonthSummaries] = useState<PayrollSummary[]>([]);
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -104,6 +121,7 @@ export default function EmployeesPage() {
   // database.
   const [pendingBranch, setPendingBranch] = useState<Record<string, string>>({});
   const [pendingShift, setPendingShift] = useState<Record<string, string>>({});
+  const [pendingSalary, setPendingSalary] = useState<Record<string, string>>({});
   const [savingPending, setSavingPending] = useState(false);
 
   // Username edits its own row, with its own Save/Cancel (not staged with
@@ -132,6 +150,13 @@ export default function EmployeesPage() {
     supabase.from('profiles').select('id, employee_id, role').then(({ data }) => setProfiles(data ?? []));
     supabase.from('branches').select('*').order('name').then(({ data }) => setBranches(data ?? []));
     supabase.from('departments').select('*').order('name').then(({ data }) => setDepartmentOptions(data ?? []));
+    const { start, end } = currentMonthRange();
+    supabase
+      .from('payroll_summaries')
+      .select('*')
+      .gte('work_date', start)
+      .lte('work_date', end)
+      .then(({ data }) => setMonthSummaries(data ?? []));
     loadLoginEmails();
   }
 
@@ -216,6 +241,22 @@ export default function EmployeesPage() {
     [employees]
   );
 
+  // Distinct work_date count per employee this month — the "days present"
+  // side of prorating salary against actual attendance.
+  const presentDaysThisMonth = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of monthSummaries) map.set(s.employee_id, (map.get(s.employee_id) ?? 0) + 1);
+    return map;
+  }, [monthSummaries]);
+
+  const { daysInMonth } = currentMonthRange();
+
+  function calculatedSalary(emp: Employee): number | null {
+    if (emp.salary == null) return null;
+    const present = presentDaysThisMonth.get(emp.id) ?? 0;
+    return Math.round((emp.salary / daysInMonth) * present);
+  }
+
   const linkedEmployeeIds = useMemo(
     () => new Set(profiles.map(p => p.employee_id).filter((id): id is string => Boolean(id))),
     [profiles]
@@ -279,6 +320,7 @@ export default function EmployeesPage() {
       fingerprint_id: form.fingerprint_id || null,
       branch_id: form.branch_id || null,
       date_of_joining: form.date_of_joining || null,
+      salary: form.salary ? Number(form.salary) : null,
       status: 'active',
     });
     setSaving(false);
@@ -301,6 +343,11 @@ export default function EmployeesPage() {
 
   async function applyBranchChange(employeeId: string, branchId: string) {
     const { error } = await supabase.from('employees').update({ branch_id: branchId || null }).eq('id', employeeId);
+    return error;
+  }
+
+  async function applySalaryChange(employeeId: string, salary: string) {
+    const { error } = await supabase.from('employees').update({ salary: salary ? Number(salary) : null }).eq('id', employeeId);
     return error;
   }
 
@@ -423,11 +470,12 @@ export default function EmployeesPage() {
     return error;
   }
 
-  const pendingCount = Object.keys(pendingBranch).length + Object.keys(pendingShift).length;
+  const pendingCount = Object.keys(pendingBranch).length + Object.keys(pendingShift).length + Object.keys(pendingSalary).length;
 
   function handleCancelPending() {
     setPendingBranch({});
     setPendingShift({});
+    setPendingSalary({});
   }
 
   async function handleSavePending() {
@@ -441,9 +489,14 @@ export default function EmployeesPage() {
       const error = await applyShiftChange(employeeId, templateId);
       if (error) errors.push(`Shift: ${error.message}`);
     }
+    for (const [employeeId, salary] of Object.entries(pendingSalary)) {
+      const error = await applySalaryChange(employeeId, salary);
+      if (error) errors.push(`Salary: ${error.message}`);
+    }
     setSavingPending(false);
     setPendingBranch({});
     setPendingShift({});
+    setPendingSalary({});
     if (errors.length > 0) alert(`Some changes could not be saved:\n${errors.join('\n')}`);
     reload();
   }
@@ -752,6 +805,26 @@ export default function EmployeesPage() {
                       </select>
                     </dd>
                   </div>
+                  <div>
+                    <dt className="text-xs text-slate-400">Salary</dt>
+                    <dd>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="—"
+                        value={pendingSalary[emp.id] ?? (emp.salary != null ? String(emp.salary) : '')}
+                        onChange={e => setPendingSalary(p => ({ ...p, [emp.id]: e.target.value }))}
+                        className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs"
+                      />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-400">Calculated Salary</dt>
+                    <dd className="font-semibold text-ink">
+                      {calculatedSalary(emp) != null ? calculatedSalary(emp)!.toLocaleString() : '—'}
+                    </dd>
+                  </div>
                 </dl>
 
                 <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
@@ -791,6 +864,8 @@ export default function EmployeesPage() {
                 <th className="px-2 py-3 text-center font-medium">Username</th>
                 <th className="w-28 px-2 py-3 text-center font-medium">Branch</th>
                 <th className="w-32 px-2 py-3 text-center font-medium">Shift</th>
+                <th className="w-24 px-2 py-3 text-center font-medium">Salary</th>
+                <th className="w-24 px-2 py-3 text-center font-medium">Calculated Salary</th>
                 <th className="px-3 py-3 text-center font-medium">Bio Enrollment</th>
                 <th className="px-3 py-3 text-center font-medium">Actions</th>
               </tr>
@@ -913,6 +988,20 @@ export default function EmployeesPage() {
                         ]}
                       />
                     </td>
+                    <td className="w-24 px-2 py-3">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="—"
+                        value={pendingSalary[emp.id] ?? (emp.salary != null ? String(emp.salary) : '')}
+                        onChange={e => setPendingSalary(p => ({ ...p, [emp.id]: e.target.value }))}
+                        className="w-full rounded-md border border-slate-200 px-1.5 py-1 text-xs text-slate-600"
+                      />
+                    </td>
+                    <td className="w-24 px-2 py-3 text-center text-xs text-slate-600">
+                      {calculatedSalary(emp) != null ? calculatedSalary(emp)!.toLocaleString() : '—'}
+                    </td>
                     <td className="px-3 py-3">
                       <div className="flex flex-col items-start gap-1">
                         <Badge tone={emp.fingerprint_id ? 'good' : 'warning'}>
@@ -947,7 +1036,7 @@ export default function EmployeesPage() {
               })}
               {pageItems.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-slate-400">
+                  <td colSpan={9} className="px-3 py-8 text-center text-slate-400">
                     No employees match this filter.
                   </td>
                 </tr>
@@ -1058,6 +1147,17 @@ export default function EmployeesPage() {
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-600">Date of joining</label>
                   <DatePicker value={form.date_of_joining} onChange={v => setForm(f => ({ ...f, date_of_joining: v }))} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Salary</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.salary}
+                    onChange={e => setForm(f => ({ ...f, salary: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+                  />
                 </div>
               </div>
               {formError && <p className="mt-3 text-sm text-critical">{formError}</p>}
