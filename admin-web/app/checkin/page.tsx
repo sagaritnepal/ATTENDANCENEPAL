@@ -7,6 +7,7 @@ import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
 import { formatAdDate, localDateKey } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
+import { selectDayPunches } from '@/lib/shift';
 import type { AttendanceGpsRequest, AttendanceLog, CorrectionRequest, LeaveRequest, LeaveType } from '@/lib/types';
 
 const HISTORY_WINDOW_DAYS = 90;
@@ -120,6 +121,26 @@ export default function CheckInPage() {
     const cutoff = Date.now() - HISTORY_RANGE_DAYS[historyRange] * 86400000;
     return history.filter(log => new Date(log.punch_time).getTime() >= cutoff);
   }, [history, historyRange]);
+
+  // Only the first check-in and last check-out of a day are the punches that
+  // actually count (same selection payroll uses) — every other punch that
+  // day (duplicate ZKTeco taps, etc.) shows as rejected instead of accepted.
+  const acceptedPunchIds = useMemo(() => {
+    const byDate = new Map<string, AttendanceLog[]>();
+    for (const log of history) {
+      const key = localDateKey(log.punch_time);
+      const list = byDate.get(key);
+      if (list) list.push(log);
+      else byDate.set(key, [log]);
+    }
+    const ids = new Set<string>();
+    for (const dayLogs of byDate.values()) {
+      const { checkIn, checkOut } = selectDayPunches(dayLogs);
+      ids.add(checkIn.id);
+      if (checkOut) ids.add(checkOut.id);
+    }
+    return ids;
+  }, [history]);
 
   function reloadHistory(empId: string) {
     supabase
@@ -367,7 +388,9 @@ export default function CheckInPage() {
                     <div className="text-sm text-ink">{formatDateTime(log.punch_time, system)}</div>
                     <div className="text-xs capitalize text-slate-400">{log.method}</div>
                   </div>
-                  <Badge tone="good">Accepted</Badge>
+                  <Badge tone={acceptedPunchIds.has(log.id) ? 'good' : 'critical'}>
+                    {acceptedPunchIds.has(log.id) ? 'Accepted' : 'Rejected'}
+                  </Badge>
                 </div>
               ))}
             </div>

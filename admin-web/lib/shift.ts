@@ -66,13 +66,11 @@ function punchMinuteOfDay(iso: string) {
   return d.getUTCHours() * 60 + d.getUTCMinutes();
 }
 
-/** One calendar day's punches -> attendance state for that day. Mirrors
- * calculateDailyRecord() in calc.js: first check-in (or earliest punch) is
- * "in", last check-out (or latest punch, if there's more than one) is "out". */
-export function computeDayStatus(
-  logs: AttendanceLog[],
-  shift: Pick<Shift, 'start_time' | 'end_time' | 'grace_minutes'>
-): DayStatus {
+/** One calendar day's punches -> the two that actually count: first
+ * check-in (or earliest punch) is "in", last check-out (or latest punch, if
+ * there's more than one) is "out". Any other punch that day (duplicate
+ * ZKTeco taps, etc.) is neither. Mirrors calculateDailyRecord() in calc.js. */
+export function selectDayPunches(logs: AttendanceLog[]): { checkIn: AttendanceLog; checkOut: AttendanceLog | null } {
   const sorted = [...logs].sort((a, b) => a.punch_time.localeCompare(b.punch_time));
   const checkIn = sorted.find(l => l.punch_type === '0') ?? sorted[0];
   const outCandidates = sorted.filter(l => l.punch_type === '1');
@@ -81,7 +79,16 @@ export function computeDayStatus(
     : sorted.length > 1
       ? sorted[sorted.length - 1]
       : null;
-  const hasOut = !!checkOut && checkOut !== checkIn;
+  return { checkIn, checkOut: checkOut !== checkIn ? checkOut : null };
+}
+
+/** One calendar day's punches -> attendance state for that day. */
+export function computeDayStatus(
+  logs: AttendanceLog[],
+  shift: Pick<Shift, 'start_time' | 'end_time' | 'grace_minutes'>
+): DayStatus {
+  const { checkIn, checkOut } = selectDayPunches(logs);
+  const hasOut = !!checkOut;
 
   const shiftStartMin = toMinutes(shift.start_time);
   const shiftEndMin = toMinutes(shift.end_time);

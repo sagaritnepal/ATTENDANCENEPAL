@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import MonthCalendar from '@/components/MonthCalendar';
+import Badge from '@/components/Badge';
 import { formatAdDate, localDateKey } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { computeDayStatus, formatHoursMinutes, formatMinutes, resolveShift } from '@/lib/shift';
@@ -167,35 +168,60 @@ export default function MyCalendarPage() {
               ) : !selectedDaySummary ? (
                 <p className="text-sm text-slate-400">No punches recorded.</p>
               ) : (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-3">
-                    <span className="w-12 shrink-0 rounded-md bg-good-bg px-2 py-1 text-center text-xs font-bold text-good-text">
-                      IN
-                    </span>
-                    <span className="text-sm text-ink">
-                      {new Date(selectedDaySummary.checkIn.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                    <span className="text-xs capitalize text-slate-400">{selectedDaySummary.checkIn.method}</span>
-                  </div>
-                  {selectedDaySummary.checkOut && (
-                    <div className="flex items-center gap-3">
-                      <span className="w-12 shrink-0 rounded-md bg-warning-bg px-2 py-1 text-center text-xs font-bold text-warning-text">
-                        OUT
-                      </span>
-                      <span className="text-sm text-ink">
-                        {new Date(selectedDaySummary.checkOut.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                      <span className="text-xs capitalize text-slate-400">{selectedDaySummary.checkOut.method}</span>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-good-bg p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-xs font-medium text-good-text">IN</div>
+                          <div className="text-base font-bold text-ink">
+                            {new Date(selectedDaySummary.checkIn.punch_time).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </div>
+                          <div className="text-xs capitalize text-slate-500">{selectedDaySummary.checkIn.method}</div>
+                        </div>
+                        {selectedDaySummary.isLate && (
+                          <Badge tone="warning">Late by {formatMinutes(selectedDaySummary.lateMinutes)}</Badge>
+                        )}
+                      </div>
                     </div>
-                  )}
-                  {selectedDaySummary.isLate && (
-                    <p className="text-xs font-medium text-warning-text">Late by {formatMinutes(selectedDaySummary.lateMinutes)}</p>
-                  )}
-                  {selectedDaySummary.isEarly && (
-                    <p className="text-xs font-medium text-critical-text">
-                      Early out by {formatMinutes(selectedDaySummary.earlyMinutes)}
-                    </p>
-                  )}
+                    <div className="rounded-xl bg-warning-bg p-3">
+                      {selectedDaySummary.checkOut ? (
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="text-xs font-medium text-warning-text">OUT</div>
+                            <div className="text-base font-bold text-ink">
+                              {new Date(selectedDaySummary.checkOut.punch_time).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </div>
+                            <div className="text-xs capitalize text-slate-500">{selectedDaySummary.checkOut.method}</div>
+                          </div>
+                          {selectedDaySummary.isEarly && (
+                            <Badge tone="critical">Early by {formatMinutes(selectedDaySummary.earlyMinutes)}</Badge>
+                          )}
+                        </div>
+                      ) : (
+                        <>
+                          <div className="text-xs font-medium text-warning-text">OUT</div>
+                          <div className="text-sm text-slate-400">Not yet</div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-good-bg p-3">
+                      <div className="text-xs font-medium text-good-text">Total Work Hours</div>
+                      <div className="text-base font-bold text-ink">{formatHoursMinutes(selectedDaySummary.totalMinutes)}</div>
+                    </div>
+                    <div className="rounded-xl bg-info-bg p-3">
+                      <div className="text-xs font-medium text-info-text">Overtime</div>
+                      <div className="text-base font-bold text-ink">{formatHoursMinutes(selectedDaySummary.overtimeMinutes)}</div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
