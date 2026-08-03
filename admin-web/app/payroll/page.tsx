@@ -13,8 +13,7 @@ function monthBounds(offset: number) {
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
   const start = d.toISOString().slice(0, 10);
   const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
-  const label = d.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
-  return { start, end, label };
+  return { start, end };
 }
 
 export default function PayrollPage() {
@@ -26,9 +25,9 @@ export default function PayrollPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [recalculating, setRecalculating] = useState(false);
   const [pendingSalary, setPendingSalary] = useState<Record<string, string>>({});
-  const [savingSalary, setSavingSalary] = useState(false);
+  const [savingRowId, setSavingRowId] = useState<string | null>(null);
 
-  const { start, end, label } = monthBounds(offset);
+  const { start, end } = monthBounds(offset);
 
   // Same data + same live-calc fallback the Attendance Report page uses
   // (payroll_summaries where the nightly job has run, computeDayStatus()
@@ -146,17 +145,39 @@ export default function PayrollPage() {
     return error;
   }
 
-  async function handleSaveSalary() {
-    setSavingSalary(true);
-    const errors: string[] = [];
-    for (const [employeeId, salary] of Object.entries(pendingSalary)) {
-      const error = await applySalaryChange(employeeId, salary);
-      if (error) errors.push(error.message);
+  // Each row saves/cancels on its own — no single bulk "save everything"
+  // button, so one row's edit can't accidentally carry another row's
+  // half-finished edit along with it.
+  function hasPendingSalaryChange(row: { id: string; salary: number | null }): boolean {
+    const draft = pendingSalary[row.id];
+    if (draft === undefined) return false;
+    return draft !== (row.salary != null ? String(row.salary) : '');
+  }
+
+  async function saveSalaryRow(employeeId: string) {
+    const draft = pendingSalary[employeeId];
+    if (draft === undefined) return;
+    setSavingRowId(employeeId);
+    const error = await applySalaryChange(employeeId, draft);
+    setSavingRowId(null);
+    if (error) {
+      alert(`Could not save: ${error.message}`);
+      return;
     }
-    setSavingSalary(false);
-    setPendingSalary({});
-    if (errors.length > 0) alert(`Some changes could not be saved:\n${errors.join('\n')}`);
+    setPendingSalary(p => {
+      const next = { ...p };
+      delete next[employeeId];
+      return next;
+    });
     reload();
+  }
+
+  function cancelSalaryRow(employeeId: string) {
+    setPendingSalary(p => {
+      const next = { ...p };
+      delete next[employeeId];
+      return next;
+    });
   }
 
   const employeeName = (id: string) => employees.find(e => e.id === id)?.name ?? 'Unknown';
@@ -175,7 +196,9 @@ export default function PayrollPage() {
       <div className="mb-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button onClick={() => setOffset(o => o - 1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">←</button>
-          <span className="font-semibold text-ink">{label}</span>
+          <span className="font-semibold text-ink">
+            {formatAdDate(start, system)} – {formatAdDate(end, system)}
+          </span>
           <button onClick={() => setOffset(o => o + 1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">→</button>
         </div>
         <button
@@ -189,21 +212,6 @@ export default function PayrollPage() {
 
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 lg:grid-cols-5">
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <span className="text-sm text-slate-500">Total Payable Hours</span>
-          <div className="mt-2 text-lg font-bold text-ink">{totals.totalHours.toFixed(1)} hrs</div>
-          <div className="mt-1 text-xs text-slate-500">Across {employees.length} staff</div>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <span className="text-sm text-slate-500">Overtime Tracked</span>
-          <div className="mt-2 text-lg font-bold text-ink">{totals.overtimeHours.toFixed(1)} hrs</div>
-          <div className="mt-1 text-xs text-slate-500">This period</div>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <span className="text-sm text-slate-500">Average Attendance</span>
-          <div className="mt-2 text-lg font-bold text-ink">{totals.attendancePct}%</div>
-          <div className="mt-1 text-xs text-slate-500">Worked days vs possible</div>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <span className="text-sm text-slate-500">Total Salary Payable</span>
           <div className="mt-2 text-lg font-bold text-ink">{totals.totalSalaryPayable.toLocaleString()}</div>
           <div className="mt-1 text-xs text-slate-500">Earned so far this period</div>
@@ -212,6 +220,21 @@ export default function PayrollPage() {
           <span className="text-sm text-slate-500">Total Employees Salary</span>
           <div className="mt-2 text-lg font-bold text-ink">{totals.totalEmployeeSalary.toLocaleString()}</div>
           <div className="mt-1 text-xs text-slate-500">Full monthly salary, all staff</div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <span className="text-sm text-slate-500">Overtime Tracked</span>
+          <div className="mt-2 text-lg font-bold text-ink">{totals.overtimeHours.toFixed(1)} hrs</div>
+          <div className="mt-1 text-xs text-slate-500">This period</div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <span className="text-sm text-slate-500">Total Payable Hours</span>
+          <div className="mt-2 text-lg font-bold text-ink">{totals.totalHours.toFixed(1)} hrs</div>
+          <div className="mt-1 text-xs text-slate-500">Across {employees.length} staff</div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <span className="text-sm text-slate-500">Average Attendance</span>
+          <div className="mt-2 text-lg font-bold text-ink">{totals.attendancePct}%</div>
+          <div className="mt-1 text-xs text-slate-500">Worked days vs possible</div>
         </div>
       </div>
 
@@ -251,30 +274,7 @@ export default function PayrollPage() {
       )}
 
       <div className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-ink">Roster hours breakdown</h2>
-          {Object.keys(pendingSalary).length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-slate-500">
-                {Object.keys(pendingSalary).length} unsaved salary change{Object.keys(pendingSalary).length === 1 ? '' : 's'}
-              </span>
-              <button
-                onClick={() => setPendingSalary({})}
-                disabled={savingSalary}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveSalary}
-                disabled={savingSalary}
-                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
-              >
-                {savingSalary ? 'Saving…' : 'Save salary'}
-              </button>
-            </div>
-          )}
-        </div>
+        <h2 className="mb-4 text-base font-semibold text-ink">This Month Salary Report</h2>
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
@@ -307,6 +307,24 @@ export default function PayrollPage() {
                     onChange={e => setPendingSalary(p => ({ ...p, [row.id]: e.target.value }))}
                     className="w-28 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
                   />
+                  {hasPendingSalaryChange(row) && (
+                    <div className="mt-1 flex gap-2">
+                      <button
+                        onClick={() => cancelSalaryRow(row.id)}
+                        disabled={savingRowId === row.id}
+                        className="text-xs font-medium text-slate-500 hover:underline disabled:opacity-60"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => saveSalaryRow(row.id)}
+                        disabled={savingRowId === row.id}
+                        className="text-xs font-semibold text-accent hover:underline disabled:opacity-60"
+                      >
+                        {savingRowId === row.id ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                  )}
                 </td>
                 <td className="py-2.5 text-slate-600">
                   {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
