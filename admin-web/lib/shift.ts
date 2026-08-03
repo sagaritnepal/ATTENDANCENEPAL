@@ -58,12 +58,19 @@ function toMinutes(hhmm: string) {
   return h * 60 + m;
 }
 
-/** Minute-of-day for a punch, read the same way calc.js / calc_payroll_fields()
- * in supabase/payroll.sql do (UTC hours/minutes of the stored timestamptz) —
- * keeps late/early here agreeing with what payroll ends up computing. */
+/** Minute-of-day for a punch, in the browser's local time — the same time
+ * every check-in/check-out column on screen already renders with
+ * toLocaleTimeString() (no timeZone override, so it's local too). Using
+ * getUTCHours() here instead (as this used to) compared each punch against
+ * the shift's 09:00-18:00 as if it were a UTC clock reading, which for a
+ * Nepal-local punch is off by the whole UTC+5:45 offset — every on-time
+ * checkout after shift end was scored as leaving nearly 5 hours "early".
+ * calc_payroll_fields() in supabase/payroll.sql converts at time zone
+ * 'Asia/Kathmandu' for the same reason, so this needs to keep agreeing with
+ * that (not UTC) for live and finalized numbers to match. */
 function punchMinuteOfDay(iso: string) {
   const d = new Date(iso);
-  return d.getUTCHours() * 60 + d.getUTCMinutes();
+  return d.getHours() * 60 + d.getMinutes();
 }
 
 /** One calendar day's punches -> the two that actually count: first
