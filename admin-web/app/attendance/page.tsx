@@ -6,27 +6,19 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
-import { formatAdDate } from '@/lib/calendar';
-import { useCalendarSystem } from '@/lib/calendarSystem';
-import type { AttendanceLog, Device, Employee, PayrollSummary } from '@/lib/types';
+import type { AttendanceLog, Employee, PayrollSummary } from '@/lib/types';
 
-type Row = {
-  key: string;
-  date: string;
-  employeeName: string;
-  device: string;
-  checkIn: string | null;
-  checkOut: string | null;
+type EmployeeStat = {
+  id: string;
+  name: string;
+  salary: number | null;
+  presentDays: number;
+  pendingDays: number;
+  lateDays: number;
+  earlyDays: number;
+  absentDays: number;
   hours: number;
-  status: 'Present' | 'Late' | 'Absent';
-  lateMinutes: number;
-  earlyMinutes: number;
   overtime: number;
-  /** No payroll_summaries row yet (only computed by the nightly job or
-   * "Recalculate month" on the Payroll page) — hours/late status aren't
-   * final, this row is built straight from today's raw punches so it's
-   * not invisible until that recompute runs. */
-  pending?: boolean;
 };
 
 function isoDaysAgo(n: number) {
@@ -49,6 +41,15 @@ function isoMonthStart() {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString().slice(0, 10);
 }
 
+/** Days in the *current* real calendar month — salary is a monthly figure,
+ * so Received/Remaining prorate against this regardless of what date range
+ * is currently selected in the filters above (which may be a week, a
+ * custom range, etc.). */
+function daysInCurrentMonth() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+}
+
 const PRESETS = [
   { key: 'today', label: 'Today', from: () => isoDaysAgo(0), to: () => isoDaysAgo(0) },
   { key: 'week', label: 'This Week', from: isoWeekStart, to: () => isoDaysAgo(0) },
@@ -64,7 +65,6 @@ export default function AttendancePage() {
 }
 
 function AttendanceView() {
-  const { system } = useCalendarSystem();
   const searchParams = useSearchParams();
   const initialEmployeeId = searchParams.get('employee');
   const [from, setFrom] = useState(isoDaysAgo(6));
@@ -75,11 +75,9 @@ function AttendanceView() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
-  const [devices, setDevices] = useState<Device[]>([]);
 
   useEffect(() => {
     supabase.from('employees').select('*').eq('status', 'active').order('name').then(({ data }) => setEmployees(data ?? []));
-    supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
   }, []);
 
   useEffect(() => {
@@ -108,8 +106,13 @@ function AttendanceView() {
     [employees, employeeId]
   );
 
-  const rows: Row[] = useMemo(() => {
-    const deviceName = (id: string | null) => devices.find(d => d.id === id)?.name ?? 'Mobile / QR / Selfie';
+  const daysInMonth = daysInCurrentMonth();
+
+  // One aggregated stat per employee across the selected date range — this
+  // is what payroll's own "Roster hours breakdown" computes too (same
+  // payroll_summaries source), so Salary/Received here always agrees with
+  // what the Payroll page calculates.
+  const employeeStats: EmployeeStat[] = useMemo(() => {
     const days: string[] = [];
     const cur = new Date(from + 'T00:00:00Z');
     const end = new Date(to + 'T00:00:00Z');
@@ -118,100 +121,97 @@ function AttendanceView() {
       cur.setUTCDate(cur.getUTCDate() + 1);
     }
 
-    const out: Row[] = [];
+    const map = new Map<string, EmployeeStat>();
+    for (const emp of scopedEmployees) {
+      map.set(emp.id, {
+        id: emp.id,
+        name: emp.name,
+        salary: emp.salary,
+        presentDays: 0,
+        pendingDays: 0,
+        lateDays: 0,
+        earlyDays: 0,
+        absentDays: 0,
+        hours: 0,
+        overtime: 0,
+      });
+    }
+
     for (const day of days) {
       for (const emp of scopedEmployees) {
+        const row = map.get(emp.id)!;
         const summary = summaries.find(s => s.employee_id === emp.id && s.work_date === day);
-        const dayLogs = logs
-          .filter(l => l.employee_id === emp.id && l.punch_time.slice(0, 10) === day)
-          .sort((a, b) => a.punch_time.localeCompare(b.punch_time));
-
         if (summary) {
-          out.push({
-            key: `${emp.id}-${day}`,
-            date: day,
-            employeeName: emp.name,
-            device: deviceName(dayLogs[0]?.device_id ?? null),
-            checkIn: summary.check_in,
-            checkOut: summary.check_out,
-            hours: summary.total_hours,
-            status: summary.is_late ? 'Late' : 'Present',
-            lateMinutes: summary.is_late ? summary.late_minutes : 0,
-            earlyMinutes: summary.is_early_departure ? summary.early_departure_minutes : 0,
-            overtime: summary.overtime_hours,
-          });
-        } else if (dayLogs.length > 0) {
-          // Not yet processed by compute_payroll_summaries() (runs nightly
-          // for the previous day, or manually via "Recalculate month" on
-          // Payroll) — show the raw punches now rather than "Absent" until
-          // final hours/late status are computed.
-          out.push({
-            key: `${emp.id}-${day}`,
-            date: day,
-            employeeName: emp.name,
-            device: deviceName(dayLogs[0].device_id ?? null),
-            checkIn: dayLogs[0].punch_time,
-            checkOut: dayLogs.length > 1 ? dayLogs[dayLogs.length - 1].punch_time : null,
-            hours: 0,
-            status: 'Present',
-            lateMinutes: 0,
-            earlyMinutes: 0,
-            overtime: 0,
-            pending: true,
-          });
+          row.presentDays += 1;
+          row.hours += Number(summary.total_hours);
+          row.overtime += Number(summary.overtime_hours);
+          if (summary.is_late) row.lateDays += 1;
+          if (summary.is_early_departure) row.earlyDays += 1;
         } else {
-          out.push({
-            key: `${emp.id}-${day}`,
-            date: day,
-            employeeName: emp.name,
-            device: 'N/A',
-            checkIn: null,
-            checkOut: null,
-            hours: 0,
-            status: 'Absent',
-            lateMinutes: 0,
-            earlyMinutes: 0,
-            overtime: 0,
-          });
+          const hasLogs = logs.some(l => l.employee_id === emp.id && l.punch_time.slice(0, 10) === day);
+          if (hasLogs) {
+            // Not yet processed by compute_payroll_summaries() (runs
+            // nightly, or manually via "Recalculate month" on Payroll) —
+            // count as present so today's punch isn't shown as an absence,
+            // but exclude from hours/late/early until that recompute runs.
+            row.presentDays += 1;
+            row.pendingDays += 1;
+          } else {
+            row.absentDays += 1;
+          }
         }
       }
     }
-    return out.filter(r => status === 'All' || r.status === status).sort((a, b) => b.date.localeCompare(a.date));
-  }, [scopedEmployees, summaries, logs, devices, from, to, status]);
 
-  const totals = useMemo(() => {
-    const workHours = rows.reduce((sum, r) => sum + (r.pending ? 0 : r.hours), 0);
-    const overtimeHours = rows.reduce((sum, r) => sum + (r.pending ? 0 : r.overtime), 0);
-    const lateMinutes = rows.reduce((sum, r) => sum + r.lateMinutes, 0);
-    const earlyMinutes = rows.reduce((sum, r) => sum + r.earlyMinutes, 0);
-    return { workHours, overtimeHours, lateMinutes, earlyMinutes };
-  }, [rows]);
+    let list = Array.from(map.values());
+    if (status === 'Present') list = list.filter(e => e.presentDays > 0);
+    else if (status === 'Late') list = list.filter(e => e.lateDays > 0);
+    else if (status === 'Absent') list = list.filter(e => e.absentDays > 0);
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }, [scopedEmployees, summaries, logs, from, to, status]);
+
+  function received(emp: EmployeeStat) {
+    if (emp.salary == null) return null;
+    return Math.round((emp.salary / daysInMonth) * emp.presentDays);
+  }
+
+  function remaining(emp: EmployeeStat) {
+    const r = received(emp);
+    if (emp.salary == null || r == null) return null;
+    return Math.max(0, emp.salary - r);
+  }
+
+  const overallTotals = useMemo(() => {
+    const hours = employeeStats.reduce((sum, e) => sum + e.hours, 0);
+    const overtime = employeeStats.reduce((sum, e) => sum + e.overtime, 0);
+    return { hours, overtime };
+  }, [employeeStats]);
 
   function exportCsv() {
     const header = [
-      'Date',
       'Employee',
-      'Device',
-      'Check-In',
-      'Check-Out',
-      'Late By (min)',
-      'Early Out (min)',
+      'Present Days',
+      'Late Days',
+      'Early Out Days',
+      'Absent Days',
       'Total Work Hours',
       'Overtime',
-      'Status',
+      'Salary',
+      'Received',
+      'Remaining',
     ];
-    const lines = rows.map(r =>
+    const lines = employeeStats.map(e =>
       [
-        r.date,
-        r.employeeName,
-        r.device,
-        r.checkIn ? new Date(r.checkIn).toLocaleTimeString() : '',
-        r.checkOut ? new Date(r.checkOut).toLocaleTimeString() : '',
-        r.lateMinutes || '',
-        r.earlyMinutes || '',
-        r.hours.toFixed(1),
-        r.overtime.toFixed(1),
-        r.status,
+        e.name,
+        e.presentDays,
+        e.lateDays,
+        e.earlyDays,
+        e.absentDays,
+        e.hours.toFixed(1),
+        e.overtime.toFixed(1),
+        e.salary ?? '',
+        received(e) ?? '',
+        remaining(e) ?? '',
       ]
         .map(v => `"${String(v).replace(/"/g, '""')}"`)
         .join(',')
@@ -265,10 +265,10 @@ function AttendanceView() {
                 onChange={e => setStatus(e.target.value as typeof status)}
                 className="rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
               >
-                <option value="All">All Logs</option>
-                <option value="Present">Present</option>
-                <option value="Late">Late</option>
-                <option value="Absent">Absent</option>
+                <option value="All">All Employees</option>
+                <option value="Present">Present at least once</option>
+                <option value="Late">Late at least once</option>
+                <option value="Absent">Absent at least once</option>
               </select>
             </div>
           </div>
@@ -322,82 +322,49 @@ function AttendanceView() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="max-h-[65vh] overflow-auto rounded-xl">
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <th className="px-5 py-3 font-medium">Date</th>
-              <th className="px-5 py-3 font-medium">Employee</th>
-              <th className="px-5 py-3 font-medium">Device</th>
-              <th className="px-5 py-3 font-medium">Check-In</th>
-              <th className="px-5 py-3 font-medium">Check-Out</th>
-              <th className="px-5 py-3 font-medium">
-                <div>Late By</div>
-                <div className="mt-0.5 whitespace-nowrap text-sm font-bold normal-case tracking-normal text-ink">
-                  {totals.lateMinutes > 0 ? `${(totals.lateMinutes / 60).toFixed(1)} hrs` : '—'}
-                </div>
-              </th>
-              <th className="px-5 py-3 font-medium">
-                <div>Early Out</div>
-                <div className="mt-0.5 whitespace-nowrap text-sm font-bold normal-case tracking-normal text-ink">
-                  {totals.earlyMinutes > 0 ? `${(totals.earlyMinutes / 60).toFixed(1)} hrs` : '—'}
-                </div>
-              </th>
-              <th className="px-5 py-3 font-medium">
-                <div>Total Work Hours</div>
-                <div className="mt-0.5 whitespace-nowrap text-sm font-bold normal-case tracking-normal text-ink">
-                  {totals.workHours.toFixed(1)} hrs
-                </div>
-              </th>
-              <th className="px-5 py-3 font-medium">
-                <div>Overtime</div>
-                <div className="mt-0.5 whitespace-nowrap text-sm font-bold normal-case tracking-normal text-ink">
-                  {totals.overtimeHours.toFixed(1)} hrs
-                </div>
-              </th>
-              <th className="px-5 py-3 font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(r => (
-              <tr key={r.key} className="border-b border-slate-100 last:border-0">
-                <td className="px-5 py-3 text-slate-600">{formatAdDate(r.date, system)}</td>
-                <td className="px-5 py-3 font-medium text-ink">{r.employeeName}</td>
-                <td className="px-5 py-3 text-slate-600">{r.device}</td>
-                <td className="px-5 py-3 text-slate-600">{r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '–:–'}</td>
-                <td className="px-5 py-3 text-slate-600">{r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '–:–'}</td>
-                <td className="px-5 py-3">
-                  {r.lateMinutes > 0 ? (
-                    <span className="font-medium text-warning-text">{r.lateMinutes} min</span>
-                  ) : (
-                    <span className="text-slate-400">—</span>
-                  )}
-                </td>
-                <td className="px-5 py-3">
-                  {r.earlyMinutes > 0 ? (
-                    <span className="font-medium text-warning-text">{r.earlyMinutes} min</span>
-                  ) : (
-                    <span className="text-slate-400">—</span>
-                  )}
-                </td>
-                <td className="px-5 py-3 text-slate-600">{r.pending ? 'Pending calc' : `${r.hours.toFixed(1)} hrs`}</td>
-                <td className="px-5 py-3 text-slate-600">{r.pending ? '–' : `${r.overtime.toFixed(1)} hr`}</td>
-                <td className="px-5 py-3">
-                  <Badge tone={r.status === 'Present' ? 'good' : r.status === 'Late' ? 'warning' : 'critical'}>{r.status}</Badge>
-                </td>
-              </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={10} className="px-5 py-8 text-center text-slate-400">
-                  No records in this range.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-        </div>
+      <p className="mb-3 text-xs text-slate-500">
+        {employeeStats.length} employee{employeeStats.length === 1 ? '' : 's'} · {overallTotals.hours.toFixed(1)} total hrs ·{' '}
+        {overallTotals.overtime.toFixed(1)} overtime hrs
+      </p>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {employeeStats.map(emp => (
+          <div key={emp.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <span className="truncate font-semibold text-ink">{emp.name}</span>
+              {emp.pendingDays > 0 && <Badge tone="warning">Pending calc</Badge>}
+            </div>
+
+            <div className="mb-3 grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-lg bg-good-bg p-2">
+                <div className="text-[10px] font-medium uppercase text-good-text">Salary</div>
+                <div className="text-sm font-bold text-ink">{emp.salary != null ? emp.salary.toLocaleString() : '—'}</div>
+              </div>
+              <div className="rounded-lg bg-info-bg p-2">
+                <div className="text-[10px] font-medium uppercase text-info-text">Received</div>
+                <div className="text-sm font-bold text-ink">{received(emp) != null ? received(emp)!.toLocaleString() : '—'}</div>
+              </div>
+              <div className="rounded-lg bg-warning-bg p-2">
+                <div className="text-[10px] font-medium uppercase text-warning-text">Remaining</div>
+                <div className="text-sm font-bold text-ink">{remaining(emp) != null ? remaining(emp)!.toLocaleString() : '—'}</div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              <Badge tone="good">{emp.presentDays} present</Badge>
+              {emp.lateDays > 0 && <Badge tone="warning">{emp.lateDays} late</Badge>}
+              {emp.earlyDays > 0 && <Badge tone="critical">{emp.earlyDays} early out</Badge>}
+              {emp.absentDays > 0 && <Badge tone="critical">{emp.absentDays} absent</Badge>}
+              <Badge tone="info">{emp.hours.toFixed(1)} hrs</Badge>
+              {emp.overtime > 0 && <Badge tone="info">{emp.overtime.toFixed(1)} OT</Badge>}
+            </div>
+          </div>
+        ))}
+        {employeeStats.length === 0 && (
+          <div className="col-span-full rounded-xl border border-slate-200 bg-white px-5 py-8 text-center text-slate-400 shadow-sm">
+            No records in this range.
+          </div>
+        )}
       </div>
     </AppShell>
   );
