@@ -29,42 +29,27 @@ export async function POST(req: NextRequest) {
     .select('role')
     .eq('id', callerData.user.id)
     .single();
+  if (callerProfile?.role !== 'admin' && callerProfile?.role !== 'hr') {
+    return NextResponse.json({ error: 'Only admin/HR can change a login username.' }, { status: 403 });
+  }
 
   const body = await req.json().catch(() => null);
   const employeeId = typeof body?.employeeId === 'string' ? body.employeeId : null;
-  const userId = typeof body?.userId === 'string' ? body.userId : null;
   const email = typeof body?.email === 'string' ? body.email.trim() : '';
-  if ((!employeeId && !userId) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return NextResponse.json(
-      { error: 'employeeId or userId, plus a valid email, are required.' },
-      { status: 400 }
-    );
+  if (!employeeId || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return NextResponse.json({ error: 'employeeId and a valid email are required.' }, { status: 400 });
   }
 
-  let targetUserId = userId;
-  if (employeeId) {
-    // Changing an employee's login username: admin or HR.
-    if (callerProfile?.role !== 'admin' && callerProfile?.role !== 'hr') {
-      return NextResponse.json({ error: 'Only admin/HR can change a login username.' }, { status: 403 });
-    }
-    const { data: link, error: linkError } = await admin
-      .from('profiles')
-      .select('id')
-      .eq('employee_id', employeeId)
-      .maybeSingle();
-    if (linkError || !link) {
-      return NextResponse.json({ error: 'This employee has no login to update.' }, { status: 404 });
-    }
-    targetUserId = link.id;
-  } else {
-    // Changing any account directly by user id — admin-only, matching the
-    // same admin-only restriction as reset-password's direct-userId path.
-    if (callerProfile?.role !== 'admin') {
-      return NextResponse.json({ error: 'Only admins can update another account directly.' }, { status: 403 });
-    }
+  const { data: link, error: linkError } = await admin
+    .from('profiles')
+    .select('id')
+    .eq('employee_id', employeeId)
+    .maybeSingle();
+  if (linkError || !link) {
+    return NextResponse.json({ error: 'This employee has no login to update.' }, { status: 404 });
   }
 
-  const { error: updateError } = await admin.auth.admin.updateUserById(targetUserId!, { email });
+  const { error: updateError } = await admin.auth.admin.updateUserById(link.id, { email });
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 400 });
   }

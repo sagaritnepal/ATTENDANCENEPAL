@@ -139,7 +139,7 @@ export default function EmployeesPage() {
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
     if (!token) return;
-    const res = await fetch('/api/accounts?scope=employees', { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch('/api/accounts', { headers: { Authorization: `Bearer ${token}` } });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) return;
     const map: Record<string, string> = {};

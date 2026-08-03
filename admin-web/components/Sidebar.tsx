@@ -32,7 +32,6 @@ const NAV_ITEMS: NavItem[] = [
   },
   { href: '/tasks', label: 'Tasks', icon: TaskIcon, adminOnly: false },
   { href: '/devices', label: 'Devices', icon: DeviceIcon, adminOnly: true },
-  { href: '/team', label: 'Team Accounts', icon: TeamIcon, adminOnly: true },
 ];
 
 type Props = {
@@ -263,15 +262,6 @@ function CardIcon({ className }: IconProps) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <rect x="2" y="5" width="20" height="14" rx="2" />
       <path strokeLinecap="round" d="M2 10h20" />
-    </svg>
-  );
-}
-function TeamIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
-      <circle cx="9" cy="7" r="3.2" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 20c.7-3.5 3-5.5 6-5.5s5.3 2 6 5.5" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M16 4.5a3.2 3.2 0 0 1 0 6.3M19.5 20c-.5-2.5-1.6-4.2-3.3-5" />
     </svg>
   );
 }

@@ -3,9 +3,8 @@ import { getSupabaseAdmin, supabaseAdminConfigured } from '@/lib/supabase-admin'
 
 export const runtime = 'nodejs';
 
-// Lists every login account with its role — admin-only, since it surfaces
-// admin/HR accounts too (Employees page already lists employee logins, this
-// is the equivalent for accounts that aren't tied to an employee row).
+// Lists employee-linked login accounts (id/email/employeeId) — used by the
+// Employees page to show/edit each employee's login username.
 export async function GET(req: NextRequest) {
   if (!supabaseAdminConfigured) {
     return NextResponse.json(
@@ -27,24 +26,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid or expired session.' }, { status: 401 });
   }
   const { data: callerProfile } = await admin.from('profiles').select('role').eq('id', callerData.user.id).single();
-
-  // The Employees page (admin or HR) only needs employee-linked logins for
-  // its "Login ID" column — never admin/HR accounts. The full list (Team
-  // Accounts page) stays admin-only.
-  const scope = req.nextUrl.searchParams.get('scope');
-  if (scope === 'employees') {
-    if (callerProfile?.role !== 'admin' && callerProfile?.role !== 'hr') {
-      return NextResponse.json({ error: 'Only admin/HR can view employee logins.' }, { status: 403 });
-    }
-  } else if (callerProfile?.role !== 'admin') {
-    return NextResponse.json({ error: 'Only admins can view team accounts.' }, { status: 403 });
+  if (callerProfile?.role !== 'admin' && callerProfile?.role !== 'hr') {
+    return NextResponse.json({ error: 'Only admin/HR can view employee logins.' }, { status: 403 });
   }
 
-  let profilesQuery = admin.from('profiles').select('id, role, employee_id, employees(name)');
-  if (scope === 'employees') {
-    profilesQuery = profilesQuery.eq('role', 'employee').not('employee_id', 'is', null);
-  }
-  const { data: profiles, error: profilesError } = await profilesQuery;
+  const { data: profiles, error: profilesError } = await admin
+    .from('profiles')
+    .select('id, role, employee_id, employees(name)')
+    .eq('role', 'employee')
+    .not('employee_id', 'is', null);
   if (profilesError) {
     return NextResponse.json({ error: profilesError.message }, { status: 500 });
   }
