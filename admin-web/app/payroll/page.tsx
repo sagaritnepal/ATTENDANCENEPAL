@@ -24,14 +24,14 @@ const MONTH_NAMES = [
   'December',
 ];
 
-/** Month-picker option label for AD month `month` (0-indexed) of `year` —
- * the AD English name in AD mode, or the Nepali (BS) month name that AD
- * month's 1st falls in when the page is switched to BS. The month index
- * selected always stays an AD month (that's what the payroll period and
+/** One combined "Month Year" option label for AD month `month` (0-indexed)
+ * of `year` — the AD English name in AD mode, or the Nepali (BS) month +
+ * year that AD month's 1st falls in when switched to BS. The value picked
+ * always stays an AD (year, month) pair (that's what the payroll period and
  * daysInRange are computed from); only the label changes. */
 function monthOptionLabel(year: number, month: number, system: CalendarSystem) {
-  if (system === 'AD') return MONTH_NAMES[month];
-  return NepaliDate.fromAD(new Date(year, month, 1)).format('MMMM');
+  if (system === 'AD') return `${MONTH_NAMES[month]} ${year}`;
+  return NepaliDate.fromAD(new Date(year, month, 1)).format('MMMM YYYY');
 }
 
 function monthBounds(year: number, month: number) {
@@ -65,18 +65,19 @@ export default function PayrollPage() {
 
   const { start, end } = monthBounds(anchor.year, anchor.month);
 
-  function stepMonth(delta: number) {
-    setAnchor(a => {
-      const d = new Date(a.year, a.month + delta, 1);
-      return { year: d.getFullYear(), month: d.getMonth() };
-    });
-  }
-
-  const yearOptions = useMemo(() => {
+  // One flat list of every (year, month) this dropdown can jump to, instead
+  // of a separate Month select + Year select — picking a period is then one
+  // selection instead of two.
+  const periodOptions = useMemo(() => {
     const thisYear = new Date().getFullYear();
     const years = new Set([thisYear, anchor.year]);
     for (let y = thisYear - 4; y <= thisYear + 1; y++) years.add(y);
-    return Array.from(years).sort((a, b) => a - b);
+    const sortedYears = Array.from(years).sort((a, b) => a - b);
+    const options: { year: number; month: number }[] = [];
+    for (const y of sortedYears) {
+      for (let m = 0; m < 12; m++) options.push({ year: y, month: m });
+    }
+    return options;
   }, [anchor.year]);
 
   // Same data + same live-calc fallback the Attendance Report page uses
@@ -252,27 +253,17 @@ export default function PayrollPage() {
     <AppShell title="Attendance-based Payroll Controller">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => stepMonth(-1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">←</button>
-          <button onClick={() => stepMonth(1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">→</button>
           <select
-            value={anchor.month}
-            onChange={e => setAnchor(a => ({ ...a, month: Number(e.target.value) }))}
+            value={`${anchor.year}-${anchor.month}`}
+            onChange={e => {
+              const [y, m] = e.target.value.split('-').map(Number);
+              setAnchor({ year: y, month: m });
+            }}
             className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-600"
           >
-            {MONTH_NAMES.map((_, i) => (
-              <option key={i} value={i}>
-                {monthOptionLabel(anchor.year, i, system)}
-              </option>
-            ))}
-          </select>
-          <select
-            value={anchor.year}
-            onChange={e => setAnchor(a => ({ ...a, year: Number(e.target.value) }))}
-            className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-600"
-          >
-            {yearOptions.map(y => (
-              <option key={y} value={y}>
-                {y}
+            {periodOptions.map(({ year, month }) => (
+              <option key={`${year}-${month}`} value={`${year}-${month}`}>
+                {monthOptionLabel(year, month, system)}
               </option>
             ))}
           </select>
