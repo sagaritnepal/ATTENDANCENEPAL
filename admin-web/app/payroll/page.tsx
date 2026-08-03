@@ -497,7 +497,7 @@ export default function PayrollPage() {
               <th className="px-4 py-3 font-medium">Late Days</th>
               <th className="px-4 py-3 font-medium">Salary</th>
               <th className="px-4 py-3 font-medium">Calculated Salary</th>
-              <th className="px-4 py-3 font-medium">Overtime Salary</th>
+              <th className="pl-2 pr-4 py-3 font-medium">Overtime Salary</th>
               <th className="px-4 py-3 font-medium">Total Salary</th>
             </tr>
           </thead>
@@ -560,8 +560,8 @@ export default function PayrollPage() {
                 <td className="px-4 py-3 text-slate-600">
                   {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
                 </td>
-                <td className="px-4 py-3 text-slate-600">
-                  <div className="flex items-center gap-3">
+                <td className="pl-2 pr-4 py-3 text-slate-600">
+                  <div className="flex flex-col items-start gap-1">
                     <button
                       type="button"
                       onClick={() => setOvertimeEnabled(m => ({ ...m, [row.id]: !otOn }))}
@@ -569,14 +569,14 @@ export default function PayrollPage() {
                       className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${otOn ? 'bg-good' : 'bg-slate-300'}`}
                     >
                       {/* A flex-positioned knob (not absolute+left-less) so it can never
-                          drift outside the pill and overlap the amount next to it. */}
+                          drift outside the pill and overlap the amount below it. */}
                       <span
                         className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
                           otOn ? 'translate-x-[18px]' : 'translate-x-0.5'
                         }`}
                       />
                     </button>
-                    <span className={`min-w-[3.5rem] text-right tabular-nums ${otOn ? 'text-ink' : 'text-slate-400'}`}>
+                    <span className={`tabular-nums ${otOn ? 'text-ink' : 'text-slate-400'}`}>
                       {overtimeSalary(row) != null ? overtimeSalary(row)!.toLocaleString() : '—'}
                     </span>
                   </div>
