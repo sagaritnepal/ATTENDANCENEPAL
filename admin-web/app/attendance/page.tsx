@@ -205,9 +205,8 @@ function AttendanceView() {
   function exportCsv() {
     const header = [
       'Date',
-      'Enroll ID',
+      'ID',
       'Employee',
-      'Device',
       'Shift',
       'Check-In',
       'Check-Out',
@@ -216,13 +215,13 @@ function AttendanceView() {
       'Total Work Hours',
       'Overtime',
       'Status',
+      'Device',
     ];
     const lines = rows.map(r =>
       [
         r.date,
         r.enrollId,
         r.employeeName,
-        r.device,
         r.shiftLabel,
         r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour12: false }) : '',
         r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour12: false }) : '',
@@ -231,6 +230,7 @@ function AttendanceView() {
         r.hours.toFixed(1),
         r.overtime.toFixed(1),
         r.status,
+        r.device,
       ]
         .map(v => `"${String(v).replace(/"/g, '""')}"`)
         .join(',')
@@ -347,9 +347,8 @@ function AttendanceView() {
           <thead>
             <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <th className="whitespace-nowrap px-5 py-3 font-medium">Date</th>
-              <th className="whitespace-nowrap px-5 py-3 font-medium">Enroll ID</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">ID</th>
               <th className="whitespace-nowrap px-5 py-3 font-medium">Employee</th>
-              <th className="whitespace-nowrap px-5 py-3 font-medium">Device</th>
               <th className="whitespace-nowrap px-5 py-3 font-medium">Shift</th>
               <th className="whitespace-nowrap px-5 py-3 font-medium">Check-In</th>
               <th className="whitespace-nowrap px-5 py-3 font-medium">Check-Out</th>
@@ -378,6 +377,7 @@ function AttendanceView() {
                 </div>
               </th>
               <th className="whitespace-nowrap px-5 py-3 font-medium">Status</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">Device</th>
             </tr>
           </thead>
           <tbody>
@@ -386,7 +386,6 @@ function AttendanceView() {
                 <td className="px-5 py-3 text-slate-600">{formatAdDate(r.date, system)}</td>
                 <td className="px-5 py-3 text-slate-600">{r.enrollId}</td>
                 <td className="px-5 py-3 font-medium text-ink">{r.employeeName}</td>
-                <td className="px-5 py-3 text-slate-600">{r.device}</td>
                 <td className="px-5 py-3 whitespace-nowrap text-slate-600">{r.shiftLabel}</td>
                 <td className="px-5 py-3 text-slate-600">
                   {r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
@@ -419,6 +418,7 @@ function AttendanceView() {
                 <td className="px-5 py-3">
                   <Badge tone={r.status === 'Present' ? 'good' : r.status === 'Late' ? 'warning' : 'critical'}>{r.status}</Badge>
                 </td>
+                <td className="px-5 py-3 text-slate-600">{r.device}</td>
               </tr>
             ))}
             {rows.length === 0 && (
