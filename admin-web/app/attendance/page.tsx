@@ -205,8 +205,8 @@ function AttendanceView() {
         r.date,
         r.employeeName,
         r.device,
-        r.checkIn ? new Date(r.checkIn).toLocaleTimeString() : '',
-        r.checkOut ? new Date(r.checkOut).toLocaleTimeString() : '',
+        r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour12: false }) : '',
+        r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour12: false }) : '',
         r.lateMinutes || '',
         r.earlyMinutes || '',
         r.hours.toFixed(1),
@@ -327,36 +327,36 @@ function AttendanceView() {
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <th className="px-5 py-3 font-medium">Date</th>
-              <th className="px-5 py-3 font-medium">Employee</th>
-              <th className="px-5 py-3 font-medium">Device</th>
-              <th className="px-5 py-3 font-medium">Check-In</th>
-              <th className="px-5 py-3 font-medium">Check-Out</th>
-              <th className="px-5 py-3 font-medium">
+              <th className="whitespace-nowrap px-5 py-3 font-medium">Date</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">Employee</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">Device</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">Check-In</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">Check-Out</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">
                 <div>Late By</div>
-                <div className="mt-0.5 whitespace-nowrap text-sm font-bold normal-case tracking-normal text-ink">
+                <div className="mt-0.5 text-sm font-bold normal-case tracking-normal text-ink">
                   {totals.lateMinutes > 0 ? `${(totals.lateMinutes / 60).toFixed(1)} hrs` : '—'}
                 </div>
               </th>
-              <th className="px-5 py-3 font-medium">
+              <th className="whitespace-nowrap px-5 py-3 font-medium">
                 <div>Early Out</div>
-                <div className="mt-0.5 whitespace-nowrap text-sm font-bold normal-case tracking-normal text-ink">
+                <div className="mt-0.5 text-sm font-bold normal-case tracking-normal text-ink">
                   {totals.earlyMinutes > 0 ? `${(totals.earlyMinutes / 60).toFixed(1)} hrs` : '—'}
                 </div>
               </th>
-              <th className="px-5 py-3 font-medium">
+              <th className="whitespace-nowrap px-5 py-3 font-medium">
                 <div>Total Work Hours</div>
-                <div className="mt-0.5 whitespace-nowrap text-sm font-bold normal-case tracking-normal text-ink">
+                <div className="mt-0.5 text-sm font-bold normal-case tracking-normal text-ink">
                   {totals.workHours.toFixed(1)} hrs
                 </div>
               </th>
-              <th className="px-5 py-3 font-medium">
+              <th className="whitespace-nowrap px-5 py-3 font-medium">
                 <div>Overtime</div>
-                <div className="mt-0.5 whitespace-nowrap text-sm font-bold normal-case tracking-normal text-ink">
+                <div className="mt-0.5 text-sm font-bold normal-case tracking-normal text-ink">
                   {totals.overtimeHours.toFixed(1)} hrs
                 </div>
               </th>
-              <th className="px-5 py-3 font-medium">Status</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -365,8 +365,12 @@ function AttendanceView() {
                 <td className="px-5 py-3 text-slate-600">{formatAdDate(r.date, system)}</td>
                 <td className="px-5 py-3 font-medium text-ink">{r.employeeName}</td>
                 <td className="px-5 py-3 text-slate-600">{r.device}</td>
-                <td className="px-5 py-3 text-slate-600">{r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '–:–'}</td>
-                <td className="px-5 py-3 text-slate-600">{r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '–:–'}</td>
+                <td className="px-5 py-3 text-slate-600">
+                  {r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
+                </td>
+                <td className="px-5 py-3 text-slate-600">
+                  {r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
+                </td>
                 <td className="px-5 py-3">
                   {r.lateMinutes > 0 ? (
                     <span className="font-medium text-warning-text">{r.lateMinutes} min</span>
