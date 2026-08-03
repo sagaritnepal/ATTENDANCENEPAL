@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
-import type { AttendanceLog, Device, Employee, LeaveRequest, Shift } from '@/lib/types';
+import type { AttendanceLog, Device, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
 import { dateKey, isLate, last7Days, presentEmployeeIds, WEEKDAY_LABEL } from '@/lib/metrics';
 
 const DEPT_COLORS: Record<string, string> = {
@@ -26,6 +26,7 @@ export default function DashboardPage() {
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [onLeave, setOnLeave] = useState<LeaveRequest[]>([]);
+  const [todaySummaries, setTodaySummaries] = useState<PayrollSummary[]>([]);
   const [feed, setFeed] = useState<FeedItem[]>([]);
 
   useEffect(() => {
@@ -43,6 +44,11 @@ export default function DashboardPage() {
       .lte('start_date', today)
       .gte('end_date', today)
       .then(({ data }) => setOnLeave(data ?? []));
+    supabase
+      .from('payroll_summaries')
+      .select('*')
+      .eq('work_date', today)
+      .then(({ data }) => setTodaySummaries(data ?? []));
     supabase
       .from('attendance_logs')
       .select('*')
@@ -92,6 +98,9 @@ export default function DashboardPage() {
   );
   const attendancePct = activeEmployees.length ? Math.round((presentIds.size / activeEmployees.length) * 100) : 0;
 
+  const todayWorkHours = useMemo(() => todaySummaries.reduce((sum, s) => sum + Number(s.total_hours), 0), [todaySummaries]);
+  const todayOvertimeHours = useMemo(() => todaySummaries.reduce((sum, s) => sum + Number(s.overtime_hours), 0), [todaySummaries]);
+
   const trend = useMemo(() => {
     return last7Days().map(day => {
       const count = presentEmployeeIds(logs, day).size;
@@ -115,12 +124,14 @@ export default function DashboardPage() {
 
   return (
     <AppShell title="Dashboard">
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4">
         <StatCard label="Total Employees" value={String(activeEmployees.length)} hint="Active rosters" />
         <StatCard label="Present Today" value={String(presentIds.size)} hint={`${attendancePct}% attendance`} />
         <StatCard label="Late Arrivals" value={String(lateCount)} hint="Past grace period" />
         <StatCard label="On Leave" value={String(onLeaveIds.size)} hint="Approved today" />
         <StatCard label="Absent Today" value={String(absentCount)} hint="No punch, not on leave" />
+        <StatCard label="Total Work Hours" value={todayWorkHours.toFixed(1)} hint="Today, all staff" />
+        <StatCard label="Overtime" value={`${todayOvertimeHours.toFixed(1)} hrs`} hint="Today, all staff" />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">

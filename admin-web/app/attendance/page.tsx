@@ -6,7 +6,6 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
-import StatCard from '@/components/StatCard';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { AttendanceLog, Device, Employee, PayrollSummary } from '@/lib/types';
@@ -180,15 +179,6 @@ function AttendanceView() {
     return out.filter(r => status === 'All' || r.status === status).sort((a, b) => b.date.localeCompare(a.date));
   }, [scopedEmployees, summaries, logs, devices, from, to, status]);
 
-  const summaryCounts = useMemo(() => {
-    const present = rows.filter(r => r.status === 'Present' && !r.pending).length;
-    const late = rows.filter(r => r.status === 'Late').length;
-    const absent = rows.filter(r => r.status === 'Absent').length;
-    const totalHours = rows.reduce((sum, r) => sum + (r.pending ? 0 : r.hours), 0);
-    const overtimeHours = rows.reduce((sum, r) => sum + (r.pending ? 0 : r.overtime), 0);
-    return { present, late, absent, totalHours, overtimeHours };
-  }, [rows]);
-
   function exportCsv() {
     const header = [
       'Date',
@@ -230,14 +220,6 @@ function AttendanceView() {
 
   return (
     <AppShell title="Attendance Report">
-      <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <StatCard label="Present" value={String(summaryCounts.present)} />
-        <StatCard label="Late" value={String(summaryCounts.late)} />
-        <StatCard label="Absent" value={String(summaryCounts.absent)} />
-        <StatCard label="Total Work Hours" value={summaryCounts.totalHours.toFixed(1)} />
-        <StatCard label="Overtime" value={`${summaryCounts.overtimeHours.toFixed(1)} hrs`} />
-      </div>
-
       <div className="mb-5 space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
           <select
@@ -291,7 +273,7 @@ function AttendanceView() {
               </button>
             ))}
           </div>
-          <span className="text-xs text-slate-400">or pick dates manually</span>
+          <span className="text-xs font-medium text-slate-500">Pick date manually</span>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-slate-400">From</span>
             <div className="w-48">
