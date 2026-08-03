@@ -13,6 +13,7 @@ import type { AttendanceLog, Device, Employee, PayrollSummary } from '@/lib/type
 type Row = {
   key: string;
   date: string;
+  enrollId: string;
   employeeName: string;
   device: string;
   checkIn: string | null;
@@ -130,6 +131,7 @@ function AttendanceView() {
           out.push({
             key: `${emp.id}-${day}`,
             date: day,
+            enrollId: emp.fingerprint_id ?? '—',
             employeeName: emp.name,
             device: deviceName(dayLogs[0]?.device_id ?? null),
             checkIn: summary.check_in,
@@ -148,6 +150,7 @@ function AttendanceView() {
           out.push({
             key: `${emp.id}-${day}`,
             date: day,
+            enrollId: emp.fingerprint_id ?? '—',
             employeeName: emp.name,
             device: deviceName(dayLogs[0].device_id ?? null),
             checkIn: dayLogs[0].punch_time,
@@ -163,6 +166,7 @@ function AttendanceView() {
           out.push({
             key: `${emp.id}-${day}`,
             date: day,
+            enrollId: emp.fingerprint_id ?? '—',
             employeeName: emp.name,
             device: 'N/A',
             checkIn: null,
@@ -190,6 +194,7 @@ function AttendanceView() {
   function exportCsv() {
     const header = [
       'Date',
+      'Enroll ID',
       'Employee',
       'Device',
       'Check-In',
@@ -203,6 +208,7 @@ function AttendanceView() {
     const lines = rows.map(r =>
       [
         r.date,
+        r.enrollId,
         r.employeeName,
         r.device,
         r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour12: false }) : '',
@@ -328,6 +334,7 @@ function AttendanceView() {
           <thead>
             <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <th className="whitespace-nowrap px-5 py-3 font-medium">Date</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">Enroll ID</th>
               <th className="whitespace-nowrap px-5 py-3 font-medium">Employee</th>
               <th className="whitespace-nowrap px-5 py-3 font-medium">Device</th>
               <th className="whitespace-nowrap px-5 py-3 font-medium">Check-In</th>
@@ -363,6 +370,7 @@ function AttendanceView() {
             {rows.map(r => (
               <tr key={r.key} className="border-b border-slate-100 last:border-0">
                 <td className="px-5 py-3 text-slate-600">{formatAdDate(r.date, system)}</td>
+                <td className="px-5 py-3 text-slate-600">{r.enrollId}</td>
                 <td className="px-5 py-3 font-medium text-ink">{r.employeeName}</td>
                 <td className="px-5 py-3 text-slate-600">{r.device}</td>
                 <td className="px-5 py-3 text-slate-600">
@@ -394,7 +402,7 @@ function AttendanceView() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-5 py-8 text-center text-slate-400">
+                <td colSpan={11} className="px-5 py-8 text-center text-slate-400">
                   No records in this range.
                 </td>
               </tr>
