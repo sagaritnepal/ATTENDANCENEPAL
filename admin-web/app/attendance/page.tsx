@@ -7,6 +7,8 @@ import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
 import StatCard from '@/components/StatCard';
+import { formatAdDate } from '@/lib/calendar';
+import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { AttendanceLog, Device, Employee, PayrollSummary } from '@/lib/types';
 
 type Row = {
@@ -61,6 +63,7 @@ export default function AttendancePage() {
 }
 
 function AttendanceView() {
+  const { system } = useCalendarSystem();
   const searchParams = useSearchParams();
   const initialEmployeeId = searchParams.get('employee');
   const [from, setFrom] = useState(isoDaysAgo(6));
@@ -305,7 +308,7 @@ function AttendanceView() {
           <tbody>
             {rows.map(r => (
               <tr key={r.key} className="border-b border-slate-100 last:border-0">
-                <td className="px-5 py-3 text-slate-600">{r.date}</td>
+                <td className="px-5 py-3 text-slate-600">{formatAdDate(r.date, system)}</td>
                 <td className="px-5 py-3 font-medium text-ink">{r.employeeName}</td>
                 <td className="px-5 py-3 text-slate-600">{r.device}</td>
                 <td className="px-5 py-3 text-slate-600">{r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '–:–'}</td>

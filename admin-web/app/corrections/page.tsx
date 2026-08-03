@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
+import { formatAdDate } from '@/lib/calendar';
+import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { Employee, CorrectionRequest } from '@/lib/types';
 
 function formatTime(value: string | null) {
@@ -12,6 +14,7 @@ function formatTime(value: string | null) {
 }
 
 export default function CorrectionsPage() {
+  const { system } = useCalendarSystem();
   const [requests, setRequests] = useState<CorrectionRequest[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [filter, setFilter] = useState<'All' | 'pending' | 'approved' | 'rejected'>('pending');
@@ -104,7 +107,7 @@ export default function CorrectionsPage() {
             {filtered.map(r => (
               <tr key={r.id} className="border-b border-slate-100 last:border-0">
                 <td className="px-5 py-3 font-medium text-ink">{employeeName(r.employee_id)}</td>
-                <td className="px-5 py-3 text-slate-600">{r.work_date}</td>
+                <td className="px-5 py-3 text-slate-600">{formatAdDate(r.work_date, system)}</td>
                 <td className="px-5 py-3 text-slate-600">{formatTime(r.requested_check_in)}</td>
                 <td className="px-5 py-3 text-slate-600">{formatTime(r.requested_check_out)}</td>
                 <td className="px-5 py-3 max-w-xs truncate text-slate-600">{r.reason ?? '—'}</td>

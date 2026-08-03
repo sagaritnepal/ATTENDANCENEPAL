@@ -126,3 +126,21 @@ export function todayAnchor(): { year: number; month: number } {
   const d = new Date();
   return { year: d.getFullYear(), month: d.getMonth() };
 }
+
+/** Formats an AD date key (YYYY-MM-DD) for display in whichever calendar
+ * system is currently active — the single place every page should go
+ * through so a global AD/BS switch changes every displayed date at once. */
+export function formatAdDate(adKey: string | null | undefined, system: CalendarSystem): string {
+  if (!adKey) return '—';
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(adKey);
+  if (!m) return adKey;
+  const [, y, mo, d] = m;
+  if (system === 'AD') {
+    return new Date(Number(y), Number(mo) - 1, Number(d)).toLocaleDateString(undefined, {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  }
+  return NepaliDate.fromAD(new Date(Number(y), Number(mo) - 1, Number(d))).format('D MMMM YYYY');
+}

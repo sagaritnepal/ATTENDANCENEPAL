@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { buildMonth, stepAnchor, todayAnchor, type CalendarSystem } from '@/lib/calendar';
+import { buildMonth, formatAdDate, stepAnchor, todayAnchor } from '@/lib/calendar';
+import { useCalendarSystem } from '@/lib/calendarSystem';
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const POPOVER_WIDTH = 288; // matches w-72
@@ -18,6 +19,10 @@ function parseAdKey(value: string): { year: number; month: number } | null {
  * (lib/calendar.ts) the Attendance calendar already uses, reused here so
  * every date field in the app can toggle to the Nepali (Bikram Sambat)
  * calendar instead of just the Gregorian one.
+ *
+ * The AD/BS system itself isn't chosen here — it comes from the one global
+ * switch in the page header (CalendarSystemSwitch), so every date picker
+ * and every displayed date on the page changes together.
  *
  * The popover renders through a portal into document.body, positioned by
  * the trigger's viewport coordinates — a plain absolutely-positioned child
@@ -38,8 +43,8 @@ export default function DatePicker({
   placeholder?: string;
   className?: string;
 }) {
+  const { system } = useCalendarSystem();
   const [open, setOpen] = useState(false);
-  const [system, setSystem] = useState<CalendarSystem>('AD');
   const [anchor, setAnchor] = useState(todayAnchor);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -88,9 +93,7 @@ export default function DatePicker({
 
   const today = new Date();
   const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  const displayValue = value
-    ? new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
-    : '';
+  const displayValue = value ? formatAdDate(value, system) : '';
 
   return (
     <>
@@ -119,25 +122,6 @@ export default function DatePicker({
               <button type="button" onClick={() => go(1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
                 ›
               </button>
-            </div>
-
-            <div className="mb-2 flex justify-center">
-              <div className="flex overflow-hidden rounded-lg border border-slate-200 text-xs font-semibold">
-                <button
-                  type="button"
-                  onClick={() => setSystem('AD')}
-                  className={`px-3 py-1 ${system === 'AD' ? 'bg-accent text-white' : 'bg-white text-slate-500'}`}
-                >
-                  AD
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSystem('BS')}
-                  className={`px-3 py-1 ${system === 'BS' ? 'bg-accent text-white' : 'bg-white text-slate-500'}`}
-                >
-                  BS
-                </button>
-              </div>
             </div>
 
             <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-slate-400">
@@ -170,9 +154,7 @@ export default function DatePicker({
             </div>
 
             <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2">
-              <span className="text-[11px] text-slate-400">
-                Today: {today.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
-              </span>
+              <span className="text-[11px] text-slate-400">Today: {formatAdDate(todayIso, system)}</span>
               <button type="button" onClick={() => selectCell(todayIso)} className="text-[11px] font-medium text-accent hover:underline">
                 Select today
               </button>

@@ -7,6 +7,8 @@ import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
 import Leaderboard from '@/components/Leaderboard';
 import TaskHoursChart from '@/components/TaskHoursChart';
+import { formatAdDate } from '@/lib/calendar';
+import { useCalendarSystem } from '@/lib/calendarSystem';
 import { totalsByTask } from '@/lib/taskHours';
 import type { Task, TaskStatus, TaskTimeLog } from '@/lib/types';
 
@@ -31,6 +33,7 @@ function formatElapsed(startedAt: string, now: number) {
 }
 
 export default function MyTasksPage() {
+  const { system } = useCalendarSystem();
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -201,7 +204,7 @@ export default function MyTasksPage() {
                     {t.description && <p className="mb-2 text-xs text-slate-500">{t.description}</p>}
                     <div className="mb-2 flex flex-wrap gap-4 text-xs text-slate-400">
                       <span>{t.points} pts</span>
-                      {t.due_date && <span>Due {t.due_date}</span>}
+                      {t.due_date && <span>Due {formatAdDate(t.due_date, system)}</span>}
                       {hours > 0 && <span>{hours} hrs logged</span>}
                     </div>
 

@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import DatePicker from '@/components/DatePicker';
+import { formatAdDate } from '@/lib/calendar';
+import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { Branch, Department, Employee, EmployeeEducation, EmployeeWorkExperience } from '@/lib/types';
 
 function tenureDays(dateOfJoining: string | null, resignedAt: string | null) {
@@ -47,6 +49,7 @@ async function toDataUrl(url: string): Promise<string | null> {
 }
 
 export default function EmployeeCvPage() {
+  const { system } = useCalendarSystem();
   const params = useParams<{ id: string }>();
   const employeeId = params.id;
 
@@ -501,7 +504,7 @@ export default function EmployeeCvPage() {
             </div>
             <div>
               <span className="block text-xs text-slate-400">Date of joining</span>
-              <span className="text-ink">{employee.date_of_joining ?? '—'}</span>
+              <span className="text-ink">{formatAdDate(employee.date_of_joining, system)}</span>
             </div>
             <div>
               <span className="block text-xs text-slate-400">{employee.resigned_at ? 'Days worked' : 'Days with company'}</span>
@@ -510,7 +513,7 @@ export default function EmployeeCvPage() {
             {employee.resigned_at && (
               <div>
                 <span className="block text-xs text-slate-400">Resigned</span>
-                <span className="text-ink">{employee.resigned_at}</span>
+                <span className="text-ink">{formatAdDate(employee.resigned_at, system)}</span>
               </div>
             )}
             {employee.address && (
@@ -768,7 +771,7 @@ export default function EmployeeCvPage() {
                 {exp.role && <span className="text-slate-500"> — {exp.role}</span>}
                 {(exp.start_date || exp.end_date) && (
                   <span className="block text-xs text-slate-400">
-                    {exp.start_date ?? '—'} {'–'} {exp.end_date ?? 'Present'}
+                    {formatAdDate(exp.start_date, system)} – {exp.end_date ? formatAdDate(exp.end_date, system) : 'Present'}
                   </span>
                 )}
               </div>

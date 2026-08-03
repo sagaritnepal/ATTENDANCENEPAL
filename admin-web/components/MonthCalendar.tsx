@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { buildMonth, stepAnchor, todayAnchor, type CalendarSystem } from '@/lib/calendar';
+import { buildMonth, stepAnchor, todayAnchor } from '@/lib/calendar';
+import { useCalendarSystem } from '@/lib/calendarSystem';
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
@@ -13,7 +14,7 @@ type Props = {
 };
 
 export default function MonthCalendar({ presentDates, selectedDate, onSelectDate }: Props) {
-  const [system, setSystem] = useState<CalendarSystem>('BS');
+  const { system } = useCalendarSystem();
   const [anchor, setAnchor] = useState(todayAnchor);
 
   const month = useMemo(() => buildMonth(system, anchor.year, anchor.month), [system, anchor]);
@@ -32,20 +33,6 @@ export default function MonthCalendar({ presentDates, selectedDate, onSelectDate
           <span className="min-w-[10ch] text-center text-sm font-semibold text-ink">{month.label}</span>
           <button onClick={() => go(1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
             →
-          </button>
-        </div>
-        <div className="flex overflow-hidden rounded-lg border border-slate-200 text-xs font-semibold">
-          <button
-            onClick={() => setSystem('AD')}
-            className={`px-3 py-1.5 ${system === 'AD' ? 'bg-accent text-white' : 'bg-white text-slate-500'}`}
-          >
-            AD
-          </button>
-          <button
-            onClick={() => setSystem('BS')}
-            className={`px-3 py-1.5 ${system === 'BS' ? 'bg-accent text-white' : 'bg-white text-slate-500'}`}
-          >
-            BS
           </button>
         </div>
       </div>

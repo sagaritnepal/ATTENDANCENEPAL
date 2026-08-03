@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import CalendarSystemSwitch from './CalendarSystemSwitch';
 
 type SearchProps = { value: string; onChange: (value: string) => void; placeholder?: string; suggestions?: string[] };
 
@@ -39,6 +40,7 @@ export default function TopBar({
           <MenuIcon className="h-5 w-5" />
         </button>
         <h1 className="text-lg font-bold text-ink sm:text-2xl">{title}</h1>
+        <CalendarSystemSwitch />
       </div>
 
       <div className="flex items-center gap-3 sm:gap-5">

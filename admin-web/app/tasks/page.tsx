@@ -7,6 +7,8 @@ import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
 import Leaderboard from '@/components/Leaderboard';
 import TaskHoursChart from '@/components/TaskHoursChart';
+import { formatAdDate } from '@/lib/calendar';
+import { useCalendarSystem } from '@/lib/calendarSystem';
 import { totalsByTask } from '@/lib/taskHours';
 import type { Employee, PointRedemption, Task, TaskStatus, TaskTimeLog } from '@/lib/types';
 
@@ -21,6 +23,7 @@ const STATUS_TONE: Record<TaskStatus, 'good' | 'warning' | 'critical' | 'info' |
 };
 
 export default function TasksPage() {
+  const { system } = useCalendarSystem();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [filter, setFilter] = useState<TaskStatus | 'All'>('submitted');
@@ -188,7 +191,7 @@ export default function TasksPage() {
                     )}
                   </td>
                   <td className="px-5 py-3 text-slate-600">{t.points}</td>
-                  <td className="px-5 py-3 text-slate-600">{t.due_date ?? '—'}</td>
+                  <td className="px-5 py-3 text-slate-600">{formatAdDate(t.due_date, system)}</td>
                   <td className="px-5 py-3">
                     <Badge tone={STATUS_TONE[t.status]}>{t.status.replace('_', ' ')}</Badge>
                   </td>

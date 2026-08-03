@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
 import ConfigWarning from './ConfigWarning';
+import CalendarSystemSwitch from './CalendarSystemSwitch';
 
 const TABS = [
   { href: '/checkin', label: 'Check In/Out', icon: CheckInIcon },
@@ -94,6 +95,7 @@ export default function EmployeeShell({ title, children }: { title: string; chil
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <CalendarSystemSwitch />
           {isHr && (
             <Link
               href="/"

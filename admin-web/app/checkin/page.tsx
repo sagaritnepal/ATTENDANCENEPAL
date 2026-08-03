@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
+import { formatAdDate } from '@/lib/calendar';
+import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { CorrectionRequest, LeaveRequest, LeaveType } from '@/lib/types';
 
 type View = 'menu' | 'fix' | 'leave';
@@ -50,6 +52,7 @@ function getCurrentCoords(): Promise<{ lat: number; lng: number } | null> {
 }
 
 export default function CheckInPage() {
+  const { system } = useCalendarSystem();
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [view, setView] = useState<View>('menu');
 
@@ -328,7 +331,7 @@ export default function CheckInPage() {
               {requests.map(r => (
                 <div key={r.id} className="flex items-center gap-3 px-4 py-3">
                   <div className="flex-1">
-                    <div className="text-sm font-medium text-ink">{r.work_date}</div>
+                    <div className="text-sm font-medium text-ink">{formatAdDate(r.work_date, system)}</div>
                     <div className="text-xs text-slate-400">
                       In {formatTime(r.requested_check_in)} · Out {formatTime(r.requested_check_out)}
                     </div>
@@ -399,7 +402,7 @@ export default function CheckInPage() {
                 <div key={r.id} className="flex items-center gap-3 px-4 py-3">
                   <div className="flex-1">
                     <div className="text-sm font-medium capitalize text-ink">
-                      {r.leave_type} · {r.start_date} → {r.end_date}
+                      {r.leave_type} · {formatAdDate(r.start_date, system)} → {formatAdDate(r.end_date, system)}
                     </div>
                     {r.reason && <div className="text-xs text-slate-400">{r.reason}</div>}
                   </div>

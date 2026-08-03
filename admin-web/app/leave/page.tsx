@@ -4,9 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
+import { formatAdDate } from '@/lib/calendar';
+import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { Employee, LeaveRequest } from '@/lib/types';
 
 export default function LeavePage() {
+  const { system } = useCalendarSystem();
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [filter, setFilter] = useState<'All' | 'pending' | 'approved' | 'rejected'>('pending');
@@ -75,7 +78,7 @@ export default function LeavePage() {
                 <td className="px-5 py-3 font-medium text-ink">{employeeName(r.employee_id)}</td>
                 <td className="px-5 py-3 capitalize text-slate-600">{r.leave_type}</td>
                 <td className="px-5 py-3 text-slate-600">
-                  {r.start_date} → {r.end_date}
+                  {formatAdDate(r.start_date, system)} → {formatAdDate(r.end_date, system)}
                 </td>
                 <td className="px-5 py-3 text-slate-600">{daysBetween(r.start_date, r.end_date)}</td>
                 <td className="px-5 py-3 max-w-xs truncate text-slate-600">{r.reason ?? '—'}</td>

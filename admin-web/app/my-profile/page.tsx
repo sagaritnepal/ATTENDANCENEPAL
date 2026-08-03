@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
+import { formatAdDate } from '@/lib/calendar';
+import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { Employee, EmployeeEducation, EmployeeWorkExperience, LeaderboardRow, PointRedemption } from '@/lib/types';
 
 const EMPTY_PROFILE_FORM = { name: '', email: '', phone: '', address: '', department: '', designation: '' };
@@ -27,6 +29,7 @@ function statusTone(status: string) {
 }
 
 export default function MyProfilePage() {
+  const { system } = useCalendarSystem();
   const router = useRouter();
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
@@ -405,7 +408,7 @@ export default function MyProfilePage() {
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-slate-400">Date of joining</span>
-            <span className="text-ink">{employee.date_of_joining ?? '—'}</span>
+            <span className="text-ink">{formatAdDate(employee.date_of_joining, system)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-400">{employee.resigned_at ? 'Days worked' : 'Days with company'}</span>
@@ -414,7 +417,7 @@ export default function MyProfilePage() {
           {employee.resigned_at && (
             <div className="flex justify-between">
               <span className="text-slate-400">Resigned</span>
-              <span className="text-ink">{employee.resigned_at}</span>
+              <span className="text-ink">{formatAdDate(employee.resigned_at, system)}</span>
             </div>
           )}
         </div>
@@ -576,7 +579,7 @@ export default function MyProfilePage() {
                 {exp.role && <span className="text-slate-500"> — {exp.role}</span>}
                 {(exp.start_date || exp.end_date) && (
                   <span className="block text-xs text-slate-400">
-                    {exp.start_date ?? '—'} {'–'} {exp.end_date ?? 'Present'}
+                    {formatAdDate(exp.start_date, system)} – {exp.end_date ? formatAdDate(exp.end_date, system) : 'Present'}
                   </span>
                 )}
               </div>

@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
+import { formatAdDate } from '@/lib/calendar';
+import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { Employee, PayrollSummary } from '@/lib/types';
 
 function monthBounds(offset: number) {
@@ -15,6 +17,7 @@ function monthBounds(offset: number) {
 }
 
 export default function PayrollPage() {
+  const { system } = useCalendarSystem();
   const [offset, setOffset] = useState(0);
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -134,7 +137,7 @@ export default function PayrollPage() {
                 {pendingOvertime.map(s => (
                   <tr key={s.id} className="border-b border-slate-100 last:border-0">
                     <td className="py-2.5 font-medium text-ink">{employeeName(s.employee_id)}</td>
-                    <td className="py-2.5 text-slate-600">{s.work_date}</td>
+                    <td className="py-2.5 text-slate-600">{formatAdDate(s.work_date, system)}</td>
                     <td className="py-2.5 text-slate-600">{Number(s.overtime_hours).toFixed(1)} hrs</td>
                     <td className="py-2.5">
                       <button
