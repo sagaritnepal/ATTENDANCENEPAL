@@ -309,7 +309,8 @@ function AttendanceView() {
         </div>
       </div>
 
-      <div className="max-h-[65vh] overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="max-h-[60vh] overflow-auto">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
@@ -362,21 +363,33 @@ function AttendanceView() {
               </tr>
             )}
           </tbody>
-          {rows.length > 0 && (
-            <tfoot>
-              <tr className="sticky bottom-0 z-10 border-t-2 border-accent/30 bg-accent/5 text-sm font-bold text-ink">
-                <td className="px-5 py-3" colSpan={5}>
-                  Totals
-                </td>
-                <td className="px-5 py-3">{totals.lateMinutes > 0 ? `${(totals.lateMinutes / 60).toFixed(1)} hrs` : '—'}</td>
-                <td className="px-5 py-3">{totals.earlyMinutes > 0 ? `${(totals.earlyMinutes / 60).toFixed(1)} hrs` : '—'}</td>
-                <td className="px-5 py-3">{totals.workHours.toFixed(1)} hrs</td>
-                <td className="px-5 py-3">{totals.overtimeHours.toFixed(1)} hrs</td>
-                <td className="px-5 py-3" />
-              </tr>
-            </tfoot>
-          )}
         </table>
+        </div>
+
+        {rows.length > 0 && (
+          <div className="grid grid-cols-2 gap-4 border-t-2 border-accent/30 bg-accent/5 px-5 py-4 sm:grid-cols-4">
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Late By</div>
+              <div className="mt-1 text-lg font-bold text-ink">
+                {totals.lateMinutes > 0 ? `${(totals.lateMinutes / 60).toFixed(1)} hrs` : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Early Out</div>
+              <div className="mt-1 text-lg font-bold text-ink">
+                {totals.earlyMinutes > 0 ? `${(totals.earlyMinutes / 60).toFixed(1)} hrs` : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Total Work Hours</div>
+              <div className="mt-1 text-lg font-bold text-ink">{totals.workHours.toFixed(1)} hrs</div>
+            </div>
+            <div>
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Overtime</div>
+              <div className="mt-1 text-lg font-bold text-ink">{totals.overtimeHours.toFixed(1)} hrs</div>
+            </div>
+          </div>
+        )}
       </div>
     </AppShell>
   );
