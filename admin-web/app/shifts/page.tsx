@@ -99,13 +99,13 @@ export default function ShiftsPage() {
             </tr>
           </thead>
           <tbody>
-            {shifts.map(s => (
+            {templateShifts.map(s => (
               <tr key={s.id} className="border-b border-slate-100 last:border-0">
                 <td className="py-2.5 font-medium text-ink">{s.name}</td>
                 <td className="py-2.5 capitalize text-slate-600">{s.type}</td>
                 <td className="py-2.5 text-slate-600">{formatShiftHours(s)}</td>
                 <td className="py-2.5 text-slate-600">{s.grace_minutes} min</td>
-                <td className="py-2.5 text-slate-600">{s.employee_id ? 'Individual' : s.department ?? 'All'}</td>
+                <td className="py-2.5 text-slate-600">{s.department ?? 'All'}</td>
                 <td className="py-2.5 text-slate-600">{countsByShift.get(s.id) ?? 0}</td>
               </tr>
             ))}
