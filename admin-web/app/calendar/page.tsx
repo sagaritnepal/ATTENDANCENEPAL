@@ -210,7 +210,7 @@ export default function CalendarPage() {
         </select>
       </div>
 
-      <div className="mx-auto max-w-md">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_380px]">
         <MonthCalendar
           dayStatus={dayStatus}
           leaveDates={leaveDates}
@@ -219,6 +219,7 @@ export default function CalendarPage() {
           onMonthChange={setVisibleDates}
         />
 
+        <div>
         {selectedDate && (
           <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="mb-2 text-sm font-semibold text-ink">{formatAdDate(selectedDate, system)}</h2>
@@ -333,6 +334,7 @@ export default function CalendarPage() {
             )}
           </div>
         )}
+        </div>
       </div>
     </AppShell>
   );
