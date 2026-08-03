@@ -184,9 +184,16 @@ async function pollSyncRequests() {
 async function main() {
   console.log(`ZKTeco bridge starting, polling every ${SYNC_INTERVAL_MS / 1000}s (sync requests every ${SYNC_REQUEST_POLL_MS / 1000}s)`);
   await syncAllDevices();
-  setInterval(syncAllDevices, SYNC_INTERVAL_MS);
+  setInterval(() => syncAllDevices().catch(err => console.error('Device sync poll failed:', err.message)), SYNC_INTERVAL_MS);
   setInterval(() => pollSyncRequests().catch(err => console.error('Sync request poll failed:', err.message)), SYNC_REQUEST_POLL_MS);
 }
+
+// A transient network blip (Supabase unreachable for a moment, etc.) should
+// never take the whole worker down — every known interval already has its
+// own .catch(), this is the safety net for anything that doesn't.
+process.on('unhandledRejection', err => {
+  console.error('Unhandled rejection (ignored, worker keeps running):', err);
+});
 
 main().catch(err => {
   console.error('Fatal error in ZKTeco bridge:', err);
