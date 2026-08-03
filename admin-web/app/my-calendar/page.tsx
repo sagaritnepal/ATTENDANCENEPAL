@@ -26,14 +26,19 @@ function datesBetween(start: string, end: string): string[] {
   return dates;
 }
 
-type CardKey = 'hours' | 'late' | 'early' | 'overtime';
+type CardKey = 'hours' | 'late' | 'early' | 'overtime' | 'present' | 'absent';
 type CardEntry = { date: string; minutes: number };
+/** Cards whose expanded list shows a duration next to each date — the rest
+ * (present/absent) are plain date lists with nothing to measure. */
+const DURATION_CARDS: CardKey[] = ['hours', 'late', 'early', 'overtime'];
 
 const CARD_STYLES: Record<CardKey, { label: string; bg: string; text: string }> = {
   hours: { label: 'Total Work Hours', bg: 'bg-good-bg', text: 'text-good-text' },
   late: { label: 'Late In', bg: 'bg-warning-bg', text: 'text-warning-text' },
   early: { label: 'Early Out', bg: 'bg-critical-bg', text: 'text-critical-text' },
   overtime: { label: 'Overtime', bg: 'bg-info-bg', text: 'text-info-text' },
+  present: { label: 'Present Days', bg: 'bg-good-bg', text: 'text-good-text' },
+  absent: { label: 'Absent Days', bg: 'bg-critical-bg', text: 'text-critical-text' },
 };
 
 export default function MyCalendarPage() {
@@ -94,26 +99,43 @@ export default function MyCalendarPage() {
     return map;
   }, [logs, employee, shifts]);
 
+  const leaveByDate = useMemo(() => {
+    const map = new Map<string, LeaveRequest>();
+    for (const lr of leaveRequests) {
+      for (const date of datesBetween(lr.start_date, lr.end_date)) map.set(date, lr);
+    }
+    return map;
+  }, [leaveRequests]);
+
+  const leaveDates = useMemo(() => new Set(leaveByDate.keys()), [leaveByDate]);
+
   const monthSummary = useMemo(() => {
     const hours: CardEntry[] = [];
     const late: CardEntry[] = [];
     const early: CardEntry[] = [];
     const overtime: CardEntry[] = [];
+    const present: CardEntry[] = [];
+    const absent: CardEntry[] = [];
     let totalWorkMinutes = 0;
     let overtimeMinutes = 0;
+    const todayKey = localDateKey(new Date().toISOString());
 
     for (const date of visibleDates) {
       const status = dayStatus.get(date);
-      if (!status) continue;
-      if (status.hasOut) {
-        hours.push({ date, minutes: status.totalMinutes });
-        totalWorkMinutes += status.totalMinutes;
-      }
-      if (status.isLate) late.push({ date, minutes: status.lateMinutes });
-      if (status.isEarly) early.push({ date, minutes: status.earlyMinutes });
-      if (status.overtimeMinutes > 0) {
-        overtime.push({ date, minutes: status.overtimeMinutes });
-        overtimeMinutes += status.overtimeMinutes;
+      if (status) {
+        present.push({ date, minutes: 0 });
+        if (status.hasOut) {
+          hours.push({ date, minutes: status.totalMinutes });
+          totalWorkMinutes += status.totalMinutes;
+        }
+        if (status.isLate) late.push({ date, minutes: status.lateMinutes });
+        if (status.isEarly) early.push({ date, minutes: status.earlyMinutes });
+        if (status.overtimeMinutes > 0) {
+          overtime.push({ date, minutes: status.overtimeMinutes });
+          overtimeMinutes += status.overtimeMinutes;
+        }
+      } else if (date <= todayKey && !leaveDates.has(date)) {
+        absent.push({ date, minutes: 0 });
       }
     }
     const byDateDesc = (a: CardEntry, b: CardEntry) => b.date.localeCompare(a.date);
@@ -125,19 +147,11 @@ export default function MyCalendarPage() {
         late: late.sort(byDateDesc),
         early: early.sort(byDateDesc),
         overtime: overtime.sort(byDateDesc),
+        present: present.sort(byDateDesc),
+        absent: absent.sort(byDateDesc),
       } satisfies Record<CardKey, CardEntry[]>,
     };
-  }, [visibleDates, dayStatus]);
-
-  const leaveByDate = useMemo(() => {
-    const map = new Map<string, LeaveRequest>();
-    for (const lr of leaveRequests) {
-      for (const date of datesBetween(lr.start_date, lr.end_date)) map.set(date, lr);
-    }
-    return map;
-  }, [leaveRequests]);
-
-  const leaveDates = useMemo(() => new Set(leaveByDate.keys()), [leaveByDate]);
+  }, [visibleDates, dayStatus, leaveDates]);
 
   const selectedLeave = selectedDate ? leaveByDate.get(selectedDate) ?? null : null;
 
@@ -291,9 +305,13 @@ export default function MyCalendarPage() {
                   {monthSummary.entries[expandedCard].map(entry => (
                     <div key={entry.date} className="flex items-center justify-between py-2 text-sm">
                       <span className="text-ink">{formatAdDate(entry.date, system)}</span>
-                      <span className="font-medium text-slate-600">
-                        {expandedCard === 'hours' ? formatHoursMinutes(entry.minutes) : formatMinutes(entry.minutes)}
-                      </span>
+                      {DURATION_CARDS.includes(expandedCard) && (
+                        <span className="font-medium text-slate-600">
+                          {expandedCard === 'hours' || expandedCard === 'overtime'
+                            ? formatHoursMinutes(entry.minutes)
+                            : formatMinutes(entry.minutes)}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
