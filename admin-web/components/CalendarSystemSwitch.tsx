@@ -7,8 +7,7 @@ export default function CalendarSystemSwitch() {
   const { system, setSystem } = useCalendarSystem();
 
   return (
-    <div className="flex shrink-0 items-center gap-2.5">
-      <span className="hidden text-sm font-semibold text-ink sm:inline">Calendar:</span>
+    <div className="flex shrink-0 items-center">
       <div className="flex overflow-hidden rounded-lg border border-slate-300 text-base font-bold shadow-sm">
         <button
           type="button"

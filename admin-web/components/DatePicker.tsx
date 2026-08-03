@@ -2,16 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { buildMonth, formatAdDate, stepAnchor, todayAnchor } from '@/lib/calendar';
+import { buildMonth, formatAdDate, stepAnchor, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const POPOVER_WIDTH = 288; // matches w-72
 
-function parseAdKey(value: string): { year: number; month: number } | null {
-  const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(value);
+function parseAdKey(value: string): CalendarAnchor | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!m) return null;
-  return { year: Number(m[1]), month: Number(m[2]) - 1 };
+  return { year: Number(m[1]), month: Number(m[2]) - 1, day: Number(m[3]) };
 }
 
 /**
@@ -80,10 +80,10 @@ export default function DatePicker({
     };
   }, [open]);
 
-  const month = useMemo(() => buildMonth(system, anchor.year, anchor.month), [system, anchor]);
+  const month = useMemo(() => buildMonth(system, anchor), [system, anchor]);
 
   function go(direction: 1 | -1) {
-    setAnchor(stepAnchor(system, anchor.year, anchor.month, direction));
+    setAnchor(stepAnchor(system, anchor, direction));
   }
 
   function selectCell(adKey: string) {

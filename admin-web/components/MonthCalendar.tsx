@@ -17,10 +17,10 @@ export default function MonthCalendar({ presentDates, selectedDate, onSelectDate
   const { system } = useCalendarSystem();
   const [anchor, setAnchor] = useState(todayAnchor);
 
-  const month = useMemo(() => buildMonth(system, anchor.year, anchor.month), [system, anchor]);
+  const month = useMemo(() => buildMonth(system, anchor), [system, anchor]);
 
   function go(direction: 1 | -1) {
-    setAnchor(stepAnchor(system, anchor.year, anchor.month, direction));
+    setAnchor(stepAnchor(system, anchor, direction));
   }
 
   return (

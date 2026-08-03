@@ -94,37 +94,39 @@ function todayKey() {
   return dateKey(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-/** anchor is always an AD (year, monthIndex) pair — the single source of
- * truth for "which month period we're looking at", independent of which
- * calendar system is currently displayed. */
-export function buildMonth(system: CalendarSystem, anchorAdYear: number, anchorAdMonth: number): CalendarMonth {
+/** anchor is always an AD (year, monthIndex, day) triple — the single
+ * source of truth for "which point we're looking at", independent of
+ * which calendar system is currently displayed. The day matters: a BS
+ * month's 1st can fall anywhere within an AD month, so two different BS
+ * months can both have their 1st land in the *same* AD month — dropping
+ * the day (keeping only year+month) made consecutive "next month" steps
+ * in BS mode round-trip back to an unchanged AD anchor and get stuck. */
+export type CalendarAnchor = { year: number; month: number; day: number };
+
+export function buildMonth(system: CalendarSystem, anchor: CalendarAnchor): CalendarMonth {
   const tKey = todayKey();
-  if (system === 'AD') return buildAdMonth(anchorAdYear, anchorAdMonth, tKey);
-  const bs = NepaliDate.fromAD(new Date(anchorAdYear, anchorAdMonth, 1)).getBS();
+  if (system === 'AD') return buildAdMonth(anchor.year, anchor.month, tKey);
+  const bs = NepaliDate.fromAD(new Date(anchor.year, anchor.month, anchor.day)).getBS();
   return buildBsMonth(bs.year, bs.month, tKey);
 }
 
 /** Steps the anchor by one full month in the currently displayed system,
- * then returns the new anchor back in AD terms. */
-export function stepAnchor(
-  system: CalendarSystem,
-  anchorAdYear: number,
-  anchorAdMonth: number,
-  direction: 1 | -1
-): { year: number; month: number } {
+ * then returns the new anchor back in AD terms (year, month, and the
+ * actual day the new BS month's 1st fell on — see CalendarAnchor). */
+export function stepAnchor(system: CalendarSystem, anchor: CalendarAnchor, direction: 1 | -1): CalendarAnchor {
   if (system === 'AD') {
-    const d = new Date(anchorAdYear, anchorAdMonth + direction, 1);
-    return { year: d.getFullYear(), month: d.getMonth() };
+    const d = new Date(anchor.year, anchor.month + direction, 1);
+    return { year: d.getFullYear(), month: d.getMonth(), day: 1 };
   }
-  const bs = NepaliDate.fromAD(new Date(anchorAdYear, anchorAdMonth, 1)).getBS();
+  const bs = NepaliDate.fromAD(new Date(anchor.year, anchor.month, anchor.day)).getBS();
   const nextBs = new NepaliDate(bs.year, bs.month + direction, 1);
   const ad = nextBs.getAD();
-  return { year: ad.year, month: ad.month };
+  return { year: ad.year, month: ad.month, day: ad.date };
 }
 
-export function todayAnchor(): { year: number; month: number } {
+export function todayAnchor(): CalendarAnchor {
   const d = new Date();
-  return { year: d.getFullYear(), month: d.getMonth() };
+  return { year: d.getFullYear(), month: d.getMonth(), day: d.getDate() };
 }
 
 /** Formats an AD date key (YYYY-MM-DD) for display in whichever calendar
