@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
+import Badge from '@/components/Badge';
 import {
   buildPeriodOptions,
   currentSystemYearMonth,
@@ -12,8 +13,24 @@ import {
   type CalendarPeriod,
 } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { computeDayStatus, resolveShift } from '@/lib/shift';
+import { computeDayStatus, formatMinutes, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
+
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+type DayDetail = {
+  date: string;
+  checkIn: string | null;
+  checkOut: string | null;
+  hours: number;
+  overtime: number;
+  lateMinutes: number;
+  earlyMinutes: number;
+  status: 'Present' | 'Late' | 'Absent';
+  pending?: boolean;
+};
 
 export default function PayrollPage() {
   const { system } = useCalendarSystem();
@@ -38,6 +55,8 @@ export default function PayrollPage() {
   // Overtime pay is optional per employee (some employees just aren't paid
   // extra for it) — on by default, toggled off per row.
   const [overtimeEnabled, setOvertimeEnabled] = useState<Record<string, boolean>>({});
+  // Which employee's day-1-to-day-31 breakdown is open in the detail modal.
+  const [detailEmployeeId, setDetailEmployeeId] = useState<string | null>(null);
 
   const { start, end } = period;
 
@@ -185,6 +204,57 @@ export default function PayrollPage() {
     }
     return Array.from(map.values());
   }, [summaries, logs, shifts, employees, start, end]);
+
+  // Day 1 through the period's last day for one employee — the detail
+  // modal's content. Same summary/live-compute-from-punches fallback as
+  // byEmployee above and the Attendance Report page, just per-day instead
+  // of aggregated, and only computed for whichever employee's modal is open.
+  function employeeDayRows(employeeId: string): DayDetail[] {
+    const emp = employees.find(e => e.id === employeeId);
+    if (!emp) return [];
+    const shift = resolveShift(emp, shifts);
+    const days: string[] = [];
+    const cur = new Date(start + 'T00:00:00Z');
+    const endDate = new Date(end + 'T00:00:00Z');
+    while (cur <= endDate) {
+      days.push(cur.toISOString().slice(0, 10));
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+
+    return days.map(day => {
+      const summary = summaries.find(s => s.employee_id === employeeId && s.work_date === day);
+      if (summary) {
+        return {
+          date: day,
+          checkIn: summary.check_in,
+          checkOut: summary.check_out,
+          hours: Number(summary.total_hours),
+          overtime: Number(summary.overtime_hours),
+          lateMinutes: summary.is_late ? summary.late_minutes : 0,
+          earlyMinutes: summary.is_early_departure ? summary.early_departure_minutes : 0,
+          status: summary.is_late ? 'Late' : 'Present',
+        };
+      }
+      const dayLogs = logs
+        .filter(l => l.employee_id === employeeId && l.punch_time.slice(0, 10) === day)
+        .sort((a, b) => a.punch_time.localeCompare(b.punch_time));
+      if (dayLogs.length === 0) {
+        return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status: 'Absent' };
+      }
+      const live = computeDayStatus(dayLogs, shift);
+      return {
+        date: day,
+        checkIn: live.checkIn.punch_time,
+        checkOut: live.checkOut?.punch_time ?? null,
+        hours: live.totalMinutes / 60,
+        overtime: live.overtimeMinutes / 60,
+        lateMinutes: live.lateMinutes,
+        earlyMinutes: live.earlyMinutes,
+        status: live.isLate ? 'Late' : 'Present',
+        pending: true,
+      };
+    });
+  }
 
   const totals = useMemo(() => {
     const totalHours = byEmployee.reduce((s, r) => s + r.hours, 0);
@@ -346,6 +416,9 @@ export default function PayrollPage() {
     reload();
   }
 
+  const detailEmployee = detailEmployeeId ? employees.find(e => e.id === detailEmployeeId) ?? null : null;
+  const detailRows = detailEmployee ? employeeDayRows(detailEmployee.id) : [];
+
   return (
     <AppShell title="Attendance-based Payroll Controller">
       <div className="mb-5 flex flex-wrap items-center gap-3">
@@ -498,7 +571,12 @@ export default function PayrollPage() {
             <div key={row.id} className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="truncate font-medium text-ink">{row.name}</div>
+                  <button
+                    onClick={() => setDetailEmployeeId(row.id)}
+                    className="truncate font-medium text-ink hover:text-accent hover:underline"
+                  >
+                    {row.name}
+                  </button>
                   <div className="text-xs text-slate-500">
                     ID {row.enrollId} · {row.days} days · {row.lateDays} late
                   </div>
@@ -557,7 +635,11 @@ export default function PayrollPage() {
             {byEmployee.map(row => (
               <tr key={row.id} className="border-b border-slate-100 last:border-0">
                 <td className="px-4 py-3 text-slate-600">{row.enrollId}</td>
-                <td className="px-4 py-3 font-medium text-ink">{row.name}</td>
+                <td className="px-4 py-3 font-medium text-ink">
+                  <button onClick={() => setDetailEmployeeId(row.id)} className="hover:text-accent hover:underline">
+                    {row.name}
+                  </button>
+                </td>
                 <td className="px-4 py-3 text-slate-600">{row.days}</td>
                 <td className="px-4 py-3 text-slate-600">{row.hours.toFixed(1)} hrs</td>
                 <td className="px-4 py-3 text-slate-600">{row.overtime.toFixed(1)} hrs</td>
@@ -581,6 +663,60 @@ export default function PayrollPage() {
         </table>
         </div>
       </div>
+
+      {detailEmployee && (
+        <div
+          className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 p-4"
+          onClick={() => setDetailEmployeeId(null)}
+        >
+          <div
+            className="flex w-full max-w-2xl max-h-[85vh] flex-col rounded-xl bg-white shadow-lg"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-4 sm:p-6">
+              <div>
+                <h3 className="text-lg font-semibold text-ink">{detailEmployee.name}</h3>
+                <p className="text-xs text-slate-500">
+                  ID {detailEmployee.fingerprint_id ?? '—'} · {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)} (
+                  {daysInRange}d)
+                </p>
+              </div>
+              <button
+                onClick={() => setDetailEmployeeId(null)}
+                aria-label="Close"
+                className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <CloseIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-4 sm:p-6">
+              {detailRows.map(d => (
+                <div key={d.date} className="border-b border-slate-100 py-2.5 last:border-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-ink">{formatAdDate(d.date, system)}</span>
+                    <div className="flex flex-wrap justify-end gap-1.5">
+                      <Badge tone={d.status === 'Present' ? 'good' : d.status === 'Late' ? 'warning' : 'critical'}>{d.status}</Badge>
+                      {d.status !== 'Present' && d.checkIn && d.checkOut && <Badge tone="good">Present</Badge>}
+                    </div>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                    <span>
+                      {d.checkIn ? fmtTime(d.checkIn) : '–:–'} – {d.checkOut ? fmtTime(d.checkOut) : '–:–'}
+                    </span>
+                    <span>
+                      {d.hours.toFixed(1)}h{d.pending && ' (live)'}
+                    </span>
+                    {d.overtime > 0 && <span className="font-medium text-info-text">OT {d.overtime.toFixed(1)}h</span>}
+                    {d.lateMinutes > 0 && <span className="font-medium text-warning-text">Late {formatMinutes(d.lateMinutes)}</span>}
+                    {d.earlyMinutes > 0 && <span className="font-medium text-warning-text">Early {formatMinutes(d.earlyMinutes)}</span>}
+                  </div>
+                </div>
+              ))}
+              {detailRows.length === 0 && <p className="py-8 text-center text-sm text-slate-400">No days in this period.</p>}
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }
@@ -589,6 +725,14 @@ function EditIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function CloseIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M18 6 6 18M6 6l12 12" />
     </svg>
   );
 }
