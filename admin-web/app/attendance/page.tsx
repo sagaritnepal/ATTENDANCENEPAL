@@ -20,6 +20,8 @@ type Row = {
   checkOut: string | null;
   hours: number;
   status: 'Present' | 'Late' | 'Absent';
+  lateMinutes: number;
+  earlyMinutes: number;
   overtime: number;
   /** No payroll_summaries row yet (only computed by the nightly job or
    * "Recalculate month" on the Payroll page) — hours/late status aren't
@@ -135,6 +137,8 @@ function AttendanceView() {
             checkOut: summary.check_out,
             hours: summary.total_hours,
             status: summary.is_late ? 'Late' : 'Present',
+            lateMinutes: summary.is_late ? summary.late_minutes : 0,
+            earlyMinutes: summary.is_early_departure ? summary.early_departure_minutes : 0,
             overtime: summary.overtime_hours,
           });
         } else if (dayLogs.length > 0) {
@@ -151,6 +155,8 @@ function AttendanceView() {
             checkOut: dayLogs.length > 1 ? dayLogs[dayLogs.length - 1].punch_time : null,
             hours: 0,
             status: 'Present',
+            lateMinutes: 0,
+            earlyMinutes: 0,
             overtime: 0,
             pending: true,
           });
@@ -164,6 +170,8 @@ function AttendanceView() {
             checkOut: null,
             hours: 0,
             status: 'Absent',
+            lateMinutes: 0,
+            earlyMinutes: 0,
             overtime: 0,
           });
         }
@@ -177,11 +185,23 @@ function AttendanceView() {
     const late = rows.filter(r => r.status === 'Late').length;
     const absent = rows.filter(r => r.status === 'Absent').length;
     const totalHours = rows.reduce((sum, r) => sum + (r.pending ? 0 : r.hours), 0);
-    return { present, late, absent, totalHours };
+    const overtimeHours = rows.reduce((sum, r) => sum + (r.pending ? 0 : r.overtime), 0);
+    return { present, late, absent, totalHours, overtimeHours };
   }, [rows]);
 
   function exportCsv() {
-    const header = ['Date', 'Employee', 'Device', 'Check-In', 'Check-Out', 'Hours Worked', 'Status', 'Overtime'];
+    const header = [
+      'Date',
+      'Employee',
+      'Device',
+      'Check-In',
+      'Check-Out',
+      'Late By (min)',
+      'Early Out (min)',
+      'Total Work Hours',
+      'Overtime',
+      'Status',
+    ];
     const lines = rows.map(r =>
       [
         r.date,
@@ -189,9 +209,11 @@ function AttendanceView() {
         r.device,
         r.checkIn ? new Date(r.checkIn).toLocaleTimeString() : '',
         r.checkOut ? new Date(r.checkOut).toLocaleTimeString() : '',
+        r.lateMinutes || '',
+        r.earlyMinutes || '',
         r.hours.toFixed(1),
-        r.status,
         r.overtime.toFixed(1),
+        r.status,
       ]
         .map(v => `"${String(v).replace(/"/g, '""')}"`)
         .join(',')
@@ -208,11 +230,12 @@ function AttendanceView() {
 
   return (
     <AppShell title="Attendance Report">
-      <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatCard label="Present" value={String(summaryCounts.present)} />
         <StatCard label="Late" value={String(summaryCounts.late)} />
         <StatCard label="Absent" value={String(summaryCounts.absent)} />
-        <StatCard label="Total Hours" value={summaryCounts.totalHours.toFixed(1)} />
+        <StatCard label="Total Work Hours" value={summaryCounts.totalHours.toFixed(1)} />
+        <StatCard label="Overtime" value={`${summaryCounts.overtimeHours.toFixed(1)} hrs`} />
       </div>
 
       <div className="mb-5 space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -269,24 +292,29 @@ function AttendanceView() {
             ))}
           </div>
           <span className="text-xs text-slate-400">or pick dates manually</span>
-          <div className="w-40">
-            <DatePicker
-              value={from}
-              onChange={v => {
-                setFrom(v);
-                setActivePreset(null);
-              }}
-            />
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-slate-400">From</span>
+            <div className="w-48">
+              <DatePicker
+                value={from}
+                onChange={v => {
+                  setFrom(v);
+                  setActivePreset(null);
+                }}
+              />
+            </div>
           </div>
-          <span className="text-slate-400">–</span>
-          <div className="w-40">
-            <DatePicker
-              value={to}
-              onChange={v => {
-                setTo(v);
-                setActivePreset(null);
-              }}
-            />
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-slate-400">To</span>
+            <div className="w-48">
+              <DatePicker
+                value={to}
+                onChange={v => {
+                  setTo(v);
+                  setActivePreset(null);
+                }}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -300,9 +328,11 @@ function AttendanceView() {
               <th className="px-5 py-3 font-medium">Device</th>
               <th className="px-5 py-3 font-medium">Check-In</th>
               <th className="px-5 py-3 font-medium">Check-Out</th>
-              <th className="px-5 py-3 font-medium">Hours Worked</th>
-              <th className="px-5 py-3 font-medium">Status</th>
+              <th className="px-5 py-3 font-medium">Late By</th>
+              <th className="px-5 py-3 font-medium">Early Out</th>
+              <th className="px-5 py-3 font-medium">Total Work Hours</th>
               <th className="px-5 py-3 font-medium">Overtime</th>
+              <th className="px-5 py-3 font-medium">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -313,16 +343,30 @@ function AttendanceView() {
                 <td className="px-5 py-3 text-slate-600">{r.device}</td>
                 <td className="px-5 py-3 text-slate-600">{r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '–:–'}</td>
                 <td className="px-5 py-3 text-slate-600">{r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '–:–'}</td>
+                <td className="px-5 py-3">
+                  {r.lateMinutes > 0 ? (
+                    <span className="font-medium text-warning-text">{r.lateMinutes} min</span>
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  )}
+                </td>
+                <td className="px-5 py-3">
+                  {r.earlyMinutes > 0 ? (
+                    <span className="font-medium text-warning-text">{r.earlyMinutes} min</span>
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  )}
+                </td>
                 <td className="px-5 py-3 text-slate-600">{r.pending ? 'Pending calc' : `${r.hours.toFixed(1)} hrs`}</td>
+                <td className="px-5 py-3 text-slate-600">{r.pending ? '–' : `${r.overtime.toFixed(1)} hr`}</td>
                 <td className="px-5 py-3">
                   <Badge tone={r.status === 'Present' ? 'good' : r.status === 'Late' ? 'warning' : 'critical'}>{r.status}</Badge>
                 </td>
-                <td className="px-5 py-3 text-slate-600">{r.pending ? '–' : `${r.overtime.toFixed(1)} hr`}</td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-5 py-8 text-center text-slate-400">
+                <td colSpan={10} className="px-5 py-8 text-center text-slate-400">
                   No records in this range.
                 </td>
               </tr>

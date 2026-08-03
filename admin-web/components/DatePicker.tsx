@@ -101,9 +101,9 @@ export default function DatePicker({
         ref={triggerRef}
         type="button"
         onClick={() => (open ? setOpen(false) : openPicker())}
-        className={`flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left text-sm hover:border-accent/40 ${className ?? ''}`}
+        className={`flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left text-sm hover:border-accent/40 ${className ?? ''}`}
       >
-        <span className={displayValue ? 'text-ink' : 'text-slate-400'}>{displayValue || placeholder}</span>
+        <span className={`truncate whitespace-nowrap ${displayValue ? 'text-ink' : 'text-slate-400'}`}>{displayValue || placeholder}</span>
         <CalendarGlyph className="h-4 w-4 shrink-0 text-slate-400" />
       </button>
       {open &&
