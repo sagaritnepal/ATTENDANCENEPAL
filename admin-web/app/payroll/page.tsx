@@ -682,7 +682,7 @@ export default function PayrollPage() {
           onClick={() => setDetailEmployeeId(null)}
         >
           <div
-            className="flex w-full max-w-2xl max-h-[85vh] flex-col rounded-xl bg-white shadow-lg"
+            className="flex w-full max-w-4xl max-h-[85vh] flex-col rounded-xl bg-white shadow-lg"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-4 sm:p-6">
@@ -701,42 +701,110 @@ export default function PayrollPage() {
                 <CloseIcon className="h-5 w-5" />
               </button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
-              {detailRows.map(d => {
-                const earning = dailySalaryEarning(d);
-                return (
-                  <div key={d.date} className="border-b border-slate-100 py-2.5 last:border-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium text-ink">{formatAdDate(d.date, system)}</span>
-                      <div className="flex flex-wrap justify-end gap-1.5">
-                        <Badge tone={d.status === 'Present' ? 'good' : d.status === 'Late' ? 'warning' : 'critical'}>{d.status}</Badge>
-                        {d.status !== 'Present' && d.checkIn && d.checkOut && <Badge tone="good">Present</Badge>}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {/* Phones: same card list as before. Desktop: a real table
+                  using the report table's own column names (Total Hours,
+                  Overtime, Calculated Salary, Overtime Salary, Total
+                  Salary), just one row per day instead of per employee. */}
+              <div className="p-4 md:hidden">
+                {detailRows.map(d => {
+                  const earning = dailySalaryEarning(d);
+                  return (
+                    <div key={d.date} className="border-b border-slate-100 py-2.5 last:border-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-ink">{formatAdDate(d.date, system)}</span>
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          <Badge tone={d.status === 'Present' ? 'good' : d.status === 'Late' ? 'warning' : 'critical'}>{d.status}</Badge>
+                          {d.status !== 'Present' && d.checkIn && d.checkOut && <Badge tone="good">Present</Badge>}
+                        </div>
                       </div>
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                      <span>
-                        {d.checkIn ? fmtTime(d.checkIn) : '–:–'} – {d.checkOut ? fmtTime(d.checkOut) : '–:–'}
-                      </span>
-                      <span>
-                        {d.hours.toFixed(1)}h{d.pending && ' (live)'}
-                      </span>
-                      {d.overtime > 0 && <span className="font-medium text-info-text">OT {d.overtime.toFixed(1)}h</span>}
-                      {d.lateMinutes > 0 && <span className="font-medium text-warning-text">Late {formatMinutes(d.lateMinutes)}</span>}
-                      {d.earlyMinutes > 0 && <span className="font-medium text-warning-text">Early {formatMinutes(d.earlyMinutes)}</span>}
-                    </div>
-                    {earning && (
-                      <div className="mt-1.5 flex items-center justify-between text-xs">
-                        <span className="text-slate-400">
-                          Salary {Math.round(earning.base).toLocaleString()}
-                          {earning.overtime > 0 && ` + OT ${Math.round(earning.overtime).toLocaleString()}`}
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                        <span>
+                          {d.checkIn ? fmtTime(d.checkIn) : '–:–'} – {d.checkOut ? fmtTime(d.checkOut) : '–:–'}
                         </span>
-                        <span className="font-semibold text-ink">{Math.round(earning.total).toLocaleString()}</span>
+                        <span>
+                          {d.hours.toFixed(1)}h{d.pending && ' (live)'}
+                        </span>
+                        {d.overtime > 0 && <span className="font-medium text-info-text">OT {d.overtime.toFixed(1)}h</span>}
+                        {d.lateMinutes > 0 && <span className="font-medium text-warning-text">Late {formatMinutes(d.lateMinutes)}</span>}
+                        {d.earlyMinutes > 0 && <span className="font-medium text-warning-text">Early {formatMinutes(d.earlyMinutes)}</span>}
                       </div>
+                      {earning && (
+                        <div className="mt-1.5 flex items-center justify-between text-xs">
+                          <span className="text-slate-400">
+                            Salary {Math.round(earning.base).toLocaleString()}
+                            {earning.overtime > 0 && ` + OT ${Math.round(earning.overtime).toLocaleString()}`}
+                          </span>
+                          <span className="font-semibold text-ink">{Math.round(earning.total).toLocaleString()}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {detailRows.length === 0 && <p className="py-8 text-center text-sm text-slate-400">No days in this period.</p>}
+              </div>
+
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                      <th className="whitespace-nowrap px-4 py-2.5 font-medium">Date</th>
+                      <th className="whitespace-nowrap px-4 py-2.5 font-medium">Check-In</th>
+                      <th className="whitespace-nowrap px-4 py-2.5 font-medium">Check-Out</th>
+                      <th className="whitespace-nowrap px-4 py-2.5 font-medium">Total Hours</th>
+                      <th className="whitespace-nowrap px-4 py-2.5 font-medium">Overtime</th>
+                      <th className="whitespace-nowrap px-4 py-2.5 font-medium">Late By</th>
+                      <th className="whitespace-nowrap px-4 py-2.5 font-medium">Status</th>
+                      <th className="whitespace-nowrap px-4 py-2.5 font-medium">Calculated Salary</th>
+                      <th className="whitespace-nowrap px-4 py-2.5 font-medium">Overtime Salary</th>
+                      <th className="whitespace-nowrap px-4 py-2.5 font-medium">Total Salary</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailRows.map(d => {
+                      const earning = dailySalaryEarning(d);
+                      return (
+                        <tr key={d.date} className="border-b border-slate-100 last:border-0">
+                          <td className="whitespace-nowrap px-4 py-2.5 text-slate-600">{formatAdDate(d.date, system)}</td>
+                          <td className="px-4 py-2.5 text-slate-600">{d.checkIn ? fmtTime(d.checkIn) : '–:–'}</td>
+                          <td className="px-4 py-2.5 text-slate-600">{d.checkOut ? fmtTime(d.checkOut) : '–:–'}</td>
+                          <td className="px-4 py-2.5 text-slate-600">
+                            {d.hours.toFixed(1)} hrs{d.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600">{d.overtime.toFixed(1)} hrs</td>
+                          <td className="px-4 py-2.5">
+                            {d.lateMinutes > 0 ? (
+                              <span className="font-medium text-warning-text">{formatMinutes(d.lateMinutes)}</span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <div className="flex flex-wrap gap-1.5">
+                              <Badge tone={d.status === 'Present' ? 'good' : d.status === 'Late' ? 'warning' : 'critical'}>{d.status}</Badge>
+                              {d.status !== 'Present' && d.checkIn && d.checkOut && <Badge tone="good">Present</Badge>}
+                            </div>
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600">{earning ? Math.round(earning.base).toLocaleString() : '—'}</td>
+                          <td className="px-4 py-2.5 text-slate-600">
+                            {earning ? Math.round(earning.overtime).toLocaleString() : '—'}
+                          </td>
+                          <td className="px-4 py-2.5 font-medium text-ink">
+                            {earning ? Math.round(earning.total).toLocaleString() : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {detailRows.length === 0 && (
+                      <tr>
+                        <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
+                          No days in this period.
+                        </td>
+                      </tr>
                     )}
-                  </div>
-                );
-              })}
-              {detailRows.length === 0 && <p className="py-8 text-center text-sm text-slate-400">No days in this period.</p>}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             {detailRow && (
