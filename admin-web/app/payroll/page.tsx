@@ -3,22 +3,27 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
+import DatePicker from '@/components/DatePicker';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { computeDayStatus, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
 
-function monthBounds(offset: number) {
-  const now = new Date();
-  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
+function monthBounds(year: number, month: number) {
+  const d = new Date(Date.UTC(year, month, 1));
   const start = d.toISOString().slice(0, 10);
-  const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+  const end = new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10);
   return { start, end };
+}
+
+function currentAnchor() {
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth() };
 }
 
 export default function PayrollPage() {
   const { system } = useCalendarSystem();
-  const [offset, setOffset] = useState(0);
+  const [anchor, setAnchor] = useState(currentAnchor);
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -27,7 +32,20 @@ export default function PayrollPage() {
   const [pendingSalary, setPendingSalary] = useState<Record<string, string>>({});
   const [savingRowId, setSavingRowId] = useState<string | null>(null);
 
-  const { start, end } = monthBounds(offset);
+  const { start, end } = monthBounds(anchor.year, anchor.month);
+
+  function stepMonth(delta: number) {
+    setAnchor(a => {
+      const d = new Date(a.year, a.month + delta, 1);
+      return { year: d.getFullYear(), month: d.getMonth() };
+    });
+  }
+
+  function jumpToDate(adKey: string) {
+    const [y, m] = adKey.split('-').map(Number);
+    if (!y || !m) return;
+    setAnchor({ year: y, month: m - 1 });
+  }
 
   // Same data + same live-calc fallback the Attendance Report page uses
   // (payroll_summaries where the nightly job has run, computeDayStatus()
@@ -193,13 +211,16 @@ export default function PayrollPage() {
 
   return (
     <AppShell title="Attendance-based Payroll Controller">
-      <div className="mb-5 flex items-center justify-between">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => setOffset(o => o - 1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">←</button>
+          <button onClick={() => stepMonth(-1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">←</button>
           <span className="font-semibold text-ink">
             {formatAdDate(start, system)} – {formatAdDate(end, system)}
           </span>
-          <button onClick={() => setOffset(o => o + 1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">→</button>
+          <button onClick={() => stepMonth(1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">→</button>
+          <div className="w-40">
+            <DatePicker value={start} onChange={jumpToDate} placeholder="Jump to month" />
+          </div>
         </div>
         <button
           onClick={recalculateMonth}
@@ -210,31 +231,31 @@ export default function PayrollPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 lg:grid-cols-5">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <span className="text-sm text-slate-500">Total Salary Payable</span>
-          <div className="mt-2 text-lg font-bold text-ink">{totals.totalSalaryPayable.toLocaleString()}</div>
-          <div className="mt-1 text-xs text-slate-500">Earned so far this period</div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <span className="text-xs text-slate-500">Total Salary Payable</span>
+          <div className="mt-1 text-base font-bold text-ink">{totals.totalSalaryPayable.toLocaleString()}</div>
+          <div className="mt-0.5 text-[11px] text-slate-500">Earned so far this period</div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <span className="text-sm text-slate-500">Total Employees Salary</span>
-          <div className="mt-2 text-lg font-bold text-ink">{totals.totalEmployeeSalary.toLocaleString()}</div>
-          <div className="mt-1 text-xs text-slate-500">Full monthly salary, all staff</div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <span className="text-xs text-slate-500">Total Employees Salary</span>
+          <div className="mt-1 text-base font-bold text-ink">{totals.totalEmployeeSalary.toLocaleString()}</div>
+          <div className="mt-0.5 text-[11px] text-slate-500">Full monthly salary, all staff</div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <span className="text-sm text-slate-500">Overtime Tracked</span>
-          <div className="mt-2 text-lg font-bold text-ink">{totals.overtimeHours.toFixed(1)} hrs</div>
-          <div className="mt-1 text-xs text-slate-500">This period</div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <span className="text-xs text-slate-500">Overtime Tracked</span>
+          <div className="mt-1 text-base font-bold text-ink">{totals.overtimeHours.toFixed(1)} hrs</div>
+          <div className="mt-0.5 text-[11px] text-slate-500">This period</div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <span className="text-sm text-slate-500">Total Payable Hours</span>
-          <div className="mt-2 text-lg font-bold text-ink">{totals.totalHours.toFixed(1)} hrs</div>
-          <div className="mt-1 text-xs text-slate-500">Across {employees.length} staff</div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <span className="text-xs text-slate-500">Total Payable Hours</span>
+          <div className="mt-1 text-base font-bold text-ink">{totals.totalHours.toFixed(1)} hrs</div>
+          <div className="mt-0.5 text-[11px] text-slate-500">Across {employees.length} staff</div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <span className="text-sm text-slate-500">Average Attendance</span>
-          <div className="mt-2 text-lg font-bold text-ink">{totals.attendancePct}%</div>
-          <div className="mt-1 text-xs text-slate-500">Worked days vs possible</div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <span className="text-xs text-slate-500">Average Attendance</span>
+          <div className="mt-1 text-base font-bold text-ink">{totals.attendancePct}%</div>
+          <div className="mt-0.5 text-[11px] text-slate-500">Worked days vs possible</div>
         </div>
       </div>
 
