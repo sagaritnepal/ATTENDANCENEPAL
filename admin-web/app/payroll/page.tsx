@@ -561,7 +561,7 @@ export default function PayrollPage() {
                   {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
                 </td>
                 <td className="pl-2 pr-4 py-3 text-slate-600">
-                  <div className="flex flex-col items-start gap-1">
+                  <div className="flex items-center justify-start gap-3">
                     <button
                       type="button"
                       onClick={() => setOvertimeEnabled(m => ({ ...m, [row.id]: !otOn }))}
@@ -569,7 +569,7 @@ export default function PayrollPage() {
                       className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${otOn ? 'bg-good' : 'bg-slate-300'}`}
                     >
                       {/* A flex-positioned knob (not absolute+left-less) so it can never
-                          drift outside the pill and overlap the amount below it. */}
+                          drift outside the pill and overlap the amount beside it. */}
                       <span
                         className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
                           otOn ? 'translate-x-[18px]' : 'translate-x-0.5'
