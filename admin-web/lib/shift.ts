@@ -28,7 +28,18 @@ export type DayStatus = {
   hasOut: boolean;
   isLate: boolean;
   isEarly: boolean;
+  checkIn: AttendanceLog;
+  checkOut: AttendanceLog | null;
+  lateMinutes: number;
+  earlyMinutes: number;
 };
+
+/** Minutes -> "H:MM", for late-by / early-by durations. */
+export function formatMinutes(minutes: number) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}:${String(m).padStart(2, '0')}`;
+}
 
 function toMinutes(hhmm: string) {
   const [h, m] = hhmm.slice(0, 5).split(':').map(Number);
@@ -62,8 +73,22 @@ export function computeDayStatus(
 
   const shiftStartMin = toMinutes(shift.start_time);
   const shiftEndMin = toMinutes(shift.end_time);
-  const isLate = punchMinuteOfDay(checkIn.punch_time) > shiftStartMin + shift.grace_minutes;
-  const isEarly = hasOut ? punchMinuteOfDay(checkOut!.punch_time) < shiftEndMin : false;
+  const inMin = punchMinuteOfDay(checkIn.punch_time);
+  const isLate = inMin > shiftStartMin + shift.grace_minutes;
+  const lateMinutes = isLate ? inMin - shiftStartMin : 0;
 
-  return { hasIn: true, hasOut, isLate, isEarly };
+  const outMin = hasOut ? punchMinuteOfDay(checkOut!.punch_time) : null;
+  const isEarly = outMin !== null && outMin < shiftEndMin;
+  const earlyMinutes = isEarly ? shiftEndMin - outMin! : 0;
+
+  return {
+    hasIn: true,
+    hasOut,
+    isLate,
+    isEarly,
+    checkIn,
+    checkOut: hasOut ? checkOut : null,
+    lateMinutes,
+    earlyMinutes,
+  };
 }

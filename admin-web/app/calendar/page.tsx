@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import MonthCalendar from '@/components/MonthCalendar';
 import { localDateKey } from '@/lib/calendar';
-import { computeDayStatus, resolveShift } from '@/lib/shift';
+import { computeDayStatus, formatMinutes, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Employee, Shift } from '@/lib/types';
 
 const WINDOW_DAYS = 400;
@@ -61,6 +61,13 @@ export default function CalendarPage() {
     return map;
   }, [logs, employees, employeeId, shifts]);
 
+  const selectedDaySummary = useMemo(() => {
+    if (dayLogs.length === 0) return null;
+    const employee = employees.find(e => e.id === employeeId);
+    if (!employee) return null;
+    return computeDayStatus(dayLogs, resolveShift(employee, shifts));
+  }, [dayLogs, employees, employeeId, shifts]);
+
   useEffect(() => {
     if (!selectedDate || !employeeId) {
       setDayLogs([]);
@@ -108,25 +115,38 @@ export default function CalendarPage() {
             <p className="text-sm text-slate-400">Tap a date on the calendar to see punch times.</p>
           ) : dayLoading ? (
             <p className="text-sm text-slate-400">Loading…</p>
-          ) : dayLogs.length === 0 ? (
+          ) : !selectedDaySummary ? (
             <p className="text-sm text-slate-400">No punches recorded.</p>
           ) : (
             <div className="space-y-2">
-              {dayLogs.map(log => (
-                <div key={log.id} className="flex items-center gap-3">
-                  <span
-                    className={`w-12 shrink-0 rounded-md px-2 py-1 text-center text-xs font-bold ${
-                      log.punch_type === '0' ? 'bg-good-bg text-good-text' : 'bg-warning-bg text-warning-text'
-                    }`}
-                  >
-                    {log.punch_type === '0' ? 'IN' : 'OUT'}
+              <div className="flex items-center gap-3">
+                <span className="w-12 shrink-0 rounded-md bg-good-bg px-2 py-1 text-center text-xs font-bold text-good-text">
+                  IN
+                </span>
+                <span className="text-sm text-ink">
+                  {new Date(selectedDaySummary.checkIn.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+                <span className="text-xs capitalize text-slate-400">{selectedDaySummary.checkIn.method}</span>
+              </div>
+              {selectedDaySummary.checkOut && (
+                <div className="flex items-center gap-3">
+                  <span className="w-12 shrink-0 rounded-md bg-warning-bg px-2 py-1 text-center text-xs font-bold text-warning-text">
+                    OUT
                   </span>
                   <span className="text-sm text-ink">
-                    {new Date(log.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(selectedDaySummary.checkOut.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
-                  <span className="text-xs capitalize text-slate-400">{log.method}</span>
+                  <span className="text-xs capitalize text-slate-400">{selectedDaySummary.checkOut.method}</span>
                 </div>
-              ))}
+              )}
+              {selectedDaySummary.isLate && (
+                <p className="text-xs font-medium text-warning-text">Late by {formatMinutes(selectedDaySummary.lateMinutes)}</p>
+              )}
+              {selectedDaySummary.isEarly && (
+                <p className="text-xs font-medium text-critical-text">
+                  Early out by {formatMinutes(selectedDaySummary.earlyMinutes)}
+                </p>
+              )}
             </div>
           )}
         </div>

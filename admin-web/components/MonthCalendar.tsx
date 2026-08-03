@@ -61,9 +61,9 @@ export default function MonthCalendar({ dayStatus, selectedDate, onSelectDate }:
             >
               {cell.displayDay}
               {status && !selected && (status.isLate || status.isEarly) && (
-                <span className="absolute bottom-1 left-1/2 flex -translate-x-1/2 gap-0.5">
-                  {status.isLate && <span className="h-1 w-1 rounded-full bg-warning" title="Late in" />}
-                  {status.isEarly && <span className="h-1 w-1 rounded-full bg-critical" title="Early out" />}
+                <span className="absolute bottom-1 left-1/2 flex -translate-x-1/2 gap-1">
+                  {status.isLate && <span className="h-2 w-2 rounded-full bg-warning" title="Late in" />}
+                  {status.isEarly && <span className="h-2 w-2 rounded-full bg-critical" title="Early out" />}
                 </span>
               )}
             </button>
@@ -79,10 +79,10 @@ export default function MonthCalendar({ dayStatus, selectedDate, onSelectDate }:
           <span className="h-2.5 w-2.5 rounded-sm bg-good-bg" /> Checked out
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-1.5 w-1.5 rounded-full bg-warning" /> Late in
+          <span className="h-3 w-3 rounded-full bg-warning" /> Late in
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-1.5 w-1.5 rounded-full bg-critical" /> Early out
+          <span className="h-3 w-3 rounded-full bg-critical" /> Early out
         </span>
       </div>
     </div>
