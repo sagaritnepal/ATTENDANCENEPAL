@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
@@ -22,6 +22,18 @@ export default function EmployeeShell({ title, children }: { title: string; chil
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [linked, setLinked] = useState(true);
   const [isHr, setIsHr] = useState(false);
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showAccountMenu) return;
+    function handlePointerDown(e: MouseEvent) {
+      if (accountMenuRef.current?.contains(e.target as Node)) return;
+      setShowAccountMenu(false);
+    }
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [showAccountMenu]);
 
   useEffect(() => {
     if (!supabaseConfigured) return;
@@ -81,20 +93,33 @@ export default function EmployeeShell({ title, children }: { title: string; chil
     <div className="flex min-h-screen flex-col bg-slate-50">
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent/10 text-sm font-semibold text-accent">
-            {photoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={photoUrl} alt={name} className="h-full w-full object-cover" />
-            ) : (
-              name.slice(0, 1)
+          <div ref={accountMenuRef} className="relative">
+            <button
+              onClick={() => setShowAccountMenu(v => !v)}
+              title="Account"
+              className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent/10 text-sm font-semibold text-accent"
+            >
+              {photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={photoUrl} alt={name} className="h-full w-full object-cover" />
+              ) : (
+                name.slice(0, 1)
+              )}
+            </button>
+            {showAccountMenu && (
+              <div className="absolute left-0 top-full z-20 mt-2 w-32 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                <button
+                  onClick={handleSignOut}
+                  className="w-full px-3 py-2 text-left text-sm font-medium text-critical hover:bg-slate-50"
+                >
+                  Sign out
+                </button>
+              </div>
             )}
           </div>
-          <div>
-            <div className="text-xs text-slate-400">{title}</div>
-            <div className="text-base font-semibold text-ink">{name}</div>
-          </div>
+          <div className="text-xs text-slate-400">{title}</div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <CalendarSystemSwitch />
           {isHr && (
             <Link
@@ -104,12 +129,7 @@ export default function EmployeeShell({ title, children }: { title: string; chil
               Admin Dashboard
             </Link>
           )}
-          <button
-            onClick={handleSignOut}
-            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-          >
-            Sign out
-          </button>
+          <div className="text-base font-semibold text-ink">{name}</div>
         </div>
       </header>
 
