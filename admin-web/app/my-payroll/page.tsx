@@ -1,20 +1,22 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import NepaliDate from 'nepali-date-converter';
 import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import Badge from '@/components/Badge';
-import { formatAdDate } from '@/lib/calendar';
+import { formatAdDate, type CalendarSystem } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { computeDayStatus, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
 
-function monthBounds(offset: number) {
+function monthBounds(offset: number, system: CalendarSystem) {
   const now = new Date();
-  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
-  const start = d.toISOString().slice(0, 10);
-  const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
-  const label = d.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const start = new Date(Date.UTC(d.getFullYear(), d.getMonth(), 1)).toISOString().slice(0, 10);
+  const end = new Date(Date.UTC(d.getFullYear(), d.getMonth() + 1, 0)).toISOString().slice(0, 10);
+  const label =
+    system === 'AD' ? d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : NepaliDate.fromAD(d).format('MMMM YYYY');
   return { start, end, label };
 }
 
@@ -46,7 +48,7 @@ export default function MyPayrollPage() {
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
 
-  const { start, end, label } = monthBounds(offset);
+  const { start, end, label } = monthBounds(offset, system);
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {

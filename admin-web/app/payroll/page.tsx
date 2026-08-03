@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import NepaliDate from 'nepali-date-converter';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
-import { formatAdDate } from '@/lib/calendar';
+import { formatAdDate, type CalendarSystem } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { computeDayStatus, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
@@ -22,6 +23,16 @@ const MONTH_NAMES = [
   'November',
   'December',
 ];
+
+/** Month-picker option label for AD month `month` (0-indexed) of `year` —
+ * the AD English name in AD mode, or the Nepali (BS) month name that AD
+ * month's 1st falls in when the page is switched to BS. The month index
+ * selected always stays an AD month (that's what the payroll period and
+ * daysInRange are computed from); only the label changes. */
+function monthOptionLabel(year: number, month: number, system: CalendarSystem) {
+  if (system === 'AD') return MONTH_NAMES[month];
+  return NepaliDate.fromAD(new Date(year, month, 1)).format('MMMM');
+}
 
 function monthBounds(year: number, month: number) {
   const d = new Date(Date.UTC(year, month, 1));
@@ -242,18 +253,15 @@ export default function PayrollPage() {
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <button onClick={() => stepMonth(-1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">←</button>
-          <span className="font-semibold text-ink">
-            {formatAdDate(start, system)} – {formatAdDate(end, system)}
-          </span>
           <button onClick={() => stepMonth(1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">→</button>
           <select
             value={anchor.month}
             onChange={e => setAnchor(a => ({ ...a, month: Number(e.target.value) }))}
             className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-600"
           >
-            {MONTH_NAMES.map((name, i) => (
-              <option key={name} value={i}>
-                {name}
+            {MONTH_NAMES.map((_, i) => (
+              <option key={i} value={i}>
+                {monthOptionLabel(anchor.year, i, system)}
               </option>
             ))}
           </select>
