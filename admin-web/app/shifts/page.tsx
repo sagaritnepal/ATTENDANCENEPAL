@@ -85,32 +85,34 @@ export default function ShiftsPage() {
         {templateShifts.length === 0 && <p className="text-sm text-slate-400">No shift templates yet — create one to get started.</p>}
       </div>
 
-      <div className="mt-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="mt-8 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
         <h2 className="mb-4 text-base font-semibold text-ink">All Shifts</h2>
+        <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-              <th className="py-2 font-medium">Name</th>
-              <th className="py-2 font-medium">Type</th>
-              <th className="py-2 font-medium">Hours</th>
-              <th className="py-2 font-medium">Grace</th>
-              <th className="py-2 font-medium">Scope</th>
-              <th className="py-2 font-medium">Employees</th>
+              <th className="whitespace-nowrap py-2 pr-4 font-medium">Name</th>
+              <th className="whitespace-nowrap py-2 pr-4 font-medium">Type</th>
+              <th className="whitespace-nowrap py-2 pr-4 font-medium">Hours</th>
+              <th className="whitespace-nowrap py-2 pr-4 font-medium">Grace</th>
+              <th className="whitespace-nowrap py-2 pr-4 font-medium">Scope</th>
+              <th className="whitespace-nowrap py-2 font-medium">Employees</th>
             </tr>
           </thead>
           <tbody>
             {templateShifts.map(s => (
               <tr key={s.id} className="border-b border-slate-100 last:border-0">
-                <td className="py-2.5 font-medium text-ink">{s.name}</td>
-                <td className="py-2.5 capitalize text-slate-600">{s.type}</td>
-                <td className="py-2.5 text-slate-600">{formatShiftHours(s)}</td>
-                <td className="py-2.5 text-slate-600">{s.grace_minutes} min</td>
-                <td className="py-2.5 text-slate-600">{s.department ?? 'All'}</td>
-                <td className="py-2.5 text-slate-600">{countsByShift.get(s.id) ?? 0}</td>
+                <td className="whitespace-nowrap py-2.5 pr-4 font-medium text-ink">{s.name}</td>
+                <td className="whitespace-nowrap py-2.5 pr-4 capitalize text-slate-600">{s.type}</td>
+                <td className="whitespace-nowrap py-2.5 pr-4 text-slate-600">{formatShiftHours(s)}</td>
+                <td className="whitespace-nowrap py-2.5 pr-4 text-slate-600">{s.grace_minutes} min</td>
+                <td className="whitespace-nowrap py-2.5 pr-4 text-slate-600">{s.department ?? 'All'}</td>
+                <td className="whitespace-nowrap py-2.5 text-slate-600">{countsByShift.get(s.id) ?? 0}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {showForm && (

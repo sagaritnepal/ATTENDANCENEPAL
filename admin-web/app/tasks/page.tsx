@@ -159,7 +159,53 @@ export default function TasksPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="divide-y divide-slate-100 md:hidden">
+            {filtered.map(t => (
+              <div key={t.id} className="p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-xs text-slate-500">{employeeName(t.assigned_to)}</div>
+                    <div className="mt-0.5 flex items-center gap-2">
+                      <span className="font-medium text-ink">{t.title}</span>
+                      {t.source === 'self' && <Badge tone="info">Self-assigned</Badge>}
+                    </div>
+                  </div>
+                  <Badge tone={STATUS_TONE[t.status]}>{t.status.replace('_', ' ')}</Badge>
+                </div>
+                {t.description && <div className="mt-1 text-xs text-slate-400">{t.description}</div>}
+                {t.work_notes && (
+                  <div className="mt-1 text-xs text-slate-500">
+                    <span className="font-medium">Employee note:</span> {t.work_notes}
+                  </div>
+                )}
+                {t.review_note && (
+                  <div className="mt-1 text-xs text-slate-500">
+                    <span className="font-medium">Review note:</span> {t.review_note}
+                  </div>
+                )}
+                <div className="mt-2 text-xs text-slate-500">
+                  {t.points} pts · Due {formatAdDate(t.due_date, system)}
+                </div>
+                {t.status === 'submitted' ? (
+                  <button
+                    onClick={() => setReviewingTask(t)}
+                    className="mt-3 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent/90"
+                  >
+                    Review
+                  </button>
+                ) : (
+                  t.status !== 'pending' &&
+                  t.status !== 'in_progress' && <div className="mt-2 text-xs text-slate-400">Reviewed</div>
+                )}
+              </div>
+            ))}
+            {filtered.length === 0 && (
+              <p className="p-8 text-center text-sm text-slate-400">No {filter !== 'All' ? filter.replace('_', ' ') : ''} tasks.</p>
+            )}
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
@@ -222,6 +268,7 @@ export default function TasksPage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
 
         <Leaderboard />

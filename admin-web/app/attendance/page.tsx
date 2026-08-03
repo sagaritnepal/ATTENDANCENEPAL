@@ -342,7 +342,77 @@ function AttendanceView() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="max-h-[65vh] overflow-auto rounded-xl">
+        {/* Phones get a stacked card per record instead of the 12-column
+            table below — nothing to horizontally scroll through. */}
+        <div className="max-h-[70vh] divide-y divide-slate-100 overflow-y-auto md:hidden">
+          {rows.map(r => (
+            <div key={r.key} className="p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-ink">{r.employeeName}</div>
+                  <div className="text-xs text-slate-500">
+                    {r.enrollId} · {formatAdDate(r.date, system)}
+                  </div>
+                </div>
+                <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                  <Badge tone={r.status === 'Present' ? 'good' : r.status === 'Late' ? 'warning' : 'critical'}>{r.status}</Badge>
+                  {r.status !== 'Present' && r.checkIn && r.checkOut && <Badge tone="good">Present</Badge>}
+                </div>
+              </div>
+              <div className="mt-1.5 text-xs text-slate-500">{r.shiftLabel}</div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 text-sm">
+                <div>
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Check-In</dt>
+                  <dd className="text-ink">
+                    {r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Check-Out</dt>
+                  <dd className="text-ink">
+                    {r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Late By</dt>
+                  <dd>
+                    {r.lateMinutes > 0 ? (
+                      <span className="font-medium text-warning-text">{formatMinutes(r.lateMinutes)}</span>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Early Out</dt>
+                  <dd>
+                    {r.earlyMinutes > 0 ? (
+                      <span className="font-medium text-warning-text">{formatMinutes(r.earlyMinutes)}</span>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Work Hours</dt>
+                  <dd className="text-ink">
+                    {r.hours.toFixed(1)} hrs{r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Overtime</dt>
+                  <dd className="text-ink">
+                    {r.overtime.toFixed(1)} hr{r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
+                  </dd>
+                </div>
+              </dl>
+              <div className="mt-2.5 text-xs text-slate-400">{r.device}</div>
+            </div>
+          ))}
+          {rows.length === 0 && <p className="p-8 text-center text-sm text-slate-400">No records in this range.</p>}
+        </div>
+
+        <div className="hidden max-h-[65vh] overflow-auto rounded-xl md:block">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">

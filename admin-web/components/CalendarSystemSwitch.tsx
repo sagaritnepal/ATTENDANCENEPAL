@@ -8,12 +8,12 @@ export default function CalendarSystemSwitch() {
 
   return (
     <div className="flex shrink-0 items-center">
-      <div className="flex overflow-hidden rounded-lg border border-slate-300 text-base font-bold shadow-sm">
+      <div className="flex overflow-hidden rounded-lg border border-slate-300 text-sm font-bold shadow-sm sm:text-base">
         <button
           type="button"
           onClick={() => setSystem('AD')}
           title="Gregorian calendar"
-          className={`px-5 py-2 transition-colors ${
+          className={`px-3 py-1.5 transition-colors sm:px-5 sm:py-2 ${
             system === 'AD' ? 'bg-accent text-white' : 'bg-white text-slate-500 hover:bg-slate-50'
           }`}
         >
@@ -23,7 +23,7 @@ export default function CalendarSystemSwitch() {
           type="button"
           onClick={() => setSystem('BS')}
           title="Nepali (Bikram Sambat) calendar"
-          className={`px-5 py-2 transition-colors ${
+          className={`px-3 py-1.5 transition-colors sm:px-5 sm:py-2 ${
             system === 'BS' ? 'bg-accent text-white' : 'bg-white text-slate-500 hover:bg-slate-50'
           }`}
         >

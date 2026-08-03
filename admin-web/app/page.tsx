@@ -124,18 +124,18 @@ export default function DashboardPage() {
 
   return (
     <AppShell title="Dashboard">
-      <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
         <StatCard label="Total Employees" value={String(activeEmployees.length)} hint="Active rosters" />
         <StatCard label="Present Today" value={String(presentIds.size)} hint={`${attendancePct}% attendance`} />
         <StatCard label="Late Arrivals" value={String(lateCount)} hint="Past grace period" />
         <StatCard label="On Leave" value={String(onLeaveIds.size)} hint="Approved today" />
         <StatCard label="Absent Today" value={String(absentCount)} hint="No punch, not on leave" />
         <StatCard label="Total Work Hours" value={todayWorkHours.toFixed(1)} hint="Today, all staff" />
-        <StatCard label="Overtime" value={`${todayOvertimeHours.toFixed(1)} hrs`} hint="Today, all staff" />
+        <StatCard className="col-span-2 sm:col-span-1" label="Overtime" value={`${todayOvertimeHours.toFixed(1)} hrs`} hint="Today, all staff" />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 lg:col-span-2">
           <h2 className="mb-4 text-base font-semibold text-ink">Weekly Attendance Trend</h2>
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={trend} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
@@ -159,7 +159,7 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-base font-semibold text-ink">Live Biometric Feed</h2>
             <span className="flex items-center gap-1.5 text-xs font-medium text-good">
@@ -190,26 +190,36 @@ export default function DashboardPage() {
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <h2 className="mb-4 text-base font-semibold text-ink">Department Breakdown</h2>
           {deptBreakdown.length === 0 ? (
             <p className="text-sm text-slate-400">No employees yet.</p>
           ) : (
-            <ResponsiveContainer width="100%" height={220}>
+            // A right-side vertical legend fights the pie for width on a
+            // narrow phone (single-column below lg) — bottom-horizontal
+            // works at every width instead of needing a JS breakpoint check.
+            <ResponsiveContainer width="100%" height={260}>
               <PieChart>
-                <Pie data={deptBreakdown} dataKey="value" nameKey="name" innerRadius={55} outerRadius={85} paddingAngle={2}>
+                <Pie data={deptBreakdown} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2}>
                   {deptBreakdown.map(d => (
                     <Cell key={d.name} fill={d.color} stroke="#fff" strokeWidth={2} />
                   ))}
                 </Pie>
-                <Legend layout="vertical" verticalAlign="middle" align="right" iconType="circle" formatter={(value: string) => <span className="text-sm text-slate-600">{value}</span>} />
+                <Legend
+                  layout="horizontal"
+                  verticalAlign="bottom"
+                  align="center"
+                  iconType="circle"
+                  wrapperStyle={{ paddingTop: 12 }}
+                  formatter={(value: string) => <span className="text-sm text-slate-600">{value}</span>}
+                />
                 <Tooltip formatter={(v: number, n: string) => [`${v} staff`, n]} />
               </PieChart>
             </ResponsiveContainer>
           )}
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <h2 className="mb-4 text-base font-semibold text-ink">Device Sync Activity</h2>
           <ul className="space-y-3">
             {devices.length === 0 && <li className="text-sm text-slate-400">No devices registered.</li>}

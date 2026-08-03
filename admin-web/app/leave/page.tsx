@@ -59,7 +59,48 @@ export default function LeavePage() {
         ))}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="divide-y divide-slate-100 md:hidden">
+          {filtered.map(r => (
+            <div key={r.id} className="p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-ink">{employeeName(r.employee_id)}</div>
+                  <div className="text-xs capitalize text-slate-500">{r.leave_type}</div>
+                </div>
+                <Badge tone={r.status === 'approved' ? 'good' : r.status === 'rejected' ? 'critical' : 'warning'}>{r.status}</Badge>
+              </div>
+              <div className="mt-2 text-sm text-slate-600">
+                {formatAdDate(r.start_date, system)} → {formatAdDate(r.end_date, system)}
+                <span className="text-slate-400"> · {daysBetween(r.start_date, r.end_date)}d</span>
+              </div>
+              {r.reason && <div className="mt-1 text-xs text-slate-500">{r.reason}</div>}
+              {r.status === 'pending' && (
+                <div className="mt-3 flex gap-2">
+                  <button
+                    disabled={busyId === r.id}
+                    onClick={() => review(r.id, 'approved')}
+                    className="rounded-md bg-good px-3 py-1.5 text-xs font-semibold text-white hover:bg-good/90 disabled:opacity-50"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    disabled={busyId === r.id}
+                    onClick={() => review(r.id, 'rejected')}
+                    className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Reject
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <p className="p-8 text-center text-sm text-slate-400">No {filter !== 'All' ? filter : ''} leave requests.</p>
+          )}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
@@ -120,6 +161,7 @@ export default function LeavePage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </AppShell>
   );

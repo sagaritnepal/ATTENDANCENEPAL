@@ -104,8 +104,8 @@ export default function DevicesPage() {
 
   return (
     <AppShell title="Biometric Sync Devices">
-      <div className="mb-5 flex items-center justify-between">
-        <p className="text-sm text-slate-500 max-w-2xl">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-2xl text-sm text-slate-500">
           Biometric terminal integrations — <code className="rounded bg-slate-100 px-1.5 py-0.5">zkteco-bridge</code> polls every device
           every 15 seconds and writes here. "Sync Users"/"Sync Log" queue an on-demand request that the bridge — running on a
           machine on the same network as the device — picks up right away.
@@ -174,7 +174,33 @@ export default function DevicesPage() {
         <div className="border-b border-slate-100 px-5 py-3">
           <h2 className="text-sm font-semibold text-ink">Sync History</h2>
         </div>
-        <div className="overflow-x-auto">
+        <div className="divide-y divide-slate-100 md:hidden">
+          {syncEvents.map(e => {
+            const device = devices.find(d => d.id === e.device_id);
+            return (
+              <div key={e.id} className="p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium text-ink">{device?.name ?? 'Unknown device'}</div>
+                    <div className="text-xs text-slate-500">{e.sync_type === 'users' ? '👥 Users' : '🕐 Log'}</div>
+                  </div>
+                  <Badge tone={e.status === 'success' ? 'good' : e.status === 'failed' ? 'critical' : e.status === 'running' ? 'info' : 'neutral'}>
+                    {e.status}
+                  </Badge>
+                </div>
+                <div className="mt-2 text-xs text-slate-500">
+                  Requested {new Date(e.requested_at).toLocaleString()}
+                  {e.completed_at && <> · Completed {new Date(e.completed_at).toLocaleString()}</>}
+                </div>
+                {e.summary && <div className="mt-1 text-sm text-slate-600">{e.summary}</div>}
+                {e.error && <div className="mt-1 text-sm text-critical">{e.error}</div>}
+              </div>
+            );
+          })}
+          {syncEvents.length === 0 && <p className="p-8 text-center text-sm text-slate-400">No sync requests yet.</p>}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">

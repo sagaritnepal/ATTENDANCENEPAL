@@ -124,7 +124,70 @@ export default function CorrectionsPage() {
 
       {error && <p className="mb-4 text-sm text-critical">{error}</p>}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="divide-y divide-slate-100 md:hidden">
+          {filtered.map(item => {
+            const lat = item.kind === 'correction' ? item.data.lat : item.data.lat;
+            const lng = item.kind === 'correction' ? item.data.lng : item.data.lng;
+            return (
+              <div key={`${item.kind}-${item.id}`} className="p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium text-ink">{employeeName(item.employee_id)}</div>
+                    <div className="text-xs text-slate-500">
+                      {item.kind === 'correction' ? 'Missed Punch' : item.data.punch_type === '0' ? 'Check In' : 'Check Out'} ·{' '}
+                      {item.kind === 'correction'
+                        ? formatAdDate(item.data.work_date, system)
+                        : formatAdDate(item.data.punch_time.slice(0, 10), system)}
+                    </div>
+                  </div>
+                  <Badge tone={item.status === 'approved' ? 'good' : item.status === 'rejected' ? 'critical' : 'warning'}>
+                    {item.status}
+                  </Badge>
+                </div>
+                <div className="mt-2 text-sm text-slate-600">
+                  {item.kind === 'correction'
+                    ? `In ${formatTime(item.data.requested_check_in)} · Out ${formatTime(item.data.requested_check_out)}`
+                    : formatTime(item.data.punch_time)}
+                </div>
+                {item.kind === 'correction' && item.data.reason && (
+                  <div className="mt-1 text-xs text-slate-500">{item.data.reason}</div>
+                )}
+                {lat != null && lng != null && (
+                  <a
+                    href={`https://www.google.com/maps?q=${lat},${lng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-block text-xs text-accent hover:underline"
+                  >
+                    View location
+                  </a>
+                )}
+                {item.status === 'pending' && (
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      disabled={busyId === item.id}
+                      onClick={() => approve(item)}
+                      className="rounded-md bg-good px-3 py-1.5 text-xs font-semibold text-white hover:bg-good/90 disabled:opacity-50"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      disabled={busyId === item.id}
+                      onClick={() => reject(item)}
+                      className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {filtered.length === 0 && <p className="p-8 text-center text-sm text-slate-400">No {filter !== 'All' ? filter : ''} requests.</p>}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
@@ -214,6 +277,7 @@ export default function CorrectionsPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </AppShell>
   );

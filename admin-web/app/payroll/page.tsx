@@ -265,6 +265,76 @@ export default function PayrollPage() {
     setEditingSalaryId(null);
   }
 
+  // Plain functions returning JSX (not components) so the same edit-in-place
+  // markup can be reused by both the desktop table and the mobile card list
+  // below without wrapping it in a nested component — a nested component
+  // would get a fresh identity every render and remount (losing focus on
+  // the salary input while typing).
+  function salaryCellContent(row: (typeof byEmployee)[number]) {
+    return editingSalaryId === row.id ? (
+      <>
+        <input
+          autoFocus
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="—"
+          value={pendingSalary[row.id] ?? (row.salary != null ? String(row.salary) : '')}
+          onChange={e => setPendingSalary(p => ({ ...p, [row.id]: e.target.value }))}
+          className="w-28 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
+        />
+        {hasPendingSalaryChange(row) && (
+          <div className="mt-1 flex gap-2">
+            <button
+              onClick={() => cancelSalaryRow(row.id)}
+              disabled={savingRowId === row.id}
+              className="text-xs font-medium text-slate-500 hover:underline disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => saveSalaryRow(row.id)}
+              disabled={savingRowId === row.id}
+              className="text-xs font-semibold text-accent hover:underline disabled:opacity-60"
+            >
+              {savingRowId === row.id ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        )}
+      </>
+    ) : (
+      <div className="flex items-center gap-2">
+        <span className="text-ink">{row.salary != null ? row.salary.toLocaleString() : '—'}</span>
+        <button onClick={() => setEditingSalaryId(row.id)} title="Edit salary" className="text-slate-400 hover:text-accent">
+          <EditIcon className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  function overtimeCellContent(row: (typeof byEmployee)[number]) {
+    const otOn = overtimeEnabled[row.id] ?? true;
+    return (
+      <div className="flex items-center justify-start gap-3">
+        <button
+          type="button"
+          onClick={() => setOvertimeEnabled(m => ({ ...m, [row.id]: !otOn }))}
+          title={otOn ? 'Overtime pay counted for this employee' : 'Overtime pay not counted for this employee'}
+          className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${otOn ? 'bg-good' : 'bg-slate-300'}`}
+        >
+          <span
+            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+              otOn ? 'translate-x-[18px]' : 'translate-x-0.5'
+            }`}
+          />
+        </button>
+        <span className={`tabular-nums ${otOn ? 'text-ink' : 'text-slate-400'}`}>
+          {overtimeSalary(row) != null ? overtimeSalary(row)!.toLocaleString() : '—'}
+        </span>
+      </div>
+    );
+  }
+
   const employeeName = (id: string) => employees.find(e => e.id === id)?.name ?? 'Unknown';
   const pendingOvertime = useMemo(
     () => summaries.filter(s => Number(s.overtime_hours) > 0 && !s.overtime_approved).sort((a, b) => a.work_date.localeCompare(b.work_date)),
@@ -278,8 +348,8 @@ export default function PayrollPage() {
 
   return (
     <AppShell title="Attendance-based Payroll Controller">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <div className="flex flex-1 flex-wrap items-center gap-3">
           <select
             value={period.key}
             onChange={e => {
@@ -303,7 +373,7 @@ export default function PayrollPage() {
         <button
           onClick={recalculateMonth}
           disabled={recalculating}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+          className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60 sm:w-auto"
         >
           {recalculating ? 'Recalculating…' : 'Recalculate month'}
         </button>
@@ -366,9 +436,27 @@ export default function PayrollPage() {
       </div>
 
       {pendingOvertime.length > 0 && (
-        <div className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-base font-semibold text-ink">Overtime awaiting approval</h2>
-          <div className="overflow-x-auto">
+        <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <h2 className="mb-2 text-base font-semibold text-ink sm:mb-4">Overtime awaiting approval</h2>
+          <div className="divide-y divide-slate-100 md:hidden">
+            {pendingOvertime.map(s => (
+              <div key={s.id} className="flex items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-ink">{employeeName(s.employee_id)}</div>
+                  <div className="text-xs text-slate-500">
+                    {formatAdDate(s.work_date, system)} · {Number(s.overtime_hours).toFixed(1)} hrs
+                  </div>
+                </div>
+                <button
+                  onClick={() => approveOvertime(s.id)}
+                  className="shrink-0 rounded-md bg-good px-3 py-1.5 text-xs font-semibold text-white hover:bg-good/90"
+                >
+                  Approve
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
@@ -401,8 +489,55 @@ export default function PayrollPage() {
       )}
 
       <div className="mt-6 rounded-xl border border-slate-200 bg-white pb-2 shadow-sm">
-        <h2 className="px-6 pt-6 text-base font-semibold text-ink">This Month Salary Report</h2>
-        <div className="mt-4 overflow-x-auto">
+        <h2 className="px-4 pt-4 text-base font-semibold text-ink sm:px-6 sm:pt-6">This Month Salary Report</h2>
+
+        {/* Phones get one card per employee — the 10-column table below
+            would otherwise need horizontal scrolling to read anything. */}
+        <div className="mt-3 divide-y divide-slate-100 md:hidden">
+          {byEmployee.map(row => (
+            <div key={row.id} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-ink">{row.name}</div>
+                  <div className="text-xs text-slate-500">
+                    ID {row.enrollId} · {row.days} days · {row.lateDays} late
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="text-[11px] uppercase tracking-wide text-slate-400">Total Salary</div>
+                  <div className="text-base font-bold text-ink">
+                    {totalSalary(row) != null ? totalSalary(row)!.toLocaleString() : '—'}
+                  </div>
+                </div>
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 text-sm">
+                <div>
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Total Hours</dt>
+                  <dd className="text-ink">{row.hours.toFixed(1)} hrs</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Overtime</dt>
+                  <dd className="text-ink">{row.overtime.toFixed(1)} hrs</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Salary</dt>
+                  <dd>{salaryCellContent(row)}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Calculated Salary</dt>
+                  <dd className="text-ink">{calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}</dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Overtime Salary</dt>
+                  <dd className="mt-1">{overtimeCellContent(row)}</dd>
+                </div>
+              </dl>
+            </div>
+          ))}
+          {byEmployee.length === 0 && <p className="p-8 text-center text-sm text-slate-400">No active employees.</p>}
+        </div>
+
+        <div className="mt-4 hidden overflow-x-auto md:block">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
@@ -419,9 +554,7 @@ export default function PayrollPage() {
             </tr>
           </thead>
           <tbody>
-            {byEmployee.map(row => {
-              const otOn = overtimeEnabled[row.id] ?? true;
-              return (
+            {byEmployee.map(row => (
               <tr key={row.id} className="border-b border-slate-100 last:border-0">
                 <td className="px-4 py-3 text-slate-600">{row.enrollId}</td>
                 <td className="px-4 py-3 font-medium text-ink">{row.name}</td>
@@ -429,81 +562,16 @@ export default function PayrollPage() {
                 <td className="px-4 py-3 text-slate-600">{row.hours.toFixed(1)} hrs</td>
                 <td className="px-4 py-3 text-slate-600">{row.overtime.toFixed(1)} hrs</td>
                 <td className="px-4 py-3 text-slate-600">{row.lateDays}</td>
-                <td className="px-4 py-3">
-                  {editingSalaryId === row.id ? (
-                    <>
-                      <input
-                        autoFocus
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="—"
-                        value={pendingSalary[row.id] ?? (row.salary != null ? String(row.salary) : '')}
-                        onChange={e => setPendingSalary(p => ({ ...p, [row.id]: e.target.value }))}
-                        className="w-28 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
-                      />
-                      {hasPendingSalaryChange(row) && (
-                        <div className="mt-1 flex gap-2">
-                          <button
-                            onClick={() => cancelSalaryRow(row.id)}
-                            disabled={savingRowId === row.id}
-                            className="text-xs font-medium text-slate-500 hover:underline disabled:opacity-60"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={() => saveSalaryRow(row.id)}
-                            disabled={savingRowId === row.id}
-                            className="text-xs font-semibold text-accent hover:underline disabled:opacity-60"
-                          >
-                            {savingRowId === row.id ? 'Saving…' : 'Save'}
-                          </button>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <span className="text-ink">{row.salary != null ? row.salary.toLocaleString() : '—'}</span>
-                      <button
-                        onClick={() => setEditingSalaryId(row.id)}
-                        title="Edit salary"
-                        className="text-slate-400 hover:text-accent"
-                      >
-                        <EditIcon className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  )}
-                </td>
+                <td className="px-4 py-3">{salaryCellContent(row)}</td>
                 <td className="px-4 py-3 text-slate-600">
                   {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
                 </td>
-                <td className="pl-2 pr-4 py-3 text-slate-600">
-                  <div className="flex items-center justify-start gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setOvertimeEnabled(m => ({ ...m, [row.id]: !otOn }))}
-                      title={otOn ? 'Overtime pay counted for this employee' : 'Overtime pay not counted for this employee'}
-                      className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${otOn ? 'bg-good' : 'bg-slate-300'}`}
-                    >
-                      {/* A flex-positioned knob (not absolute+left-less) so it can never
-                          drift outside the pill and overlap the amount beside it. */}
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                          otOn ? 'translate-x-[18px]' : 'translate-x-0.5'
-                        }`}
-                      />
-                    </button>
-                    <span className={`tabular-nums ${otOn ? 'text-ink' : 'text-slate-400'}`}>
-                      {overtimeSalary(row) != null ? overtimeSalary(row)!.toLocaleString() : '—'}
-                    </span>
-                  </div>
-                </td>
+                <td className="pl-2 pr-4 py-3 text-slate-600">{overtimeCellContent(row)}</td>
                 <td className="px-4 py-3 font-medium text-ink">
                   {totalSalary(row) != null ? totalSalary(row)!.toLocaleString() : '—'}
                 </td>
               </tr>
-              );
-            })}
+            ))}
             {byEmployee.length === 0 && (
               <tr>
                 <td colSpan={10} className="px-4 py-8 text-center text-slate-400">No active employees.</td>
