@@ -16,6 +16,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: UsersIcon,
     adminOnly: false,
     children: [
+      { href: '/attendance', label: 'Attendance', icon: ClockIcon, adminOnly: false },
       { href: '/leave', label: 'Leave', icon: LeaveIcon, adminOnly: false },
       { href: '/corrections', label: 'Corrections', icon: CorrectionIcon, adminOnly: false },
       { href: '/calendar', label: 'Calendar', icon: CalendarViewIcon, adminOnly: false },
@@ -23,13 +24,7 @@ const NAV_ITEMS: NavItem[] = [
       { href: '/branches', label: 'Branch/Depart', icon: BranchIcon, adminOnly: true },
     ],
   },
-  {
-    href: '/attendance',
-    label: 'Attendance',
-    icon: ClockIcon,
-    adminOnly: false,
-    children: [{ href: '/payroll', label: 'Payroll', icon: CardIcon, adminOnly: false }],
-  },
+  { href: '/payroll', label: 'Payroll', icon: CardIcon, adminOnly: false },
   { href: '/tasks', label: 'Tasks', icon: TaskIcon, adminOnly: false },
   { href: '/devices', label: 'Devices', icon: DeviceIcon, adminOnly: true },
 ];
