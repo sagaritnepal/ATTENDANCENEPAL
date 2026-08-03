@@ -191,10 +191,25 @@ export default function PayrollPage() {
       if (day <= today) days.push(day);
       cur.setUTCDate(cur.getUTCDate() + 1);
     }
+    if (days.length === 0) {
+      setRecalculating(false);
+      alert('Nothing to recalculate — this period has no days up to today yet.');
+      return;
+    }
+    // rpc() never throws, it resolves { error } — the old version didn't
+    // check that, so a failing call (e.g. not signed in as admin/HR) just
+    // silently did nothing and the button looked broken.
+    const failedDays: string[] = [];
     for (const day of days) {
-      await supabase.rpc('compute_payroll_summaries', { p_work_date: day });
+      const { error } = await supabase.rpc('compute_payroll_summaries', { p_work_date: day });
+      if (error) failedDays.push(day);
     }
     setRecalculating(false);
+    if (failedDays.length > 0) {
+      alert(`Recalculated ${days.length - failedDays.length}/${days.length} days. Failed: ${failedDays.join(', ')}`);
+    } else {
+      alert(`Recalculated ${days.length} day${days.length === 1 ? '' : 's'}.`);
+    }
     reload();
   }
 
@@ -546,19 +561,24 @@ export default function PayrollPage() {
                   {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
                 </td>
                 <td className="px-4 py-3 text-slate-600">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
                     <button
+                      type="button"
                       onClick={() => setOvertimeEnabled(m => ({ ...m, [row.id]: !otOn }))}
                       title={otOn ? 'Overtime pay counted for this employee' : 'Overtime pay not counted for this employee'}
-                      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${otOn ? 'bg-good' : 'bg-slate-300'}`}
+                      className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${otOn ? 'bg-good' : 'bg-slate-300'}`}
                     >
+                      {/* A flex-positioned knob (not absolute+left-less) so it can never
+                          drift outside the pill and overlap the amount next to it. */}
                       <span
-                        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-                          otOn ? 'translate-x-4' : 'translate-x-0.5'
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                          otOn ? 'translate-x-[18px]' : 'translate-x-0.5'
                         }`}
                       />
                     </button>
-                    <span>{overtimeSalary(row) != null ? overtimeSalary(row)!.toLocaleString() : '—'}</span>
+                    <span className={`min-w-[3.5rem] text-right tabular-nums ${otOn ? 'text-ink' : 'text-slate-400'}`}>
+                      {overtimeSalary(row) != null ? overtimeSalary(row)!.toLocaleString() : '—'}
+                    </span>
                   </div>
                 </td>
                 <td className="px-4 py-3 font-medium text-ink">
