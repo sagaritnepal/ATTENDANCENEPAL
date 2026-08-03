@@ -6,13 +6,16 @@ import EmployeeShell from '@/components/EmployeeShell';
 import MonthCalendar from '@/components/MonthCalendar';
 import { formatAdDate, localDateKey } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import type { AttendanceLog } from '@/lib/types';
+import { computeDayStatus, resolveShift } from '@/lib/shift';
+import type { AttendanceLog, Employee, Shift } from '@/lib/types';
 
 const WINDOW_DAYS = 400;
 
 export default function MyCalendarPage() {
   const { system } = useCalendarSystem();
   const [employeeId, setEmployeeId] = useState<string | null>(null);
+  const [employee, setEmployee] = useState<Employee | null>(null);
+  const [shifts, setShifts] = useState<Shift[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -30,22 +33,36 @@ export default function MyCalendarPage() {
       setLoading(false);
       if (!profile?.employee_id) return;
       setEmployeeId(profile.employee_id);
-      const since = new Date(Date.now() - WINDOW_DAYS * 86400000).toISOString();
-      const { data: rows } = await supabase
-        .from('attendance_logs')
-        .select('*')
-        .eq('employee_id', profile.employee_id)
-        .gte('punch_time', since)
-        .order('punch_time', { ascending: true });
+      const [{ data: emp }, { data: shiftRows }, { data: rows }] = await Promise.all([
+        supabase.from('employees').select('*').eq('id', profile.employee_id).single(),
+        supabase.from('shifts').select('*'),
+        supabase
+          .from('attendance_logs')
+          .select('*')
+          .eq('employee_id', profile.employee_id)
+          .gte('punch_time', new Date(Date.now() - WINDOW_DAYS * 86400000).toISOString())
+          .order('punch_time', { ascending: true }),
+      ]);
+      setEmployee(emp ?? null);
+      setShifts(shiftRows ?? []);
       setLogs(rows ?? []);
     });
   }, []);
 
-  const presentDates = useMemo(() => {
-    const set = new Set<string>();
-    for (const log of logs) set.add(localDateKey(log.punch_time));
-    return set;
-  }, [logs]);
+  const dayStatus = useMemo(() => {
+    const byDate = new Map<string, AttendanceLog[]>();
+    for (const log of logs) {
+      const key = localDateKey(log.punch_time);
+      const list = byDate.get(key);
+      if (list) list.push(log);
+      else byDate.set(key, [log]);
+    }
+    const map = new Map<string, ReturnType<typeof computeDayStatus>>();
+    if (!employee) return map;
+    const shift = resolveShift(employee, shifts);
+    for (const [date, dayLogs] of byDate) map.set(date, computeDayStatus(dayLogs, shift));
+    return map;
+  }, [logs, employee, shifts]);
 
   const history = useMemo(() => [...logs].sort((a, b) => b.punch_time.localeCompare(a.punch_time)).slice(0, 50), [logs]);
 
@@ -78,7 +95,7 @@ export default function MyCalendarPage() {
         <p className="mt-10 text-center text-sm text-warning-text">Your account isn&apos;t linked to an employee record yet.</p>
       ) : (
         <>
-          <MonthCalendar presentDates={presentDates} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+          <MonthCalendar dayStatus={dayStatus} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
 
           {selectedDate && (
             <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">

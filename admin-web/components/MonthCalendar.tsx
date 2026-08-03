@@ -3,17 +3,18 @@
 import { useMemo, useState } from 'react';
 import { buildMonth, stepAnchor, todayAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
+import type { DayStatus } from '@/lib/shift';
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
 type Props = {
-  /** AD dates (YYYY-MM-DD) that have at least one attendance punch. */
-  presentDates: Set<string>;
+  /** AD date (YYYY-MM-DD) -> that day's attendance state. */
+  dayStatus: Map<string, DayStatus>;
   selectedDate: string | null;
   onSelectDate: (adKey: string) => void;
 };
 
-export default function MonthCalendar({ presentDates, selectedDate, onSelectDate }: Props) {
+export default function MonthCalendar({ dayStatus, selectedDate, onSelectDate }: Props) {
   const { system } = useCalendarSystem();
   const [anchor, setAnchor] = useState(todayAnchor);
 
@@ -47,23 +48,42 @@ export default function MonthCalendar({ presentDates, selectedDate, onSelectDate
 
       <div className="grid grid-cols-7 gap-1">
         {month.weeks.flat().map((cell, i) => {
-          const present = presentDates.has(cell.adKey);
+          const status = dayStatus.get(cell.adKey);
           const selected = selectedDate === cell.adKey;
+          const attendanceBg = status?.hasOut ? 'bg-good-bg' : status?.hasIn ? 'bg-warning-bg' : '';
           return (
             <button
               key={`${cell.adKey}-${i}`}
               onClick={() => onSelectDate(cell.adKey)}
               className={`relative aspect-square rounded-lg text-sm ${
                 !cell.inMonth ? 'text-slate-300' : cell.isToday ? 'font-bold text-accent' : 'text-ink'
-              } ${selected ? 'bg-accent text-white' : 'hover:bg-slate-100'}`}
+              } ${selected ? 'bg-accent text-white' : `${attendanceBg} hover:bg-slate-100`}`}
             >
               {cell.displayDay}
-              {present && !selected && (
-                <span className="absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-good" />
+              {status && !selected && (status.isLate || status.isEarly) && (
+                <span className="absolute bottom-1 left-1/2 flex -translate-x-1/2 gap-0.5">
+                  {status.isLate && <span className="h-1 w-1 rounded-full bg-warning" title="Late in" />}
+                  {status.isEarly && <span className="h-1 w-1 rounded-full bg-critical" title="Early out" />}
+                </span>
               )}
             </button>
           );
         })}
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-warning-bg" /> Checked in
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-good-bg" /> Checked out
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-warning" /> Late in
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-critical" /> Early out
+        </span>
       </div>
     </div>
   );

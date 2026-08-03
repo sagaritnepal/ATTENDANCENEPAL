@@ -5,12 +5,14 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import MonthCalendar from '@/components/MonthCalendar';
 import { localDateKey } from '@/lib/calendar';
-import type { AttendanceLog, Employee } from '@/lib/types';
+import { computeDayStatus, resolveShift } from '@/lib/shift';
+import type { AttendanceLog, Employee, Shift } from '@/lib/types';
 
 const WINDOW_DAYS = 400;
 
 export default function CalendarPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [shifts, setShifts] = useState<Shift[]>([]);
   const [employeeId, setEmployeeId] = useState<string>('');
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -27,6 +29,7 @@ export default function CalendarPage() {
         setEmployees(data ?? []);
         if (data && data.length > 0) setEmployeeId(data[0].id);
       });
+    supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
   }, []);
 
   useEffect(() => {
@@ -42,11 +45,21 @@ export default function CalendarPage() {
       .then(({ data }) => setLogs(data ?? []));
   }, [employeeId]);
 
-  const presentDates = useMemo(() => {
-    const set = new Set<string>();
-    for (const log of logs) set.add(localDateKey(log.punch_time));
-    return set;
-  }, [logs]);
+  const dayStatus = useMemo(() => {
+    const byDate = new Map<string, AttendanceLog[]>();
+    for (const log of logs) {
+      const key = localDateKey(log.punch_time);
+      const list = byDate.get(key);
+      if (list) list.push(log);
+      else byDate.set(key, [log]);
+    }
+    const map = new Map<string, ReturnType<typeof computeDayStatus>>();
+    const employee = employees.find(e => e.id === employeeId);
+    if (!employee) return map;
+    const shift = resolveShift(employee, shifts);
+    for (const [date, dayLogs] of byDate) map.set(date, computeDayStatus(dayLogs, shift));
+    return map;
+  }, [logs, employees, employeeId, shifts]);
 
   useEffect(() => {
     if (!selectedDate || !employeeId) {
@@ -87,7 +100,7 @@ export default function CalendarPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
-        <MonthCalendar presentDates={presentDates} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+        <MonthCalendar dayStatus={dayStatus} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
 
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <h2 className="mb-3 text-sm font-semibold text-ink">{selectedDate ?? 'Select a day'}</h2>
