@@ -416,7 +416,10 @@ function AttendanceView() {
                   {r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
                 </td>
                 <td className="px-5 py-3">
-                  <Badge tone={r.status === 'Present' ? 'good' : r.status === 'Late' ? 'warning' : 'critical'}>{r.status}</Badge>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge tone={r.status === 'Present' ? 'good' : r.status === 'Late' ? 'warning' : 'critical'}>{r.status}</Badge>
+                    {r.status !== 'Present' && r.checkIn && r.checkOut && <Badge tone="good">Present</Badge>}
+                  </div>
                 </td>
                 <td className="px-5 py-3 text-slate-600">{r.device}</td>
               </tr>
