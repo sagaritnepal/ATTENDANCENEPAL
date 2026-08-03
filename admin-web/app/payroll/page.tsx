@@ -45,6 +45,12 @@ export default function PayrollPage() {
   const [recalculating, setRecalculating] = useState(false);
   const [pendingSalary, setPendingSalary] = useState<Record<string, string>>({});
   const [savingRowId, setSavingRowId] = useState<string | null>(null);
+  const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
+  // Overtime pay isn't tracked anywhere as an hourly rate — derived from the
+  // monthly Salary against an assumed standard workday, both editable since
+  // "8 hours" and "1.5x" are defaults, not a stored policy.
+  const [otHoursPerDay, setOtHoursPerDay] = useState(8);
+  const [otMultiplier, setOtMultiplier] = useState(1.5);
 
   const { start, end } = monthBounds(anchor.year, anchor.month);
 
@@ -165,8 +171,13 @@ export default function PayrollPage() {
       (s, r) => (r.salary == null ? s : s + Math.round((r.salary / daysInRange) * r.days)),
       0
     );
-    return { totalHours, overtimeHours, attendancePct, totalEmployeeSalary, totalSalaryPayable };
-  }, [byEmployee, employees, daysInRange]);
+    const totalOvertimeSalary = byEmployee.reduce((s, r) => {
+      if (r.salary == null || r.overtime <= 0) return s;
+      const hourlyRate = r.salary / (daysInRange * otHoursPerDay);
+      return s + hourlyRate * otMultiplier * r.overtime;
+    }, 0);
+    return { totalHours, overtimeHours, attendancePct, totalEmployeeSalary, totalSalaryPayable, totalOvertimeSalary };
+  }, [byEmployee, employees, daysInRange, otHoursPerDay, otMultiplier]);
 
   function calculatedSalary(row: { salary: number | null; days: number }): number | null {
     if (row.salary == null) return null;
@@ -202,6 +213,7 @@ export default function PayrollPage() {
       delete next[employeeId];
       return next;
     });
+    setEditingSalaryId(null);
     reload();
   }
 
@@ -211,6 +223,7 @@ export default function PayrollPage() {
       delete next[employeeId];
       return next;
     });
+    setEditingSalaryId(null);
   }
 
   const employeeName = (id: string) => employees.find(e => e.id === id)?.name ?? 'Unknown';
@@ -265,7 +278,35 @@ export default function PayrollPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <span className="text-xs text-slate-500">Overtime Salary</span>
+          <div className="mt-1 text-base font-bold text-ink">
+            {totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </div>
+          <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
+            <input
+              type="number"
+              min="0"
+              step="0.5"
+              value={otHoursPerDay}
+              onChange={e => setOtHoursPerDay(Number(e.target.value) || 0)}
+              title="Standard hours per day"
+              className="w-10 rounded border border-slate-200 px-1 py-0.5 text-center"
+            />
+            h/day ×
+            <input
+              type="number"
+              min="0"
+              step="0.1"
+              value={otMultiplier}
+              onChange={e => setOtMultiplier(Number(e.target.value) || 0)}
+              title="Overtime rate multiplier"
+              className="w-10 rounded border border-slate-200 px-1 py-0.5 text-center"
+            />
+            x
+          </div>
+        </div>
         <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
           <span className="text-xs text-slate-500">Total Salary Payable</span>
           <div className="mt-1 text-base font-bold text-ink">{totals.totalSalaryPayable.toLocaleString()}</div>
@@ -353,30 +394,46 @@ export default function PayrollPage() {
                 <td className="py-2.5 text-slate-600">{row.overtime.toFixed(1)} hrs</td>
                 <td className="py-2.5 text-slate-600">{row.lateDays}</td>
                 <td className="py-2.5">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="—"
-                    value={pendingSalary[row.id] ?? (row.salary != null ? String(row.salary) : '')}
-                    onChange={e => setPendingSalary(p => ({ ...p, [row.id]: e.target.value }))}
-                    className="w-28 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
-                  />
-                  {hasPendingSalaryChange(row) && (
-                    <div className="mt-1 flex gap-2">
+                  {editingSalaryId === row.id ? (
+                    <>
+                      <input
+                        autoFocus
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="—"
+                        value={pendingSalary[row.id] ?? (row.salary != null ? String(row.salary) : '')}
+                        onChange={e => setPendingSalary(p => ({ ...p, [row.id]: e.target.value }))}
+                        className="w-28 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                      />
+                      {hasPendingSalaryChange(row) && (
+                        <div className="mt-1 flex gap-2">
+                          <button
+                            onClick={() => cancelSalaryRow(row.id)}
+                            disabled={savingRowId === row.id}
+                            className="text-xs font-medium text-slate-500 hover:underline disabled:opacity-60"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => saveSalaryRow(row.id)}
+                            disabled={savingRowId === row.id}
+                            className="text-xs font-semibold text-accent hover:underline disabled:opacity-60"
+                          >
+                            {savingRowId === row.id ? 'Saving…' : 'Save'}
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="text-ink">{row.salary != null ? row.salary.toLocaleString() : '—'}</span>
                       <button
-                        onClick={() => cancelSalaryRow(row.id)}
-                        disabled={savingRowId === row.id}
-                        className="text-xs font-medium text-slate-500 hover:underline disabled:opacity-60"
+                        onClick={() => setEditingSalaryId(row.id)}
+                        title="Edit salary"
+                        className="text-slate-400 hover:text-accent"
                       >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => saveSalaryRow(row.id)}
-                        disabled={savingRowId === row.id}
-                        className="text-xs font-semibold text-accent hover:underline disabled:opacity-60"
-                      >
-                        {savingRowId === row.id ? 'Saving…' : 'Save'}
+                        <EditIcon className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   )}
@@ -395,5 +452,13 @@ export default function PayrollPage() {
         </table>
       </div>
     </AppShell>
+  );
+}
+
+function EditIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
   );
 }
