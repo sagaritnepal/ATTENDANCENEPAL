@@ -92,9 +92,8 @@ export default function EmployeeShell({ title, children }: { title: string; chil
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-4">
-        <div className="text-xs text-slate-400">{title}</div>
+        <CalendarSystemSwitch />
         <div className="flex items-center gap-3">
-          <CalendarSystemSwitch />
           {isHr && (
             <Link
               href="/"
@@ -103,8 +102,14 @@ export default function EmployeeShell({ title, children }: { title: string; chil
               Admin Dashboard
             </Link>
           )}
-          <div className="text-base font-semibold text-ink">{name}</div>
-          <div ref={accountMenuRef} className="relative">
+          <div ref={accountMenuRef} className="relative flex items-center gap-2">
+            <button
+              onClick={() => setShowAccountMenu(v => !v)}
+              title="Account"
+              className="text-base font-semibold text-ink"
+            >
+              {name}
+            </button>
             <button
               onClick={() => setShowAccountMenu(v => !v)}
               title="Account"

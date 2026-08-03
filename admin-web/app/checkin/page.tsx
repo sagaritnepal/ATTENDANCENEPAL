@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import Badge from '@/components/Badge';
@@ -10,6 +10,8 @@ import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { AttendanceGpsRequest, AttendanceLog, CorrectionRequest, LeaveRequest, LeaveType } from '@/lib/types';
 
 const HISTORY_WINDOW_DAYS = 90;
+type HistoryRange = 'daily' | 'weekly' | 'monthly';
+const HISTORY_RANGE_DAYS: Record<HistoryRange, number> = { daily: 1, weekly: 7, monthly: 30 };
 
 type View = 'menu' | 'fix' | 'leave';
 type PunchModal = {
@@ -68,6 +70,7 @@ export default function CheckInPage() {
   const [modal, setModal] = useState<PunchModal | null>(null);
   const [gpsRequests, setGpsRequests] = useState<AttendanceGpsRequest[]>([]);
   const [history, setHistory] = useState<AttendanceLog[]>([]);
+  const [historyRange, setHistoryRange] = useState<HistoryRange>('weekly');
 
   // Fix-a-missed-punch state
   const [requests, setRequests] = useState<CorrectionRequest[]>([]);
@@ -112,6 +115,11 @@ export default function CheckInPage() {
       .limit(10)
       .then(({ data }) => setGpsRequests(data ?? []));
   }
+
+  const filteredHistory = useMemo(() => {
+    const cutoff = Date.now() - HISTORY_RANGE_DAYS[historyRange] * 86400000;
+    return history.filter(log => new Date(log.punch_time).getTime() >= cutoff);
+  }, [history, historyRange]);
 
   function reloadHistory(empId: string) {
     supabase
@@ -326,12 +334,27 @@ export default function CheckInPage() {
             </>
           )}
 
-          <h2 className="mb-3 mt-6 text-sm font-semibold text-ink">History</h2>
-          {history.length === 0 ? (
-            <p className="mt-2 text-center text-sm text-slate-400">No attendance records yet.</p>
+          <div className="mb-3 mt-6 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-ink">History</h2>
+            <div className="flex gap-1">
+              {(['daily', 'weekly', 'monthly'] as const).map(r => (
+                <button
+                  key={r}
+                  onClick={() => setHistoryRange(r)}
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${
+                    historyRange === r ? 'bg-accent text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+          {filteredHistory.length === 0 ? (
+            <p className="mt-2 text-center text-sm text-slate-400">No attendance records for this period.</p>
           ) : (
             <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
-              {history.map(log => (
+              {filteredHistory.map(log => (
                 <div key={log.id} className="flex items-center gap-3 px-4 py-3">
                   <span
                     className={`w-12 shrink-0 rounded-md px-2 py-1 text-center text-xs font-bold ${
@@ -344,6 +367,7 @@ export default function CheckInPage() {
                     <div className="text-sm text-ink">{formatDateTime(log.punch_time, system)}</div>
                     <div className="text-xs capitalize text-slate-400">{log.method}</div>
                   </div>
+                  <Badge tone="good">Accepted</Badge>
                 </div>
               ))}
             </div>
