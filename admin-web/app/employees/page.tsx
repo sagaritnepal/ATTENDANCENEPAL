@@ -76,7 +76,7 @@ function parseCsv(text: string): string[][] {
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [profiles, setProfiles] = useState<Pick<Profile, 'id' | 'employee_id' | 'role'>[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [departmentOptions, setDepartmentOptions] = useState<Department[]>([]);
   const [filter, setFilter] = useState('All');

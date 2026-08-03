@@ -37,7 +37,7 @@ export default function AppShell({
       }
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role')
+        .select('role, full_name')
         .eq('id', data.session.user.id)
         .single();
       if (!active) return;
@@ -48,7 +48,7 @@ export default function AppShell({
         return;
       }
       setRole(profile.role as Role);
-      setAdminName(data.session.user.email?.split('@')[0] ?? 'Admin');
+      setAdminName(profile.full_name || data.session.user.email?.split('@')[0] || 'Admin');
       setStatus('ready');
     });
     return () => {

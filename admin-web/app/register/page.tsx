@@ -9,6 +9,8 @@ import ConfigWarning from '@/components/ConfigWarning';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const [fullName, setFullName] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -38,7 +40,10 @@ export default function RegisterPage() {
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo: `${window.location.origin}/login` },
+      options: {
+        emailRedirectTo: `${window.location.origin}/login`,
+        data: { full_name: fullName, company_name: companyName },
+      },
     });
     setSubmitting(false);
 
@@ -59,6 +64,22 @@ export default function RegisterPage() {
   return (
     <AuthCard title="Sign Up">
       <form onSubmit={handleSubmit}>
+        <label className="mb-1 block text-sm font-medium text-slate-700">Full name</label>
+        <input
+          type="text"
+          required
+          value={fullName}
+          onChange={e => setFullName(e.target.value)}
+          className="mb-4 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+        />
+        <label className="mb-1 block text-sm font-medium text-slate-700">Company name</label>
+        <input
+          type="text"
+          required
+          value={companyName}
+          onChange={e => setCompanyName(e.target.value)}
+          className="mb-4 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+        />
         <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
         <input
           type="email"
