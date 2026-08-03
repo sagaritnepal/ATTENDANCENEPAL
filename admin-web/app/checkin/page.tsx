@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
-import { formatAdDate } from '@/lib/calendar';
+import { formatAdDate, localDateKey } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { AttendanceGpsRequest, CorrectionRequest, LeaveRequest, LeaveType } from '@/lib/types';
 
@@ -30,6 +30,10 @@ function toTimestamp(date: string, time: string) {
 function formatTime(value: string | null) {
   if (!value) return '—';
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDateTime(value: string, system: 'AD' | 'BS') {
+  return `${formatAdDate(localDateKey(value), system)} · ${formatTime(value)}`;
 }
 
 function statusTone(status: string) {
@@ -296,7 +300,7 @@ export default function CheckInPage() {
                   <div key={r.id} className="flex items-center gap-3 px-4 py-3">
                     <div className="flex-1">
                       <div className="text-sm font-medium text-ink">{r.punch_type === '0' ? 'Check In' : 'Check Out'}</div>
-                      <div className="text-xs text-slate-400">{new Date(r.punch_time).toLocaleString()}</div>
+                      <div className="text-xs text-slate-400">{formatDateTime(r.punch_time, system)}</div>
                     </div>
                     <Badge tone={statusTone(r.status)}>{r.status}</Badge>
                   </div>
@@ -457,7 +461,7 @@ export default function CheckInPage() {
             <h3 className="mb-1 text-lg font-semibold text-ink">
               Confirm {modal.punchType === '0' ? 'Check In' : 'Check Out'}
             </h3>
-            <p className="mb-4 text-xs text-slate-500">{new Date(modal.punchTime).toLocaleString()}</p>
+            <p className="mb-4 text-xs text-slate-500">{formatDateTime(modal.punchTime, system)}</p>
 
             {modal.status === 'locating' && <p className="mb-4 text-sm text-slate-500">📍 Getting your location…</p>}
             {modal.status === 'ready' && <p className="mb-4 text-sm text-good-text">📍 Location confirmed</p>}

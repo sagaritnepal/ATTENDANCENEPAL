@@ -4,12 +4,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import MonthCalendar from '@/components/MonthCalendar';
-import { localDateKey } from '@/lib/calendar';
+import { formatAdDate, localDateKey } from '@/lib/calendar';
+import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { AttendanceLog } from '@/lib/types';
 
 const WINDOW_DAYS = 400;
 
 export default function MyCalendarPage() {
+  const { system } = useCalendarSystem();
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,7 +82,7 @@ export default function MyCalendarPage() {
 
           {selectedDate && (
             <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-              <h2 className="mb-2 text-sm font-semibold text-ink">{selectedDate}</h2>
+              <h2 className="mb-2 text-sm font-semibold text-ink">{formatAdDate(selectedDate, system)}</h2>
               {dayLoading ? (
                 <p className="text-sm text-slate-400">Loading…</p>
               ) : dayLogs.length === 0 ? (
@@ -122,7 +124,10 @@ export default function MyCalendarPage() {
                     {log.punch_type === '0' ? 'IN' : 'OUT'}
                   </span>
                   <div className="flex-1">
-                    <div className="text-sm text-ink">{new Date(log.punch_time).toLocaleString()}</div>
+                    <div className="text-sm text-ink">
+                      {formatAdDate(localDateKey(log.punch_time), system)} ·{' '}
+                      {new Date(log.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
                     <div className="text-xs capitalize text-slate-400">{log.method}</div>
                   </div>
                 </div>
