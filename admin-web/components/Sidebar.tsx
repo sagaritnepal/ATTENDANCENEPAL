@@ -48,9 +48,13 @@ export default function Sidebar({ role, adminName, drawerOpen, onCloseDrawer }: 
 
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
 
-  // Auto-expand whichever group contains the page currently being viewed.
+  // Auto-expand whichever group contains the page currently being viewed —
+  // including the group's own link, since every page wraps its own
+  // AppShell/Sidebar (no shared persistent layout), so navigating to it
+  // remounts this component and would otherwise lose the toggle from the
+  // click that navigated here.
   useEffect(() => {
-    const group = NAV_ITEMS.find(i => i.children?.some(c => c.href === pathname));
+    const group = NAV_ITEMS.find(i => i.href === pathname || i.children?.some(c => c.href === pathname));
     if (group) setOpenGroups(prev => (prev.has(group.href) ? prev : new Set(prev).add(group.href)));
   }, [pathname]);
 
