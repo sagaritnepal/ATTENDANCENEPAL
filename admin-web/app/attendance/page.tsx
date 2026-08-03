@@ -309,7 +309,7 @@ function AttendanceView() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="max-h-[55vh] overflow-auto rounded-xl">
+        <div className="overflow-x-auto rounded-xl">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
