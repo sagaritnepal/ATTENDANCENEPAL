@@ -467,16 +467,18 @@ export default function EmployeeCvPage() {
           <div className="mb-5 flex items-center gap-4">
             <button
               onClick={openPhotoPicker}
-              title="Upload photo"
-              className="relative h-20 w-20 shrink-0 overflow-hidden rounded-full bg-accent/10 text-2xl font-semibold text-accent"
+              title={employee.profile_photo_url ? 'Change photo' : 'Add photo'}
+              className={`relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full text-2xl font-semibold text-accent ${
+                employee.profile_photo_url ? 'bg-accent/10' : 'border-2 border-dashed border-accent/40 bg-accent/5 hover:bg-accent/10'
+              }`}
             >
               {uploadingPhoto ? (
-                <span className="flex h-full w-full items-center justify-center text-sm">…</span>
+                <span className="text-sm">…</span>
               ) : employee.profile_photo_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={employee.profile_photo_url} alt={employee.name} className="h-full w-full object-cover" />
               ) : (
-                <span className="flex h-full w-full items-center justify-center">{employee.name.slice(0, 1)}</span>
+                <CameraIcon className="h-7 w-7" />
               )}
             </button>
             <div>
@@ -484,11 +486,10 @@ export default function EmployeeCvPage() {
               <p className="text-sm text-slate-500">
                 {employee.designation ?? '—'} {employee.department && `· ${employee.department}`}
               </p>
-              <p className="text-xs text-slate-400">
-                {[employee.phone, employee.email, branch?.name].filter(Boolean).join('  ·  ') || '—'}
-              </p>
+              <p className="text-xs text-slate-400">{[employee.phone, branch?.name].filter(Boolean).join('  ·  ') || '—'}</p>
+              {employee.email && <p className="text-xs text-slate-400">{employee.email}</p>}
               <button onClick={openPhotoPicker} className="mt-1 text-xs font-medium text-accent hover:underline">
-                Change photo
+                {employee.profile_photo_url ? 'Change photo' : '+ Add photo'}
               </button>
             </div>
           </div>
@@ -516,24 +517,24 @@ export default function EmployeeCvPage() {
                 <span className="text-ink">{formatAdDate(employee.resigned_at, system)}</span>
               </div>
             )}
-            {employee.address && (
-              <div className="col-span-2 sm:col-span-3">
-                <span className="block text-xs text-slate-400">Address</span>
-                <span className="text-ink">{employee.address}</span>
-              </div>
-            )}
+            <div className="col-span-2 sm:col-span-3">
+              <span className="block text-xs text-slate-400">Address</span>
+              <span className="text-ink">{employee.address || '—'}</span>
+            </div>
           </div>
 
-          {(employee.emergency_contact_name || employee.emergency_contact_phone) && (
-            <div className="mt-4 border-t border-slate-100 pt-4 text-sm">
-              <span className="mb-1 block text-xs text-slate-400">Emergency contact</span>
+          <div className="mt-4 border-t border-slate-100 pt-4 text-sm">
+            <span className="mb-1 block text-xs text-slate-400">Emergency contact</span>
+            {employee.emergency_contact_name || employee.emergency_contact_phone ? (
               <span className="text-ink">
                 {[employee.emergency_contact_name, employee.emergency_contact_relationship, employee.emergency_contact_phone]
                   .filter(Boolean)
                   .join(' — ')}
               </span>
-            </div>
-          )}
+            ) : (
+              <span className="text-xs text-slate-400">Not set — click Edit to add one.</span>
+            )}
+          </div>
         </div>
       ) : (
         <form onSubmit={handleSaveCore} className="mb-5 rounded-xl border border-slate-200 bg-white p-6">
@@ -541,21 +542,23 @@ export default function EmployeeCvPage() {
             <button
               type="button"
               onClick={openPhotoPicker}
-              title="Upload photo"
-              className="relative h-20 w-20 shrink-0 overflow-hidden rounded-full bg-accent/10 text-2xl font-semibold text-accent"
+              title={employee.profile_photo_url ? 'Change photo' : 'Add photo'}
+              className={`relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full text-2xl font-semibold text-accent ${
+                employee.profile_photo_url ? 'bg-accent/10' : 'border-2 border-dashed border-accent/40 bg-accent/5 hover:bg-accent/10'
+              }`}
             >
               {uploadingPhoto ? (
-                <span className="flex h-full w-full items-center justify-center text-sm">…</span>
+                <span className="text-sm">…</span>
               ) : employee.profile_photo_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={employee.profile_photo_url} alt={employee.name} className="h-full w-full object-cover" />
               ) : (
-                <span className="flex h-full w-full items-center justify-center">{employee.name.slice(0, 1)}</span>
+                <CameraIcon className="h-7 w-7" />
               )}
             </button>
             <div>
               <button type="button" onClick={openPhotoPicker} className="text-xs font-medium text-accent hover:underline">
-                Change photo
+                {employee.profile_photo_url ? 'Change photo' : '+ Add photo'}
               </button>
               <div className="mt-2 flex gap-4 text-xs text-slate-400">
                 <span>Code: {employee.employee_code}</span>
@@ -881,5 +884,14 @@ export default function EmployeeCvPage() {
         </div>
       )}
     </AppShell>
+  );
+}
+
+function CameraIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" />
+      <circle cx="12" cy="13" r="3.5" />
+    </svg>
   );
 }

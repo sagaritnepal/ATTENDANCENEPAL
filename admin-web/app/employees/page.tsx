@@ -642,9 +642,8 @@ export default function EmployeesPage() {
                     <Link href={`/employees/${emp.id}`} className="block truncate font-medium text-ink hover:text-accent hover:underline">
                       {emp.name}
                     </Link>
-                    <div className="mt-0.5 truncate text-xs text-slate-400">
-                      {emp.phone ?? '—'} {emp.email && <>· {emp.email}</>}
-                    </div>
+                    <div className="mt-0.5 truncate text-xs text-slate-400">{emp.phone ?? '—'}</div>
+                    {emp.email && <div className="truncate text-xs text-slate-400">{emp.email}</div>}
                     <div className="truncate text-xs text-slate-400">
                       {emp.designation ?? '—'} {emp.department && <>· {emp.department}</>}
                     </div>
@@ -823,9 +822,8 @@ export default function EmployeesPage() {
                           <Link href={`/employees/${emp.id}`} className="block truncate font-medium text-ink hover:text-accent hover:underline">
                             {emp.name}
                           </Link>
-                          <div className="truncate text-xs text-slate-400">
-                            {emp.phone ?? '—'} {emp.email && <>· {emp.email}</>}
-                          </div>
+                          <div className="truncate text-xs text-slate-400">{emp.phone ?? '—'}</div>
+                          {emp.email && <div className="truncate text-xs text-slate-400">{emp.email}</div>}
                           <div className="truncate text-xs text-slate-400">
                             {emp.designation ?? '—'} {emp.department && <>· {emp.department}</>}
                           </div>
