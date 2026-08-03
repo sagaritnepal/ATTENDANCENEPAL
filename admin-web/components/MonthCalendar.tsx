@@ -10,6 +10,8 @@ const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 type Props = {
   /** AD date (YYYY-MM-DD) -> that day's attendance state. */
   dayStatus: Map<string, DayStatus>;
+  /** AD dates (YYYY-MM-DD) covered by an approved leave request. */
+  leaveDates?: Set<string>;
   selectedDate: string | null;
   onSelectDate: (adKey: string) => void;
   /** Fires with the AD date keys currently in view (on mount and whenever
@@ -18,7 +20,7 @@ type Props = {
   onMonthChange?: (adKeys: string[]) => void;
 };
 
-export default function MonthCalendar({ dayStatus, selectedDate, onSelectDate, onMonthChange }: Props) {
+export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onSelectDate, onMonthChange }: Props) {
   const { system } = useCalendarSystem();
   const [anchor, setAnchor] = useState(todayAnchor);
 
@@ -58,8 +60,9 @@ export default function MonthCalendar({ dayStatus, selectedDate, onSelectDate, o
       <div className="grid grid-cols-7 gap-1">
         {month.weeks.flat().map((cell, i) => {
           const status = dayStatus.get(cell.adKey);
+          const onLeave = leaveDates?.has(cell.adKey) ?? false;
           const selected = selectedDate === cell.adKey;
-          const attendanceBg = status?.hasOut ? 'bg-good-bg' : status?.hasIn ? 'bg-warning-bg' : '';
+          const attendanceBg = onLeave ? 'bg-purple-100' : status?.hasOut ? 'bg-good-bg' : status?.hasIn ? 'bg-warning-bg' : '';
           return (
             <button
               key={`${cell.adKey}-${i}`}
@@ -86,6 +89,9 @@ export default function MonthCalendar({ dayStatus, selectedDate, onSelectDate, o
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-sm bg-good-bg" /> Checked out
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-purple-100" /> On leave
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-3 w-3 rounded-full bg-warning" /> Late in

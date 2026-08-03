@@ -8,9 +8,23 @@ import Badge from '@/components/Badge';
 import { formatAdDate, localDateKey } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { computeDayStatus, formatHoursMinutes, formatMinutes, resolveShift } from '@/lib/shift';
-import type { AttendanceLog, Employee, Shift } from '@/lib/types';
+import type { AttendanceLog, Employee, LeaveRequest, Shift } from '@/lib/types';
 
 const WINDOW_DAYS = 400;
+
+/** Every AD date key (YYYY-MM-DD) from start to end, inclusive. Both are
+ * already plain dates (Postgres `date` columns), so this stays in local
+ * calendar-date arithmetic and never touches a timestamp/timezone. */
+function datesBetween(start: string, end: string): string[] {
+  const [sy, sm, sd] = start.split('-').map(Number);
+  const [ey, em, ed] = end.split('-').map(Number);
+  const last = new Date(ey, em - 1, ed);
+  const dates: string[] = [];
+  for (let d = new Date(sy, sm - 1, sd); d <= last; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+    dates.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+  }
+  return dates;
+}
 
 type CardKey = 'hours' | 'late' | 'early' | 'overtime';
 type CardEntry = { date: string; minutes: number };
@@ -28,6 +42,7 @@ export default function MyCalendarPage() {
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [dayLogs, setDayLogs] = useState<AttendanceLog[]>([]);
@@ -46,7 +61,7 @@ export default function MyCalendarPage() {
       setLoading(false);
       if (!profile?.employee_id) return;
       setEmployeeId(profile.employee_id);
-      const [{ data: emp }, { data: shiftRows }, { data: rows }] = await Promise.all([
+      const [{ data: emp }, { data: shiftRows }, { data: rows }, { data: leaveRows }] = await Promise.all([
         supabase.from('employees').select('*').eq('id', profile.employee_id).single(),
         supabase.from('shifts').select('*'),
         supabase
@@ -55,10 +70,12 @@ export default function MyCalendarPage() {
           .eq('employee_id', profile.employee_id)
           .gte('punch_time', new Date(Date.now() - WINDOW_DAYS * 86400000).toISOString())
           .order('punch_time', { ascending: true }),
+        supabase.from('leave_requests').select('*').eq('employee_id', profile.employee_id).eq('status', 'approved'),
       ]);
       setEmployee(emp ?? null);
       setShifts(shiftRows ?? []);
       setLogs(rows ?? []);
+      setLeaveRequests(leaveRows ?? []);
     });
   }, []);
 
@@ -112,6 +129,18 @@ export default function MyCalendarPage() {
     };
   }, [visibleDates, dayStatus]);
 
+  const leaveByDate = useMemo(() => {
+    const map = new Map<string, LeaveRequest>();
+    for (const lr of leaveRequests) {
+      for (const date of datesBetween(lr.start_date, lr.end_date)) map.set(date, lr);
+    }
+    return map;
+  }, [leaveRequests]);
+
+  const leaveDates = useMemo(() => new Set(leaveByDate.keys()), [leaveByDate]);
+
+  const selectedLeave = selectedDate ? leaveByDate.get(selectedDate) ?? null : null;
+
   const selectedDaySummary = useMemo(() => {
     if (dayLogs.length === 0 || !employee) return null;
     return computeDayStatus(dayLogs, resolveShift(employee, shifts));
@@ -155,6 +184,7 @@ export default function MyCalendarPage() {
         <>
           <MonthCalendar
             dayStatus={dayStatus}
+            leaveDates={leaveDates}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
             onMonthChange={setVisibleDates}
@@ -163,10 +193,16 @@ export default function MyCalendarPage() {
           {selectedDate && (
             <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
               <h2 className="mb-2 text-sm font-semibold text-ink">{formatAdDate(selectedDate, system)}</h2>
+              {selectedLeave && (
+                <div className="mb-3 rounded-xl bg-purple-100 p-3">
+                  <div className="text-xs font-medium text-purple-700">On Leave</div>
+                  <div className="text-base font-bold capitalize text-ink">{selectedLeave.leave_type}</div>
+                </div>
+              )}
               {dayLoading ? (
                 <p className="text-sm text-slate-400">Loading…</p>
               ) : !selectedDaySummary ? (
-                <p className="text-sm text-slate-400">No punches recorded.</p>
+                !selectedLeave && <p className="text-sm text-slate-400">No punches recorded.</p>
               ) : (
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">

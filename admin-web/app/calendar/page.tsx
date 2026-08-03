@@ -6,15 +6,30 @@ import AppShell from '@/components/AppShell';
 import MonthCalendar from '@/components/MonthCalendar';
 import { localDateKey } from '@/lib/calendar';
 import { computeDayStatus, formatMinutes, resolveShift } from '@/lib/shift';
-import type { AttendanceLog, Employee, Shift } from '@/lib/types';
+import type { AttendanceLog, Employee, LeaveRequest, Shift } from '@/lib/types';
 
 const WINDOW_DAYS = 400;
+
+/** Every AD date key (YYYY-MM-DD) from start to end, inclusive — mirrors
+ * my-calendar/page.tsx's datesBetween(). Both bounds are already plain
+ * dates (Postgres `date` columns), so this stays local-date arithmetic. */
+function datesBetween(start: string, end: string): string[] {
+  const [sy, sm, sd] = start.split('-').map(Number);
+  const [ey, em, ed] = end.split('-').map(Number);
+  const last = new Date(ey, em - 1, ed);
+  const dates: string[] = [];
+  for (let d = new Date(sy, sm - 1, sd); d <= last; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+    dates.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+  }
+  return dates;
+}
 
 export default function CalendarPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [employeeId, setEmployeeId] = useState<string>('');
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [dayLogs, setDayLogs] = useState<AttendanceLog[]>([]);
   const [dayLoading, setDayLoading] = useState(false);
@@ -43,7 +58,24 @@ export default function CalendarPage() {
       .gte('punch_time', since)
       .order('punch_time', { ascending: true })
       .then(({ data }) => setLogs(data ?? []));
+    supabase
+      .from('leave_requests')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .eq('status', 'approved')
+      .then(({ data }) => setLeaveRequests(data ?? []));
   }, [employeeId]);
+
+  const leaveByDate = useMemo(() => {
+    const map = new Map<string, LeaveRequest>();
+    for (const lr of leaveRequests) {
+      for (const date of datesBetween(lr.start_date, lr.end_date)) map.set(date, lr);
+    }
+    return map;
+  }, [leaveRequests]);
+
+  const leaveDates = useMemo(() => new Set(leaveByDate.keys()), [leaveByDate]);
+  const selectedLeave = selectedDate ? leaveByDate.get(selectedDate) ?? null : null;
 
   const dayStatus = useMemo(() => {
     const byDate = new Map<string, AttendanceLog[]>();
@@ -107,16 +139,22 @@ export default function CalendarPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
-        <MonthCalendar dayStatus={dayStatus} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+        <MonthCalendar dayStatus={dayStatus} leaveDates={leaveDates} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
 
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <h2 className="mb-3 text-sm font-semibold text-ink">{selectedDate ?? 'Select a day'}</h2>
+          {selectedLeave && (
+            <div className="mb-3 rounded-xl bg-purple-100 p-3">
+              <div className="text-xs font-medium text-purple-700">On Leave</div>
+              <div className="text-base font-bold capitalize text-ink">{selectedLeave.leave_type}</div>
+            </div>
+          )}
           {!selectedDate ? (
             <p className="text-sm text-slate-400">Tap a date on the calendar to see punch times.</p>
           ) : dayLoading ? (
             <p className="text-sm text-slate-400">Loading…</p>
           ) : !selectedDaySummary ? (
-            <p className="text-sm text-slate-400">No punches recorded.</p>
+            !selectedLeave && <p className="text-sm text-slate-400">No punches recorded.</p>
           ) : (
             <div className="space-y-2">
               <div className="flex items-center gap-3">
