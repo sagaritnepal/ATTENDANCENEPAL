@@ -319,10 +319,30 @@ function AttendanceView() {
               <th className="px-5 py-3 font-medium">Device</th>
               <th className="px-5 py-3 font-medium">Check-In</th>
               <th className="px-5 py-3 font-medium">Check-Out</th>
-              <th className="px-5 py-3 font-medium">Late By</th>
-              <th className="px-5 py-3 font-medium">Early Out</th>
-              <th className="px-5 py-3 font-medium">Total Work Hours</th>
-              <th className="px-5 py-3 font-medium">Overtime</th>
+              <th className="px-5 py-3 font-medium">
+                <div>Late By</div>
+                <div className="mt-0.5 whitespace-nowrap text-sm font-bold normal-case tracking-normal text-ink">
+                  {totals.lateMinutes > 0 ? `${(totals.lateMinutes / 60).toFixed(1)} hrs` : '—'}
+                </div>
+              </th>
+              <th className="px-5 py-3 font-medium">
+                <div>Early Out</div>
+                <div className="mt-0.5 whitespace-nowrap text-sm font-bold normal-case tracking-normal text-ink">
+                  {totals.earlyMinutes > 0 ? `${(totals.earlyMinutes / 60).toFixed(1)} hrs` : '—'}
+                </div>
+              </th>
+              <th className="px-5 py-3 font-medium">
+                <div>Total Work Hours</div>
+                <div className="mt-0.5 whitespace-nowrap text-sm font-bold normal-case tracking-normal text-ink">
+                  {totals.workHours.toFixed(1)} hrs
+                </div>
+              </th>
+              <th className="px-5 py-3 font-medium">
+                <div>Overtime</div>
+                <div className="mt-0.5 whitespace-nowrap text-sm font-bold normal-case tracking-normal text-ink">
+                  {totals.overtimeHours.toFixed(1)} hrs
+                </div>
+              </th>
               <th className="px-5 py-3 font-medium">Status</th>
             </tr>
           </thead>
@@ -366,31 +386,6 @@ function AttendanceView() {
         </table>
         </div>
       </div>
-
-      {rows.length > 0 && (
-        <div className="sticky bottom-0 z-20 mt-4 grid grid-cols-2 gap-4 rounded-xl border-2 border-accent/30 bg-white px-5 py-4 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] sm:grid-cols-4">
-          <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Late By</div>
-            <div className="mt-1 text-lg font-bold text-ink">
-              {totals.lateMinutes > 0 ? `${(totals.lateMinutes / 60).toFixed(1)} hrs` : '—'}
-            </div>
-          </div>
-          <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Early Out</div>
-            <div className="mt-1 text-lg font-bold text-ink">
-              {totals.earlyMinutes > 0 ? `${(totals.earlyMinutes / 60).toFixed(1)} hrs` : '—'}
-            </div>
-          </div>
-          <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Total Work Hours</div>
-            <div className="mt-1 text-lg font-bold text-ink">{totals.workHours.toFixed(1)} hrs</div>
-          </div>
-          <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Overtime</div>
-            <div className="mt-1 text-lg font-bold text-ink">{totals.overtimeHours.toFixed(1)} hrs</div>
-          </div>
-        </div>
-      )}
     </AppShell>
   );
 }
