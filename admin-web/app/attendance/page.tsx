@@ -233,18 +233,21 @@ function AttendanceView() {
           <div>
             <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Employee</label>
             <div className="flex items-center gap-2">
-              <select
-                value={employeeId}
-                onChange={e => setEmployeeId(e.target.value)}
-                className="min-w-[10rem] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-              >
-                <option value="all">All Employees</option>
-                {employees.map(e => (
-                  <option key={e.id} value={e.id}>
-                    {e.name}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <PersonIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-accent" />
+                <select
+                  value={employeeId}
+                  onChange={e => setEmployeeId(e.target.value)}
+                  className="min-w-[11rem] rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                >
+                  <option value="all">All Employees</option>
+                  {employees.map(e => (
+                    <option key={e.id} value={e.id}>
+                      {e.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               {employeeId !== 'all' && (
                 <button onClick={() => setEmployeeId('all')} className="text-xs font-medium text-accent hover:underline">
                   Clear
@@ -255,16 +258,19 @@ function AttendanceView() {
 
           <div>
             <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</label>
-            <select
-              value={status}
-              onChange={e => setStatus(e.target.value as typeof status)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-            >
-              <option value="All">All Logs</option>
-              <option value="Present">Present</option>
-              <option value="Late">Late</option>
-              <option value="Absent">Absent</option>
-            </select>
+            <div className="relative">
+              <StatusIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-accent" />
+              <select
+                value={status}
+                onChange={e => setStatus(e.target.value as typeof status)}
+                className="rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+              >
+                <option value="All">All Logs</option>
+                <option value="Present">Present</option>
+                <option value="Late">Late</option>
+                <option value="Absent">Absent</option>
+              </select>
+            </div>
           </div>
 
           <div className="hidden h-10 w-px bg-slate-200 sm:block" />
@@ -394,5 +400,22 @@ function AttendanceView() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function PersonIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <circle cx="12" cy="8" r="3.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 20c1.2-3.5 4-5.5 7.5-5.5s6.3 2 7.5 5.5" />
+    </svg>
+  );
+}
+
+function StatusIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 5h16M4 5l7 8v6l2 1v-7l7-8" />
+    </svg>
   );
 }
