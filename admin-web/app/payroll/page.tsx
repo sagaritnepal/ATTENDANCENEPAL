@@ -3,11 +3,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
-import DatePicker from '@/components/DatePicker';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { computeDayStatus, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
+
+const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
 
 function monthBounds(year: number, month: number) {
   const d = new Date(Date.UTC(year, month, 1));
@@ -41,11 +55,12 @@ export default function PayrollPage() {
     });
   }
 
-  function jumpToDate(adKey: string) {
-    const [y, m] = adKey.split('-').map(Number);
-    if (!y || !m) return;
-    setAnchor({ year: y, month: m - 1 });
-  }
+  const yearOptions = useMemo(() => {
+    const thisYear = new Date().getFullYear();
+    const years = new Set([thisYear, anchor.year]);
+    for (let y = thisYear - 4; y <= thisYear + 1; y++) years.add(y);
+    return Array.from(years).sort((a, b) => a - b);
+  }, [anchor.year]);
 
   // Same data + same live-calc fallback the Attendance Report page uses
   // (payroll_summaries where the nightly job has run, computeDayStatus()
@@ -218,9 +233,28 @@ export default function PayrollPage() {
             {formatAdDate(start, system)} – {formatAdDate(end, system)}
           </span>
           <button onClick={() => stepMonth(1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">→</button>
-          <div className="w-40">
-            <DatePicker value={start} onChange={jumpToDate} placeholder="Jump to month" />
-          </div>
+          <select
+            value={anchor.month}
+            onChange={e => setAnchor(a => ({ ...a, month: Number(e.target.value) }))}
+            className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-600"
+          >
+            {MONTH_NAMES.map((name, i) => (
+              <option key={name} value={i}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={anchor.year}
+            onChange={e => setAnchor(a => ({ ...a, year: Number(e.target.value) }))}
+            className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-600"
+          >
+            {yearOptions.map(y => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
         </div>
         <button
           onClick={recalculateMonth}
