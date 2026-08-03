@@ -237,6 +237,19 @@ export default function PayrollPage() {
     return Math.round((row.salary / daysInRange) * row.days);
   }
 
+  function overtimeSalary(row: { salary: number | null; overtime: number }): number | null {
+    if (row.salary == null) return null;
+    if (row.overtime <= 0) return 0;
+    const hourlyRate = row.salary / (daysInRange * otHoursPerDay);
+    return Math.round(hourlyRate * otMultiplier * row.overtime);
+  }
+
+  function totalSalary(row: { salary: number | null; days: number; overtime: number }): number | null {
+    const calculated = calculatedSalary(row);
+    if (calculated == null) return null;
+    return calculated + (overtimeSalary(row) ?? 0);
+  }
+
   async function applySalaryChange(employeeId: string, salary: string) {
     const { error } = await supabase.from('employees').update({ salary: salary ? Number(salary) : null }).eq('id', employeeId);
     return error;
@@ -422,6 +435,8 @@ export default function PayrollPage() {
               <th className="py-2 font-medium">Late Days</th>
               <th className="py-2 font-medium">Salary</th>
               <th className="py-2 font-medium">Calculated Salary</th>
+              <th className="py-2 font-medium">Overtime Salary</th>
+              <th className="py-2 font-medium">Total Salary</th>
             </tr>
           </thead>
           <tbody>
@@ -481,11 +496,17 @@ export default function PayrollPage() {
                 <td className="py-2.5 text-slate-600">
                   {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
                 </td>
+                <td className="py-2.5 text-slate-600">
+                  {overtimeSalary(row) != null ? overtimeSalary(row)!.toLocaleString() : '—'}
+                </td>
+                <td className="py-2.5 font-medium text-ink">
+                  {totalSalary(row) != null ? totalSalary(row)!.toLocaleString() : '—'}
+                </td>
               </tr>
             ))}
             {byEmployee.length === 0 && (
               <tr>
-                <td colSpan={8} className="py-8 text-center text-slate-400">No active employees.</td>
+                <td colSpan={10} className="py-8 text-center text-slate-400">No active employees.</td>
               </tr>
             )}
           </tbody>
