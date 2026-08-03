@@ -228,7 +228,7 @@ function AttendanceView() {
 
   return (
     <AppShell title="Attendance Report">
-      <div className="mb-5 space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
           <select
             value={employeeId}
@@ -259,15 +259,8 @@ function AttendanceView() {
             <option value="Absent">Absent</option>
           </select>
 
-          <button
-            onClick={exportCsv}
-            className="ml-auto rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            ⭳ Export CSV
-          </button>
-        </div>
+          <div className="mx-1 h-6 w-px bg-slate-200" />
 
-        <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
           <div className="flex gap-1.5">
             {PRESETS.map(p => (
               <button
@@ -281,10 +274,9 @@ function AttendanceView() {
               </button>
             ))}
           </div>
-          <span className="text-xs font-medium text-slate-500">Pick date manually</span>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-slate-400">From</span>
-            <div className="w-48">
+            <div className="w-40">
               <DatePicker
                 value={from}
                 onChange={v => {
@@ -296,7 +288,7 @@ function AttendanceView() {
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-slate-400">To</span>
-            <div className="w-48">
+            <div className="w-40">
               <DatePicker
                 value={to}
                 onChange={v => {
@@ -306,6 +298,13 @@ function AttendanceView() {
               />
             </div>
           </div>
+
+          <button
+            onClick={exportCsv}
+            className="ml-auto rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            ⭳ Export CSV
+          </button>
         </div>
       </div>
 
