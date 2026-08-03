@@ -92,7 +92,18 @@ export default function EmployeeShell({ title, children }: { title: string; chil
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-4">
+        <div className="text-xs text-slate-400">{title}</div>
         <div className="flex items-center gap-3">
+          <CalendarSystemSwitch />
+          {isHr && (
+            <Link
+              href="/"
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            >
+              Admin Dashboard
+            </Link>
+          )}
+          <div className="text-base font-semibold text-ink">{name}</div>
           <div ref={accountMenuRef} className="relative">
             <button
               onClick={() => setShowAccountMenu(v => !v)}
@@ -107,7 +118,7 @@ export default function EmployeeShell({ title, children }: { title: string; chil
               )}
             </button>
             {showAccountMenu && (
-              <div className="absolute left-0 top-full z-20 mt-2 w-32 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+              <div className="absolute right-0 top-full z-20 mt-2 w-32 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
                 <button
                   onClick={handleSignOut}
                   className="w-full px-3 py-2 text-left text-sm font-medium text-critical hover:bg-slate-50"
@@ -117,19 +128,6 @@ export default function EmployeeShell({ title, children }: { title: string; chil
               </div>
             )}
           </div>
-          <div className="text-xs text-slate-400">{title}</div>
-        </div>
-        <div className="flex items-center gap-3">
-          <CalendarSystemSwitch />
-          {isHr && (
-            <Link
-              href="/"
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-            >
-              Admin Dashboard
-            </Link>
-          )}
-          <div className="text-base font-semibold text-ink">{name}</div>
         </div>
       </header>
 
