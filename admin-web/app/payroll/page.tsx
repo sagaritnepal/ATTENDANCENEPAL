@@ -5,7 +5,8 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import type { Employee, PayrollSummary } from '@/lib/types';
+import { computeDayStatus, resolveShift } from '@/lib/shift';
+import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
 
 function monthBounds(offset: number) {
   const now = new Date();
@@ -20,6 +21,8 @@ export default function PayrollPage() {
   const { system } = useCalendarSystem();
   const [offset, setOffset] = useState(0);
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
+  const [logs, setLogs] = useState<AttendanceLog[]>([]);
+  const [shifts, setShifts] = useState<Shift[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [recalculating, setRecalculating] = useState(false);
   const [pendingSalary, setPendingSalary] = useState<Record<string, string>>({});
@@ -27,8 +30,19 @@ export default function PayrollPage() {
 
   const { start, end, label } = monthBounds(offset);
 
+  // Same data + same live-calc fallback the Attendance Report page uses
+  // (payroll_summaries where the nightly job has run, computeDayStatus()
+  // against raw punches where it hasn't) — so a day shows up here exactly
+  // when it shows up there, with the same numbers.
   function reload() {
     supabase.from('payroll_summaries').select('*').gte('work_date', start).lte('work_date', end).then(({ data }) => setSummaries(data ?? []));
+    supabase
+      .from('attendance_logs')
+      .select('*')
+      .gte('punch_time', `${start}T00:00:00Z`)
+      .lte('punch_time', `${end}T23:59:59Z`)
+      .then(({ data }) => setLogs(data ?? []));
+    supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
     supabase.from('employees').select('*').eq('status', 'active').then(({ data }) => setEmployees(data ?? []));
   }
 
@@ -52,34 +66,70 @@ export default function PayrollPage() {
     reload();
   }
 
-  const totals = useMemo(() => {
-    const totalHours = summaries.reduce((s, r) => s + Number(r.total_hours), 0);
-    const overtimeHours = summaries.reduce((s, r) => s + Number(r.overtime_hours), 0);
-    const workedDays = new Set(summaries.map(r => `${r.employee_id}-${r.work_date}`)).size;
-    const daysInRange = (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1;
-    const possibleDays = employees.length * daysInRange;
-    const attendancePct = possibleDays ? Math.round((workedDays / possibleDays) * 1000) / 10 : 0;
-    return { totalHours, overtimeHours, attendancePct };
-  }, [summaries, employees, start, end]);
-
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
 
   const byEmployee = useMemo(() => {
+    const days: string[] = [];
+    const cur = new Date(start + 'T00:00:00Z');
+    const endDate = new Date(end + 'T00:00:00Z');
+    while (cur <= endDate) {
+      days.push(cur.toISOString().slice(0, 10));
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+
     const map = new Map<
       string,
-      { id: string; name: string; salary: number | null; days: number; hours: number; overtime: number; lateDays: number }
+      { id: string; enrollId: string; name: string; salary: number | null; days: number; hours: number; overtime: number; lateDays: number }
     >();
-    for (const emp of employees) map.set(emp.id, { id: emp.id, name: emp.name, salary: emp.salary, days: 0, hours: 0, overtime: 0, lateDays: 0 });
-    for (const s of summaries) {
-      const row = map.get(s.employee_id);
-      if (!row) continue;
-      row.days += 1;
-      row.hours += Number(s.total_hours);
-      row.overtime += Number(s.overtime_hours);
-      if (s.is_late) row.lateDays += 1;
+    for (const emp of employees) {
+      map.set(emp.id, {
+        id: emp.id,
+        enrollId: emp.fingerprint_id ?? '—',
+        name: emp.name,
+        salary: emp.salary,
+        days: 0,
+        hours: 0,
+        overtime: 0,
+        lateDays: 0,
+      });
+    }
+
+    for (const day of days) {
+      for (const emp of employees) {
+        const row = map.get(emp.id);
+        if (!row) continue;
+        const summary = summaries.find(s => s.employee_id === emp.id && s.work_date === day);
+        if (summary) {
+          row.days += 1;
+          row.hours += Number(summary.total_hours);
+          row.overtime += Number(summary.overtime_hours);
+          if (summary.is_late) row.lateDays += 1;
+          continue;
+        }
+        const dayLogs = logs
+          .filter(l => l.employee_id === emp.id && l.punch_time.slice(0, 10) === day)
+          .sort((a, b) => a.punch_time.localeCompare(b.punch_time));
+        if (dayLogs.length === 0) continue;
+        // Not yet processed by compute_payroll_summaries() — compute live
+        // from the raw punches, same as the Attendance Report page does.
+        const live = computeDayStatus(dayLogs, resolveShift(emp, shifts));
+        row.days += 1;
+        row.hours += live.totalMinutes / 60;
+        row.overtime += live.overtimeMinutes / 60;
+        if (live.isLate) row.lateDays += 1;
+      }
     }
     return Array.from(map.values());
-  }, [summaries, employees]);
+  }, [summaries, logs, shifts, employees, start, end]);
+
+  const totals = useMemo(() => {
+    const totalHours = byEmployee.reduce((s, r) => s + r.hours, 0);
+    const overtimeHours = byEmployee.reduce((s, r) => s + r.overtime, 0);
+    const workedDays = byEmployee.reduce((s, r) => s + r.days, 0);
+    const possibleDays = employees.length * daysInRange;
+    const attendancePct = possibleDays ? Math.round((workedDays / possibleDays) * 1000) / 10 : 0;
+    return { totalHours, overtimeHours, attendancePct };
+  }, [byEmployee, employees, daysInRange]);
 
   function calculatedSalary(row: { salary: number | null; days: number }): number | null {
     if (row.salary == null) return null;
@@ -213,6 +263,7 @@ export default function PayrollPage() {
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+              <th className="py-2 font-medium">ID</th>
               <th className="py-2 font-medium">Employee</th>
               <th className="py-2 font-medium">Worked Days</th>
               <th className="py-2 font-medium">Total Hours</th>
@@ -225,6 +276,7 @@ export default function PayrollPage() {
           <tbody>
             {byEmployee.map(row => (
               <tr key={row.id} className="border-b border-slate-100 last:border-0">
+                <td className="py-2.5 text-slate-600">{row.enrollId}</td>
                 <td className="py-2.5 font-medium text-ink">{row.name}</td>
                 <td className="py-2.5 text-slate-600">{row.days}</td>
                 <td className="py-2.5 text-slate-600">{row.hours.toFixed(1)} hrs</td>
@@ -248,7 +300,7 @@ export default function PayrollPage() {
             ))}
             {byEmployee.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-slate-400">No active employees.</td>
+                <td colSpan={8} className="py-8 text-center text-slate-400">No active employees.</td>
               </tr>
             )}
           </tbody>
