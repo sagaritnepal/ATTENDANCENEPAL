@@ -179,8 +179,8 @@ export default function BranchesPage() {
       <p className="mb-5 max-w-2xl text-sm text-slate-500">
         Each branch&apos;s location and radius, mainly for reference. An employee must be assigned to a branch
         (Employees page) for their GPS check-in to work at all — without one, the server rejects every GPS punch.
-        Distance from the branch is no longer enforced, so employees can check in/out from their phone regardless of
-        how far they are — flag anything unusual manually via corrections review.
+        Distance from the branch is no longer enforced. Instead, every phone check-in/check-out waits in the
+        Corrections page for Admin/HR to approve before it counts as attendance.
       </p>
 
       <div className="mb-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

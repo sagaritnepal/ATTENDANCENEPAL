@@ -7,7 +7,7 @@ import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import type { CorrectionRequest, LeaveRequest, LeaveType } from '@/lib/types';
+import type { AttendanceGpsRequest, CorrectionRequest, LeaveRequest, LeaveType } from '@/lib/types';
 
 type View = 'menu' | 'fix' | 'leave';
 type PunchModal = {
@@ -60,6 +60,7 @@ export default function CheckInPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: 'good' | 'critical'; text: string } | null>(null);
   const [modal, setModal] = useState<PunchModal | null>(null);
+  const [gpsRequests, setGpsRequests] = useState<AttendanceGpsRequest[]>([]);
 
   // Fix-a-missed-punch state
   const [requests, setRequests] = useState<CorrectionRequest[]>([]);
@@ -87,9 +88,20 @@ export default function CheckInPage() {
 
   useEffect(() => {
     if (!employeeId) return;
+    if (view === 'menu') reloadGpsRequests(employeeId);
     if (view === 'fix') reloadCorrections(employeeId);
     if (view === 'leave') reloadLeave(employeeId);
   }, [view, employeeId]);
+
+  function reloadGpsRequests(empId: string) {
+    supabase
+      .from('attendance_gps_requests')
+      .select('*')
+      .eq('employee_id', empId)
+      .order('created_at', { ascending: false })
+      .limit(10)
+      .then(({ data }) => setGpsRequests(data ?? []));
+  }
 
   function reloadCorrections(empId: string) {
     supabase
@@ -146,11 +158,10 @@ export default function CheckInPage() {
   async function confirmPunch() {
     if (!modal || modal.status !== 'ready' || !modal.coords || !employeeId) return;
     setBusy(true);
-    const { error } = await supabase.from('attendance_logs').insert({
+    const { error } = await supabase.from('attendance_gps_requests').insert({
       employee_id: employeeId,
       punch_time: modal.punchTime,
       punch_type: modal.punchType,
-      method: 'gps',
       lat: modal.coords.lat,
       lng: modal.coords.lng,
       accuracy_m: modal.coords.accuracy,
@@ -159,7 +170,13 @@ export default function CheckInPage() {
     const punchType = modal.punchType;
     setModal(null);
     if (error) setMessage({ kind: 'critical', text: `Check-in failed: ${error.message}` });
-    else setMessage({ kind: 'good', text: punchType === '0' ? 'Checked in.' : 'Checked out.' });
+    else {
+      setMessage({
+        kind: 'good',
+        text: `${punchType === '0' ? 'Check-in' : 'Check-out'} submitted — waiting for Admin/HR approval.`,
+      });
+      reloadGpsRequests(employeeId);
+    }
   }
 
   async function handleCorrectionSubmit(e: React.FormEvent) {
@@ -238,7 +255,10 @@ export default function CheckInPage() {
             </div>
           )}
 
-          <p className="mb-3 text-sm font-medium text-slate-600">Check In/Check Out use your current GPS location:</p>
+          <p className="mb-3 text-sm font-medium text-slate-600">
+            Check In/Check Out use your current GPS location. Every request is reviewed by Admin/HR before it counts
+            as attendance.
+          </p>
           <div className="flex flex-col gap-3">
             <button
               onClick={() => openPunchModal('0')}
@@ -267,6 +287,23 @@ export default function CheckInPage() {
               🏖 Leave
             </button>
           </div>
+
+          {gpsRequests.length > 0 && (
+            <>
+              <h2 className="mb-3 mt-6 text-sm font-semibold text-ink">Recent check-ins</h2>
+              <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+                {gpsRequests.map(r => (
+                  <div key={r.id} className="flex items-center gap-3 px-4 py-3">
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-ink">{r.punch_type === '0' ? 'Check In' : 'Check Out'}</div>
+                      <div className="text-xs text-slate-400">{new Date(r.punch_time).toLocaleString()}</div>
+                    </div>
+                    <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
 

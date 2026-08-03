@@ -148,6 +148,20 @@ export type CorrectionRequest = {
   lng: number | null;
 };
 
+export type AttendanceGpsRequest = {
+  id: string;
+  employee_id: string;
+  punch_type: '0' | '1';
+  punch_time: string;
+  lat: number | null;
+  lng: number | null;
+  accuracy_m: number | null;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+};
+
 export type TaskStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'rejected';
 export type TaskSource = 'assigned' | 'self';
 
