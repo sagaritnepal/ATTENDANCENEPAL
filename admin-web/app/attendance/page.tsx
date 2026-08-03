@@ -228,80 +228,88 @@ function AttendanceView() {
 
   return (
     <AppShell title="Attendance Report">
-      <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-3">
-          <select
-            value={employeeId}
-            onChange={e => setEmployeeId(e.target.value)}
-            className="min-w-[10rem] rounded-lg border border-slate-200 px-3 py-2 text-sm"
-          >
-            <option value="all">All Employees</option>
-            {employees.map(e => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </select>
-          {employeeId !== 'all' && (
-            <button onClick={() => setEmployeeId('all')} className="text-xs font-medium text-accent hover:underline">
-              Clear employee filter
-            </button>
-          )}
-
-          <select
-            value={status}
-            onChange={e => setStatus(e.target.value as typeof status)}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-          >
-            <option value="All">All Logs</option>
-            <option value="Present">Present</option>
-            <option value="Late">Late</option>
-            <option value="Absent">Absent</option>
-          </select>
-
-          <div className="mx-1 h-6 w-px bg-slate-200" />
-
-          <div className="flex gap-1.5">
-            {PRESETS.map(p => (
-              <button
-                key={p.key}
-                onClick={() => applyPreset(p)}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-                  activePreset === p.key ? 'bg-accent text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
-                }`}
+      <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Employee</label>
+            <div className="flex items-center gap-2">
+              <select
+                value={employeeId}
+                onChange={e => setEmployeeId(e.target.value)}
+                className="min-w-[10rem] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
               >
-                {p.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-slate-400">From</span>
-            <div className="w-40">
-              <DatePicker
-                value={from}
-                onChange={v => {
-                  setFrom(v);
-                  setActivePreset(null);
-                }}
-              />
+                <option value="all">All Employees</option>
+                {employees.map(e => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </select>
+              {employeeId !== 'all' && (
+                <button onClick={() => setEmployeeId('all')} className="text-xs font-medium text-accent hover:underline">
+                  Clear
+                </button>
+              )}
             </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-slate-400">To</span>
-            <div className="w-40">
-              <DatePicker
-                value={to}
-                onChange={v => {
-                  setTo(v);
-                  setActivePreset(null);
-                }}
-              />
+
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</label>
+            <select
+              value={status}
+              onChange={e => setStatus(e.target.value as typeof status)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            >
+              <option value="All">All Logs</option>
+              <option value="Present">Present</option>
+              <option value="Late">Late</option>
+              <option value="Absent">Absent</option>
+            </select>
+          </div>
+
+          <div className="hidden h-10 w-px bg-slate-200 sm:block" />
+
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Date Range</label>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex gap-1.5 rounded-lg bg-slate-100 p-1">
+                {PRESETS.map(p => (
+                  <button
+                    key={p.key}
+                    onClick={() => applyPreset(p)}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      activePreset === p.key ? 'bg-accent text-white shadow-sm' : 'text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              <div className="w-36">
+                <DatePicker
+                  value={from}
+                  onChange={v => {
+                    setFrom(v);
+                    setActivePreset(null);
+                  }}
+                />
+              </div>
+              <span className="text-slate-400">–</span>
+              <div className="w-36">
+                <DatePicker
+                  value={to}
+                  onChange={v => {
+                    setTo(v);
+                    setActivePreset(null);
+                  }}
+                />
+              </div>
             </div>
           </div>
 
           <button
             onClick={exportCsv}
-            className="ml-auto rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="ml-auto flex items-center gap-1.5 rounded-lg border border-accent bg-accent/5 px-4 py-2 text-sm font-semibold text-accent shadow-sm transition-colors hover:bg-accent hover:text-white"
           >
             ⭳ Export CSV
           </button>
@@ -309,7 +317,7 @@ function AttendanceView() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto rounded-xl">
+        <div className="max-h-[65vh] overflow-auto rounded-xl">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
