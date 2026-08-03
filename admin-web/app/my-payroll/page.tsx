@@ -1,25 +1,20 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import NepaliDate from 'nepali-date-converter';
 import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import Badge from '@/components/Badge';
-import { formatAdDate, monthDateRange, stepAnchor, todayAnchor, type CalendarAnchor, type CalendarSystem } from '@/lib/calendar';
+import {
+  buildPeriodOptions,
+  currentSystemYearMonth,
+  formatAdDate,
+  formatDdMmYyyy,
+  systemPeriod,
+  type CalendarPeriod,
+} from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { computeDayStatus, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
-
-/** The period's true AD start/end (see monthDateRange() — a real BS month's
- * own day-1-to-last-day span in BS mode, not an AD month mislabeled with BS
- * names) plus its display label. */
-function periodFromAnchor(anchor: CalendarAnchor, system: CalendarSystem) {
-  const { start, end } = monthDateRange(system, anchor);
-  const d = new Date(anchor.year, anchor.month, anchor.day);
-  const label =
-    system === 'AD' ? d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : NepaliDate.fromAD(d).format('MMMM YYYY');
-  return { start, end, label };
-}
 
 /** Days in the *current* real calendar month — salary is a monthly figure,
  * so Received/Remaining prorate against this regardless of which month is
@@ -45,11 +40,44 @@ export default function MyPayrollPage() {
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
-  const [anchor, setAnchor] = useState<CalendarAnchor>(todayAnchor);
+  const [period, setPeriod] = useState<CalendarPeriod>(() => {
+    const { year, month } = currentSystemYearMonth(system);
+    return systemPeriod(system, year, month);
+  });
+  const [dataRange, setDataRange] = useState<{ earliest: Date; latest: Date } | null>(null);
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
 
-  const { start, end, label } = periodFromAnchor(anchor, system);
+  const { start, end } = period;
+
+  // Toggling AD/BS resets to "this month" in the newly active system — the
+  // previously selected month rarely has an equivalent boundary in the
+  // other system. Mirrors the admin Payroll page.
+  useEffect(() => {
+    const { year, month } = currentSystemYearMonth(system);
+    setPeriod(systemPeriod(system, year, month));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [system]);
+
+  // This employee's own oldest/newest punch — bounds the period dropdown to
+  // months that actually have data for them.
+  useEffect(() => {
+    if (!employeeId) return;
+    Promise.all([
+      supabase.from('attendance_logs').select('punch_time').eq('employee_id', employeeId).order('punch_time', { ascending: true }).limit(1),
+      supabase.from('attendance_logs').select('punch_time').eq('employee_id', employeeId).order('punch_time', { ascending: false }).limit(1),
+    ]).then(([earliestRes, latestRes]) => {
+      const earliest = earliestRes.data?.[0]?.punch_time;
+      const latest = latestRes.data?.[0]?.punch_time;
+      if (!earliest || !latest) {
+        setDataRange(null);
+        return;
+      }
+      setDataRange({ earliest: new Date(earliest), latest: new Date(latest) });
+    });
+  }, [employeeId]);
+
+  const periodOptions = useMemo(() => buildPeriodOptions(system, dataRange, period), [system, dataRange, period]);
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -168,20 +196,25 @@ export default function MyPayrollPage() {
             </div>
           )}
 
-          <div className="mb-4 flex items-center justify-between">
-            <button
-              onClick={() => setAnchor(a => stepAnchor(system, a, -1))}
-              className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50"
+          <div className="mb-4 space-y-2">
+            <select
+              value={period.key}
+              onChange={e => {
+                const found = periodOptions.find(o => o.key === e.target.value);
+                if (found) setPeriod(found);
+              }}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-center text-sm font-semibold text-ink"
             >
-              ←
-            </button>
-            <span className="text-sm font-semibold text-ink">{label}</span>
-            <button
-              onClick={() => setAnchor(a => stepAnchor(system, a, 1))}
-              className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50"
-            >
-              →
-            </button>
+              {periodOptions.map(o => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <div className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600">
+              <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
+              {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -230,5 +263,14 @@ export default function MyPayrollPage() {
         </>
       )}
     </EmployeeShell>
+  );
+}
+
+function CalendarIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path strokeLinecap="round" d="M3 10h18M8 3v4M16 3v4" />
+    </svg>
   );
 }

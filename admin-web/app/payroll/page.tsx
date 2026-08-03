@@ -1,76 +1,23 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import NepaliDate from 'nepali-date-converter';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
-import { formatAdDate, monthDateRange, type CalendarAnchor, type CalendarSystem } from '@/lib/calendar';
+import {
+  buildPeriodOptions,
+  currentSystemYearMonth,
+  formatAdDate,
+  formatDdMmYyyy,
+  systemPeriod,
+  type CalendarPeriod,
+} from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { computeDayStatus, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
 
-const MONTH_NAMES = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
-
-/** AD date key (YYYY-MM-DD) -> "DD/MM/YYYY" in the current calendar system. */
-function formatDdMmYyyy(adKey: string, system: CalendarSystem) {
-  const [y, m, d] = adKey.split('-').map(Number);
-  if (system === 'AD') return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
-  return NepaliDate.fromAD(new Date(y, m - 1, d)).format('DD/MM/YYYY');
-}
-
-/** A selectable payroll period: a real calendar month in whichever system
- * it was built for, with its true AD start/end already resolved (see
- * monthDateRange() in lib/calendar.ts) — never an AD month wearing a BS
- * label that doesn't match its own day-1-to-last-day span. */
-type Period = { key: string; label: string; start: string; end: string };
-
-function adPeriod(year: number, month: number): Period {
-  const anchor: CalendarAnchor = { year, month, day: 1 };
-  return { key: `AD-${year}-${month}`, label: `${MONTH_NAMES[month]} ${year}`, ...monthDateRange('AD', anchor) };
-}
-
-function bsPeriod(bsYear: number, bsMonth: number): Period {
-  const ad = new NepaliDate(bsYear, bsMonth, 1).getAD();
-  const anchor: CalendarAnchor = { year: ad.year, month: ad.month, day: ad.date };
-  const label = new NepaliDate(bsYear, bsMonth, 1).format('MMMM YYYY');
-  return { key: `BS-${bsYear}-${bsMonth}`, label, ...monthDateRange('BS', anchor) };
-}
-
-function systemPeriod(system: CalendarSystem, year: number, month: number): Period {
-  return system === 'AD' ? adPeriod(year, month) : bsPeriod(year, month);
-}
-
-function currentSystemYearMonth(system: CalendarSystem) {
-  const now = new Date();
-  if (system === 'AD') return { year: now.getFullYear(), month: now.getMonth() };
-  const bs = NepaliDate.fromAD(now).getBS();
-  return { year: bs.year, month: bs.month };
-}
-
-function yearMonthIndex(year: number, month: number) {
-  return year * 12 + month;
-}
-
-function indexToYearMonth(i: number) {
-  return { year: Math.floor(i / 12), month: ((i % 12) + 12) % 12 };
-}
-
 export default function PayrollPage() {
   const { system } = useCalendarSystem();
-  const [period, setPeriod] = useState<Period>(() => {
+  const [period, setPeriod] = useState<CalendarPeriod>(() => {
     const { year, month } = currentSystemYearMonth(system);
     return systemPeriod(system, year, month);
   });
@@ -130,37 +77,7 @@ export default function PayrollPage() {
   // to a max of 12 months back even if data goes further), but "now" is
   // always included so you can jump to the current month before any of its
   // data exists yet.
-  const periodOptions = useMemo(() => {
-    const { year: nowYear, month: nowMonth } = currentSystemYearMonth(system);
-    const currentIndex = yearMonthIndex(nowYear, nowMonth);
-
-    let latestIndex = currentIndex;
-    let earliestIndex = currentIndex - 11;
-    if (dataRange) {
-      const dataLatest = system === 'AD'
-        ? { year: dataRange.latest.getFullYear(), month: dataRange.latest.getMonth() }
-        : NepaliDate.fromAD(dataRange.latest).getBS();
-      const dataEarliest = system === 'AD'
-        ? { year: dataRange.earliest.getFullYear(), month: dataRange.earliest.getMonth() }
-        : NepaliDate.fromAD(dataRange.earliest).getBS();
-      latestIndex = Math.max(yearMonthIndex(dataLatest.year, dataLatest.month), currentIndex);
-      earliestIndex = Math.max(yearMonthIndex(dataEarliest.year, dataEarliest.month), latestIndex - 11);
-    }
-
-    const options: Period[] = [];
-    for (let i = earliestIndex; i <= latestIndex; i++) {
-      const { year, month } = indexToYearMonth(i);
-      options.push(systemPeriod(system, year, month));
-    }
-
-    // The currently selected period must always be selectable even if it's
-    // outside the computed data range.
-    if (!options.some(o => o.key === period.key)) {
-      options.push(period);
-      options.sort((a, b) => a.start.localeCompare(b.start));
-    }
-    return options;
-  }, [system, dataRange, period]);
+  const periodOptions = useMemo(() => buildPeriodOptions(system, dataRange, period), [system, dataRange, period]);
 
   // Same data + same live-calc fallback the Attendance Report page uses
   // (payroll_summaries where the nightly job has run, computeDayStatus()

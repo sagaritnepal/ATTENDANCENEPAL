@@ -147,6 +147,96 @@ export function monthDateRange(system: CalendarSystem, anchor: CalendarAnchor): 
   return { start: dateKey(firstAd.year, firstAd.month, firstAd.date), end: dateKey(lastAd.year, lastAd.month, lastAd.date) };
 }
 
+/** AD date key (YYYY-MM-DD) -> "DD/MM/YYYY" in the current calendar system. */
+export function formatDdMmYyyy(adKey: string, system: CalendarSystem): string {
+  const [y, m, d] = adKey.split('-').map(Number);
+  if (system === 'AD') return `${pad(d)}/${pad(m)}/${y}`;
+  return NepaliDate.fromAD(new Date(y, m - 1, d)).format('DD/MM/YYYY');
+}
+
+/** A selectable month-long period: a real calendar month in whichever
+ * system it was built for, with its true AD start/end already resolved
+ * (see monthDateRange()) — never an AD month wearing a BS label that
+ * doesn't match its own day-1-to-last-day span. Shared by the admin
+ * Payroll page and the employee my-payroll page so both pick periods the
+ * same way. */
+export type CalendarPeriod = { key: string; label: string; start: string; end: string };
+
+export function adPeriod(year: number, month: number): CalendarPeriod {
+  const anchor: CalendarAnchor = { year, month, day: 1 };
+  const label = new Date(year, month, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  return { key: `AD-${year}-${month}`, label, ...monthDateRange('AD', anchor) };
+}
+
+export function bsPeriod(bsYear: number, bsMonth: number): CalendarPeriod {
+  const ad = new NepaliDate(bsYear, bsMonth, 1).getAD();
+  const anchor: CalendarAnchor = { year: ad.year, month: ad.month, day: ad.date };
+  const label = new NepaliDate(bsYear, bsMonth, 1).format('MMMM YYYY');
+  return { key: `BS-${bsYear}-${bsMonth}`, label, ...monthDateRange('BS', anchor) };
+}
+
+export function systemPeriod(system: CalendarSystem, year: number, month: number): CalendarPeriod {
+  return system === 'AD' ? adPeriod(year, month) : bsPeriod(year, month);
+}
+
+export function currentSystemYearMonth(system: CalendarSystem): { year: number; month: number } {
+  const now = new Date();
+  if (system === 'AD') return { year: now.getFullYear(), month: now.getMonth() };
+  const bs = NepaliDate.fromAD(now).getBS();
+  return { year: bs.year, month: bs.month };
+}
+
+function yearMonthIndex(year: number, month: number) {
+  return year * 12 + month;
+}
+
+function indexToYearMonth(i: number) {
+  return { year: Math.floor(i / 12), month: ((i % 12) + 12) % 12 };
+}
+
+/** One flat list of every period a "pick a month" dropdown can jump to,
+ * instead of a separate Month select + Year select. Bounded to where
+ * `dataRange` (the earliest/latest AD dates with actual data) says data
+ * exists, capped to a max of 12 months back even if data goes further, but
+ * "now" is always included so you can jump to the current month before any
+ * of its data exists yet. `selected` is always kept selectable even if it
+ * falls outside that computed window. */
+export function buildPeriodOptions(
+  system: CalendarSystem,
+  dataRange: { earliest: Date; latest: Date } | null,
+  selected: CalendarPeriod
+): CalendarPeriod[] {
+  const { year: nowYear, month: nowMonth } = currentSystemYearMonth(system);
+  const currentIndex = yearMonthIndex(nowYear, nowMonth);
+
+  let latestIndex = currentIndex;
+  let earliestIndex = currentIndex - 11;
+  if (dataRange) {
+    const dataLatest =
+      system === 'AD'
+        ? { year: dataRange.latest.getFullYear(), month: dataRange.latest.getMonth() }
+        : NepaliDate.fromAD(dataRange.latest).getBS();
+    const dataEarliest =
+      system === 'AD'
+        ? { year: dataRange.earliest.getFullYear(), month: dataRange.earliest.getMonth() }
+        : NepaliDate.fromAD(dataRange.earliest).getBS();
+    latestIndex = Math.max(yearMonthIndex(dataLatest.year, dataLatest.month), currentIndex);
+    earliestIndex = Math.max(yearMonthIndex(dataEarliest.year, dataEarliest.month), latestIndex - 11);
+  }
+
+  const options: CalendarPeriod[] = [];
+  for (let i = earliestIndex; i <= latestIndex; i++) {
+    const { year, month } = indexToYearMonth(i);
+    options.push(systemPeriod(system, year, month));
+  }
+
+  if (!options.some(o => o.key === selected.key)) {
+    options.push(selected);
+    options.sort((a, b) => a.start.localeCompare(b.start));
+  }
+  return options;
+}
+
 /** Formats an AD date key (YYYY-MM-DD) for display in whichever calendar
  * system is currently active — the single place every page should go
  * through so a global AD/BS switch changes every displayed date at once. */
