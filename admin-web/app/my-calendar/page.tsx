@@ -28,9 +28,6 @@ function datesBetween(start: string, end: string): string[] {
 
 type CardKey = 'hours' | 'late' | 'early' | 'overtime' | 'present' | 'absent';
 type CardEntry = { date: string; minutes: number };
-/** Cards whose expanded list shows a duration next to each date — the rest
- * (present/absent) are plain date lists with nothing to measure. */
-const DURATION_CARDS: CardKey[] = ['hours', 'late', 'early', 'overtime'];
 
 const CARD_STYLES: Record<CardKey, { label: string; bg: string; text: string }> = {
   hours: { label: 'Total Work Hours', bg: 'bg-good-bg', text: 'text-good-text' },
@@ -302,18 +299,37 @@ export default function MyCalendarPage() {
                 <p className="text-sm text-slate-400">Nothing to show for this month.</p>
               ) : (
                 <div className="divide-y divide-slate-100">
-                  {monthSummary.entries[expandedCard].map(entry => (
-                    <div key={entry.date} className="flex items-center justify-between py-2 text-sm">
-                      <span className="text-ink">{formatAdDate(entry.date, system)}</span>
-                      {DURATION_CARDS.includes(expandedCard) && (
-                        <span className="font-medium text-slate-600">
-                          {expandedCard === 'hours' || expandedCard === 'overtime'
-                            ? formatHoursMinutes(entry.minutes)
-                            : formatMinutes(entry.minutes)}
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                  {monthSummary.entries[expandedCard].map(entry => {
+                    const day = dayStatus.get(entry.date);
+                    return (
+                      <div key={entry.date} className="py-2 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-ink">{formatAdDate(entry.date, system)}</span>
+                          {!day && <Badge tone="critical">Absent</Badge>}
+                          {day?.isLate && <Badge tone="warning">Late</Badge>}
+                        </div>
+                        {day && (
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                            <span>
+                              IN {new Date(day.checkIn.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            <span>
+                              OUT{' '}
+                              {day.checkOut
+                                ? new Date(day.checkOut.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                : '–:–'}
+                            </span>
+                            {day.isLate && <span className="text-warning-text">Late {formatMinutes(day.lateMinutes)}</span>}
+                            {day.isEarly && <span className="text-critical-text">Early {formatMinutes(day.earlyMinutes)}</span>}
+                            <span>{formatHoursMinutes(day.totalMinutes)}</span>
+                            {day.overtimeMinutes > 0 && (
+                              <span className="text-info-text">OT {formatHoursMinutes(day.overtimeMinutes)}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
