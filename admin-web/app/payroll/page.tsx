@@ -46,6 +46,14 @@ function currentAnchor() {
   return { year: now.getFullYear(), month: now.getMonth() };
 }
 
+function yearMonthIndex(year: number, month: number) {
+  return year * 12 + month;
+}
+
+function indexToYearMonth(i: number) {
+  return { year: Math.floor(i / 12), month: ((i % 12) + 12) % 12 };
+}
+
 export default function PayrollPage() {
   const { system } = useCalendarSystem();
   const [anchor, setAnchor] = useState(currentAnchor);
@@ -62,23 +70,56 @@ export default function PayrollPage() {
   // "8 hours" and "1.5x" are defaults, not a stored policy.
   const [otHoursPerDay, setOtHoursPerDay] = useState(8);
   const [otMultiplier, setOtMultiplier] = useState(1.5);
+  const [dataMonthRange, setDataMonthRange] = useState<{ earliest: number; latest: number } | null>(null);
 
   const { start, end } = monthBounds(anchor.year, anchor.month);
 
+  // The oldest/newest punch on record — bounds the period dropdown to
+  // months that actually have data instead of listing years of empty ones.
+  useEffect(() => {
+    Promise.all([
+      supabase.from('attendance_logs').select('punch_time').order('punch_time', { ascending: true }).limit(1),
+      supabase.from('attendance_logs').select('punch_time').order('punch_time', { ascending: false }).limit(1),
+    ]).then(([earliestRes, latestRes]) => {
+      const earliest = earliestRes.data?.[0]?.punch_time;
+      const latest = latestRes.data?.[0]?.punch_time;
+      if (!earliest || !latest) {
+        setDataMonthRange(null);
+        return;
+      }
+      const e = new Date(earliest);
+      const l = new Date(latest);
+      setDataMonthRange({
+        earliest: yearMonthIndex(e.getFullYear(), e.getMonth()),
+        latest: yearMonthIndex(l.getFullYear(), l.getMonth()),
+      });
+    });
+  }, []);
+
   // One flat list of every (year, month) this dropdown can jump to, instead
   // of a separate Month select + Year select — picking a period is then one
-  // selection instead of two.
+  // selection instead of two. Bounded to where actual data exists (capped
+  // to a max of 12 months back even if data goes further), but "now" is
+  // always included so you can jump to the current month before any of its
+  // data exists yet.
   const periodOptions = useMemo(() => {
-    const thisYear = new Date().getFullYear();
-    const years = new Set([thisYear, anchor.year]);
-    for (let y = thisYear - 4; y <= thisYear + 1; y++) years.add(y);
-    const sortedYears = Array.from(years).sort((a, b) => a - b);
+    const now = new Date();
+    const currentIndex = yearMonthIndex(now.getFullYear(), now.getMonth());
+    const latestIndex = dataMonthRange ? Math.max(dataMonthRange.latest, currentIndex) : currentIndex;
+    const earliestIndex = dataMonthRange ? Math.max(dataMonthRange.earliest, latestIndex - 11) : latestIndex - 11;
+
     const options: { year: number; month: number }[] = [];
-    for (const y of sortedYears) {
-      for (let m = 0; m < 12; m++) options.push({ year: y, month: m });
+    for (let i = earliestIndex; i <= latestIndex; i++) options.push(indexToYearMonth(i));
+
+    // The currently selected period must always be selectable even if it's
+    // outside the computed data range.
+    const anchorIndex = yearMonthIndex(anchor.year, anchor.month);
+    if (!options.some(o => yearMonthIndex(o.year, o.month) === anchorIndex)) {
+      options.push({ year: anchor.year, month: anchor.month });
+      options.sort((a, b) => yearMonthIndex(a.year, a.month) - yearMonthIndex(b.year, b.month));
     }
     return options;
-  }, [anchor.year]);
+  }, [dataMonthRange, anchor.year, anchor.month]);
 
   // Same data + same live-calc fallback the Attendance Report page uses
   // (payroll_summaries where the nightly job has run, computeDayStatus()
