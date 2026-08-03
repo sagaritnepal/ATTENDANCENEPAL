@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import NepaliDate from 'nepali-date-converter';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
-import { formatAdDate, type CalendarSystem } from '@/lib/calendar';
+import { formatAdDate, monthDateRange, type CalendarAnchor, type CalendarSystem } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { computeDayStatus, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
@@ -24,16 +24,6 @@ const MONTH_NAMES = [
   'December',
 ];
 
-/** One combined "Month Year" option label for AD month `month` (0-indexed)
- * of `year` — the AD English name in AD mode, or the Nepali (BS) month +
- * year that AD month's 1st falls in when switched to BS. The value picked
- * always stays an AD (year, month) pair (that's what the payroll period and
- * daysInRange are computed from); only the label changes. */
-function monthOptionLabel(year: number, month: number, system: CalendarSystem) {
-  if (system === 'AD') return `${MONTH_NAMES[month]} ${year}`;
-  return NepaliDate.fromAD(new Date(year, month, 1)).format('MMMM YYYY');
-}
-
 /** AD date key (YYYY-MM-DD) -> "DD/MM/YYYY" in the current calendar system. */
 function formatDdMmYyyy(adKey: string, system: CalendarSystem) {
   const [y, m, d] = adKey.split('-').map(Number);
@@ -41,16 +31,33 @@ function formatDdMmYyyy(adKey: string, system: CalendarSystem) {
   return NepaliDate.fromAD(new Date(y, m - 1, d)).format('DD/MM/YYYY');
 }
 
-function monthBounds(year: number, month: number) {
-  const d = new Date(Date.UTC(year, month, 1));
-  const start = d.toISOString().slice(0, 10);
-  const end = new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10);
-  return { start, end };
+/** A selectable payroll period: a real calendar month in whichever system
+ * it was built for, with its true AD start/end already resolved (see
+ * monthDateRange() in lib/calendar.ts) — never an AD month wearing a BS
+ * label that doesn't match its own day-1-to-last-day span. */
+type Period = { key: string; label: string; start: string; end: string };
+
+function adPeriod(year: number, month: number): Period {
+  const anchor: CalendarAnchor = { year, month, day: 1 };
+  return { key: `AD-${year}-${month}`, label: `${MONTH_NAMES[month]} ${year}`, ...monthDateRange('AD', anchor) };
 }
 
-function currentAnchor() {
+function bsPeriod(bsYear: number, bsMonth: number): Period {
+  const ad = new NepaliDate(bsYear, bsMonth, 1).getAD();
+  const anchor: CalendarAnchor = { year: ad.year, month: ad.month, day: ad.date };
+  const label = new NepaliDate(bsYear, bsMonth, 1).format('MMMM YYYY');
+  return { key: `BS-${bsYear}-${bsMonth}`, label, ...monthDateRange('BS', anchor) };
+}
+
+function systemPeriod(system: CalendarSystem, year: number, month: number): Period {
+  return system === 'AD' ? adPeriod(year, month) : bsPeriod(year, month);
+}
+
+function currentSystemYearMonth(system: CalendarSystem) {
   const now = new Date();
-  return { year: now.getFullYear(), month: now.getMonth() };
+  if (system === 'AD') return { year: now.getFullYear(), month: now.getMonth() };
+  const bs = NepaliDate.fromAD(now).getBS();
+  return { year: bs.year, month: bs.month };
 }
 
 function yearMonthIndex(year: number, month: number) {
@@ -63,7 +70,10 @@ function indexToYearMonth(i: number) {
 
 export default function PayrollPage() {
   const { system } = useCalendarSystem();
-  const [anchor, setAnchor] = useState(currentAnchor);
+  const [period, setPeriod] = useState<Period>(() => {
+    const { year, month } = currentSystemYearMonth(system);
+    return systemPeriod(system, year, month);
+  });
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -77,12 +87,12 @@ export default function PayrollPage() {
   // "8 hours" and "1.5x" are defaults, not a stored policy.
   const [otHoursPerDay, setOtHoursPerDay] = useState(8);
   const [otMultiplier, setOtMultiplier] = useState(1.5);
-  const [dataMonthRange, setDataMonthRange] = useState<{ earliest: number; latest: number } | null>(null);
+  const [dataRange, setDataRange] = useState<{ earliest: Date; latest: Date } | null>(null);
   // Overtime pay is optional per employee (some employees just aren't paid
   // extra for it) — on by default, toggled off per row.
   const [overtimeEnabled, setOvertimeEnabled] = useState<Record<string, boolean>>({});
 
-  const { start, end } = monthBounds(anchor.year, anchor.month);
+  const { start, end } = period;
 
   // The oldest/newest punch on record — bounds the period dropdown to
   // months that actually have data instead of listing years of empty ones.
@@ -94,42 +104,63 @@ export default function PayrollPage() {
       const earliest = earliestRes.data?.[0]?.punch_time;
       const latest = latestRes.data?.[0]?.punch_time;
       if (!earliest || !latest) {
-        setDataMonthRange(null);
+        setDataRange(null);
         return;
       }
-      const e = new Date(earliest);
-      const l = new Date(latest);
-      setDataMonthRange({
-        earliest: yearMonthIndex(e.getFullYear(), e.getMonth()),
-        latest: yearMonthIndex(l.getFullYear(), l.getMonth()),
-      });
+      setDataRange({ earliest: new Date(earliest), latest: new Date(latest) });
     });
   }, []);
 
-  // One flat list of every (year, month) this dropdown can jump to, instead
-  // of a separate Month select + Year select — picking a period is then one
+  // Picking a period is switching to whichever calendar's real months — BS
+  // Shrawan, Bhadra, ... in BS mode, AD January, February, ... in AD mode —
+  // each option's start/end is that month's own true day-1-to-last-day span
+  // (see Period/monthDateRange), never an AD month wearing a BS label.
+  // Toggling AD/BS resets to "this month" in the newly active system, since
+  // the previously selected month rarely has an equivalent boundary in the
+  // other system.
+  useEffect(() => {
+    const { year, month } = currentSystemYearMonth(system);
+    setPeriod(systemPeriod(system, year, month));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [system]);
+
+  // One flat list of every period this dropdown can jump to, instead of a
+  // separate Month select + Year select — picking a period is then one
   // selection instead of two. Bounded to where actual data exists (capped
   // to a max of 12 months back even if data goes further), but "now" is
   // always included so you can jump to the current month before any of its
   // data exists yet.
   const periodOptions = useMemo(() => {
-    const now = new Date();
-    const currentIndex = yearMonthIndex(now.getFullYear(), now.getMonth());
-    const latestIndex = dataMonthRange ? Math.max(dataMonthRange.latest, currentIndex) : currentIndex;
-    const earliestIndex = dataMonthRange ? Math.max(dataMonthRange.earliest, latestIndex - 11) : latestIndex - 11;
+    const { year: nowYear, month: nowMonth } = currentSystemYearMonth(system);
+    const currentIndex = yearMonthIndex(nowYear, nowMonth);
 
-    const options: { year: number; month: number }[] = [];
-    for (let i = earliestIndex; i <= latestIndex; i++) options.push(indexToYearMonth(i));
+    let latestIndex = currentIndex;
+    let earliestIndex = currentIndex - 11;
+    if (dataRange) {
+      const dataLatest = system === 'AD'
+        ? { year: dataRange.latest.getFullYear(), month: dataRange.latest.getMonth() }
+        : NepaliDate.fromAD(dataRange.latest).getBS();
+      const dataEarliest = system === 'AD'
+        ? { year: dataRange.earliest.getFullYear(), month: dataRange.earliest.getMonth() }
+        : NepaliDate.fromAD(dataRange.earliest).getBS();
+      latestIndex = Math.max(yearMonthIndex(dataLatest.year, dataLatest.month), currentIndex);
+      earliestIndex = Math.max(yearMonthIndex(dataEarliest.year, dataEarliest.month), latestIndex - 11);
+    }
+
+    const options: Period[] = [];
+    for (let i = earliestIndex; i <= latestIndex; i++) {
+      const { year, month } = indexToYearMonth(i);
+      options.push(systemPeriod(system, year, month));
+    }
 
     // The currently selected period must always be selectable even if it's
     // outside the computed data range.
-    const anchorIndex = yearMonthIndex(anchor.year, anchor.month);
-    if (!options.some(o => yearMonthIndex(o.year, o.month) === anchorIndex)) {
-      options.push({ year: anchor.year, month: anchor.month });
-      options.sort((a, b) => yearMonthIndex(a.year, a.month) - yearMonthIndex(b.year, b.month));
+    if (!options.some(o => o.key === period.key)) {
+      options.push(period);
+      options.sort((a, b) => a.start.localeCompare(b.start));
     }
     return options;
-  }, [dataMonthRange, anchor.year, anchor.month]);
+  }, [system, dataRange, period]);
 
   // Same data + same live-calc fallback the Attendance Report page uses
   // (payroll_summaries where the nightly job has run, computeDayStatus()
@@ -318,16 +349,16 @@ export default function PayrollPage() {
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <select
-            value={`${anchor.year}-${anchor.month}`}
+            value={period.key}
             onChange={e => {
-              const [y, m] = e.target.value.split('-').map(Number);
-              setAnchor({ year: y, month: m });
+              const found = periodOptions.find(o => o.key === e.target.value);
+              if (found) setPeriod(found);
             }}
             className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-600"
           >
-            {periodOptions.map(({ year, month }) => (
-              <option key={`${year}-${month}`} value={`${year}-${month}`}>
-                {monthOptionLabel(year, month, system)}
+            {periodOptions.map(o => (
+              <option key={o.key} value={o.key}>
+                {o.label}
               </option>
             ))}
           </select>

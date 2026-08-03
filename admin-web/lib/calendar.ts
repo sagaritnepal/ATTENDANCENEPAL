@@ -129,6 +129,24 @@ export function todayAnchor(): CalendarAnchor {
   return { year: d.getFullYear(), month: d.getMonth(), day: d.getDate() };
 }
 
+/** The AD date-key span (day 1 through the actual last day) of the calendar
+ * month `anchor` falls in, in whichever `system` is active. The BS branch
+ * computes the true BS month's own boundary (e.g. Shrawan's 31/32 days,
+ * converted to AD) — not an AD month's span relabeled with BS names, which
+ * is what selecting "Shrawan 2083" used to produce (some AD month that
+ * straddles two BS months, e.g. 16 Shrawan - 15 Bhadra). */
+export function monthDateRange(system: CalendarSystem, anchor: CalendarAnchor): { start: string; end: string } {
+  if (system === 'AD') {
+    const daysInMonth = new Date(anchor.year, anchor.month + 1, 0).getDate();
+    return { start: dateKey(anchor.year, anchor.month, 1), end: dateKey(anchor.year, anchor.month, daysInMonth) };
+  }
+  const bs = NepaliDate.fromAD(new Date(anchor.year, anchor.month, anchor.day)).getBS();
+  const daysInMonth = new NepaliDate(bs.year, bs.month + 1, 0).getDate();
+  const firstAd = new NepaliDate(bs.year, bs.month, 1).getAD();
+  const lastAd = new NepaliDate(bs.year, bs.month, daysInMonth).getAD();
+  return { start: dateKey(firstAd.year, firstAd.month, firstAd.date), end: dateKey(lastAd.year, lastAd.month, lastAd.date) };
+}
+
 /** Formats an AD date key (YYYY-MM-DD) for display in whichever calendar
  * system is currently active — the single place every page should go
  * through so a global AD/BS switch changes every displayed date at once. */

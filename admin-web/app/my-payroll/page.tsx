@@ -5,16 +5,17 @@ import NepaliDate from 'nepali-date-converter';
 import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import Badge from '@/components/Badge';
-import { formatAdDate, type CalendarSystem } from '@/lib/calendar';
+import { formatAdDate, monthDateRange, stepAnchor, todayAnchor, type CalendarAnchor, type CalendarSystem } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { computeDayStatus, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
 
-function monthBounds(offset: number, system: CalendarSystem) {
-  const now = new Date();
-  const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-  const start = new Date(Date.UTC(d.getFullYear(), d.getMonth(), 1)).toISOString().slice(0, 10);
-  const end = new Date(Date.UTC(d.getFullYear(), d.getMonth() + 1, 0)).toISOString().slice(0, 10);
+/** The period's true AD start/end (see monthDateRange() — a real BS month's
+ * own day-1-to-last-day span in BS mode, not an AD month mislabeled with BS
+ * names) plus its display label. */
+function periodFromAnchor(anchor: CalendarAnchor, system: CalendarSystem) {
+  const { start, end } = monthDateRange(system, anchor);
+  const d = new Date(anchor.year, anchor.month, anchor.day);
   const label =
     system === 'AD' ? d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : NepaliDate.fromAD(d).format('MMMM YYYY');
   return { start, end, label };
@@ -44,11 +45,11 @@ export default function MyPayrollPage() {
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
-  const [offset, setOffset] = useState(0);
+  const [anchor, setAnchor] = useState<CalendarAnchor>(todayAnchor);
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
 
-  const { start, end, label } = monthBounds(offset, system);
+  const { start, end, label } = periodFromAnchor(anchor, system);
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -168,11 +169,17 @@ export default function MyPayrollPage() {
           )}
 
           <div className="mb-4 flex items-center justify-between">
-            <button onClick={() => setOffset(o => o - 1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
+            <button
+              onClick={() => setAnchor(a => stepAnchor(system, a, -1))}
+              className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50"
+            >
               ←
             </button>
             <span className="text-sm font-semibold text-ink">{label}</span>
-            <button onClick={() => setOffset(o => o + 1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
+            <button
+              onClick={() => setAnchor(a => stepAnchor(system, a, 1))}
+              className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50"
+            >
               →
             </button>
           </div>
