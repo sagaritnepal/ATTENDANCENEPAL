@@ -1,9 +1,11 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { buildMonth, stepAnchor, todayAnchor, type CalendarSystem } from '@/lib/calendar';
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+const POPOVER_WIDTH = 288; // matches w-72
 
 function parseAdKey(value: string): { year: number; month: number } | null {
   const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(value);
@@ -16,6 +18,13 @@ function parseAdKey(value: string): { year: number; month: number } | null {
  * (lib/calendar.ts) the Attendance calendar already uses, reused here so
  * every date field in the app can toggle to the Nepali (Bikram Sambat)
  * calendar instead of just the Gregorian one.
+ *
+ * The popover renders through a portal into document.body, positioned by
+ * the trigger's viewport coordinates — a plain absolutely-positioned child
+ * would get clipped by any ancestor with overflow-y-auto (every modal on
+ * desktop uses that for its scrollable body), which is how a native
+ * <input type="date"> never behaved since its picker is a browser-level
+ * overlay, not a DOM node inside the page.
  */
 export default function DatePicker({
   value,
@@ -32,12 +41,39 @@ export default function DatePicker({
   const [open, setOpen] = useState(false);
   const [system, setSystem] = useState<CalendarSystem>('AD');
   const [anchor, setAnchor] = useState(todayAnchor);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   function openPicker() {
     setAnchor(parseAdKey(value) ?? todayAnchor());
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      const left = Math.min(rect.left, window.innerWidth - POPOVER_WIDTH - 8);
+      setCoords({ top: rect.bottom + 4, left: Math.max(8, left) });
+    }
     setOpen(true);
   }
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(e: MouseEvent) {
+      const target = e.target as Node;
+      if (triggerRef.current?.contains(target) || popoverRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+    function handleScrollOrResize() {
+      setOpen(false);
+    }
+    document.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
+    };
+  }, [open]);
 
   const month = useMemo(() => buildMonth(system, anchor.year, anchor.month), [system, anchor]);
 
@@ -57,15 +93,9 @@ export default function DatePicker({
     : '';
 
   return (
-    <div
-      ref={rootRef}
-      tabIndex={-1}
-      onBlur={e => {
-        if (!rootRef.current?.contains(e.relatedTarget as Node)) setOpen(false);
-      }}
-      className="relative"
-    >
+    <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => (open ? setOpen(false) : openPicker())}
         className={`flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left text-sm hover:border-accent/40 ${className ?? ''}`}
@@ -73,77 +103,84 @@ export default function DatePicker({
         <span className={displayValue ? 'text-ink' : 'text-slate-400'}>{displayValue || placeholder}</span>
         <CalendarGlyph className="h-4 w-4 shrink-0 text-slate-400" />
       </button>
-      {open && (
-        <div className="absolute left-0 top-full z-20 mt-1 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
-          <div className="mb-2 flex items-center justify-between">
-            <button type="button" onClick={() => go(-1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
-              ‹
-            </button>
-            <span className="text-sm font-semibold text-ink">{month.label}</span>
-            <button type="button" onClick={() => go(1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
-              ›
-            </button>
-          </div>
-
-          <div className="mb-2 flex justify-center">
-            <div className="flex overflow-hidden rounded-lg border border-slate-200 text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setSystem('AD')}
-                className={`px-3 py-1 ${system === 'AD' ? 'bg-accent text-white' : 'bg-white text-slate-500'}`}
-              >
-                AD
+      {open &&
+        coords &&
+        createPortal(
+          <div
+            ref={popoverRef}
+            style={{ position: 'fixed', top: coords.top, left: coords.left, width: POPOVER_WIDTH }}
+            className="z-[1000] rounded-xl border border-slate-200 bg-white p-3 shadow-lg"
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <button type="button" onClick={() => go(-1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
+                ‹
               </button>
-              <button
-                type="button"
-                onClick={() => setSystem('BS')}
-                className={`px-3 py-1 ${system === 'BS' ? 'bg-accent text-white' : 'bg-white text-slate-500'}`}
-              >
-                BS
+              <span className="text-sm font-semibold text-ink">{month.label}</span>
+              <button type="button" onClick={() => go(1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
+                ›
               </button>
             </div>
-          </div>
 
-          <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-slate-400">
-            {WEEKDAY_LABELS.map(w => (
-              <span key={w}>{w}</span>
-            ))}
-          </div>
-          <div className="mt-1 grid grid-cols-7 gap-1">
-            {month.weeks.flat().map((cell, i) => {
-              const isSelected = cell.adKey === value;
-              return (
+            <div className="mb-2 flex justify-center">
+              <div className="flex overflow-hidden rounded-lg border border-slate-200 text-xs font-semibold">
                 <button
-                  key={`${cell.adKey}-${i}`}
                   type="button"
-                  onClick={() => selectCell(cell.adKey)}
-                  className={`h-7 w-7 rounded-full text-xs ${
-                    !cell.inMonth
-                      ? 'text-slate-300'
-                      : isSelected
-                        ? 'bg-accent font-semibold text-white'
-                        : cell.isToday
-                          ? 'bg-accent/10 font-semibold text-accent'
-                          : 'text-slate-600 hover:bg-slate-100'
-                  }`}
+                  onClick={() => setSystem('AD')}
+                  className={`px-3 py-1 ${system === 'AD' ? 'bg-accent text-white' : 'bg-white text-slate-500'}`}
                 >
-                  {cell.displayDay}
+                  AD
                 </button>
-              );
-            })}
-          </div>
+                <button
+                  type="button"
+                  onClick={() => setSystem('BS')}
+                  className={`px-3 py-1 ${system === 'BS' ? 'bg-accent text-white' : 'bg-white text-slate-500'}`}
+                >
+                  BS
+                </button>
+              </div>
+            </div>
 
-          <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2">
-            <span className="text-[11px] text-slate-400">
-              Today: {today.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
-            </span>
-            <button type="button" onClick={() => selectCell(todayIso)} className="text-[11px] font-medium text-accent hover:underline">
-              Select today
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+            <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-slate-400">
+              {WEEKDAY_LABELS.map(w => (
+                <span key={w}>{w}</span>
+              ))}
+            </div>
+            <div className="mt-1 grid grid-cols-7 gap-1">
+              {month.weeks.flat().map((cell, i) => {
+                const isSelected = cell.adKey === value;
+                return (
+                  <button
+                    key={`${cell.adKey}-${i}`}
+                    type="button"
+                    onClick={() => selectCell(cell.adKey)}
+                    className={`h-7 w-7 rounded-full text-xs ${
+                      !cell.inMonth
+                        ? 'text-slate-300'
+                        : isSelected
+                          ? 'bg-accent font-semibold text-white'
+                          : cell.isToday
+                            ? 'bg-accent/10 font-semibold text-accent'
+                            : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {cell.displayDay}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2">
+              <span className="text-[11px] text-slate-400">
+                Today: {today.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+              </span>
+              <button type="button" onClick={() => selectCell(todayIso)} className="text-[11px] font-medium text-accent hover:underline">
+                Select today
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
+    </>
   );
 }
 
