@@ -128,7 +128,12 @@ export default function PayrollPage() {
     const workedDays = byEmployee.reduce((s, r) => s + r.days, 0);
     const possibleDays = employees.length * daysInRange;
     const attendancePct = possibleDays ? Math.round((workedDays / possibleDays) * 1000) / 10 : 0;
-    return { totalHours, overtimeHours, attendancePct };
+    const totalEmployeeSalary = byEmployee.reduce((s, r) => s + (r.salary ?? 0), 0);
+    const totalSalaryPayable = byEmployee.reduce(
+      (s, r) => (r.salary == null ? s : s + Math.round((r.salary / daysInRange) * r.days)),
+      0
+    );
+    return { totalHours, overtimeHours, attendancePct, totalEmployeeSalary, totalSalaryPayable };
   }, [byEmployee, employees, daysInRange]);
 
   function calculatedSalary(row: { salary: number | null; days: number }): number | null {
@@ -182,21 +187,31 @@ export default function PayrollPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-3 lg:grid-cols-5">
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <span className="text-sm text-slate-500">Total Payable Hours</span>
-          <div className="mt-2 text-3xl font-bold text-ink">{totals.totalHours.toFixed(1)} hrs</div>
+          <div className="mt-2 text-lg font-bold text-ink">{totals.totalHours.toFixed(1)} hrs</div>
           <div className="mt-1 text-xs text-slate-500">Across {employees.length} staff</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <span className="text-sm text-slate-500">Overtime Tracked</span>
-          <div className="mt-2 text-3xl font-bold text-ink">{totals.overtimeHours.toFixed(1)} hrs</div>
+          <div className="mt-2 text-lg font-bold text-ink">{totals.overtimeHours.toFixed(1)} hrs</div>
           <div className="mt-1 text-xs text-slate-500">This period</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <span className="text-sm text-slate-500">Average Attendance</span>
-          <div className="mt-2 text-3xl font-bold text-ink">{totals.attendancePct}%</div>
+          <div className="mt-2 text-lg font-bold text-ink">{totals.attendancePct}%</div>
           <div className="mt-1 text-xs text-slate-500">Worked days vs possible</div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <span className="text-sm text-slate-500">Total Salary Payable</span>
+          <div className="mt-2 text-lg font-bold text-ink">{totals.totalSalaryPayable.toLocaleString()}</div>
+          <div className="mt-1 text-xs text-slate-500">Earned so far this period</div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <span className="text-sm text-slate-500">Total Employees Salary</span>
+          <div className="mt-2 text-lg font-bold text-ink">{totals.totalEmployeeSalary.toLocaleString()}</div>
+          <div className="mt-1 text-xs text-slate-500">Full monthly salary, all staff</div>
         </div>
       </div>
 
