@@ -32,6 +32,10 @@ export type DayStatus = {
   checkOut: AttendanceLog | null;
   lateMinutes: number;
   earlyMinutes: number;
+  /** Worked minutes this day — 0 until there's both an in and an out. */
+  totalMinutes: number;
+  /** Minutes worked beyond the shift's duration — 0 unless totalMinutes exceeds it. */
+  overtimeMinutes: number;
 };
 
 /** Minutes -> "H:MM", for late-by / early-by durations. */
@@ -39,6 +43,14 @@ export function formatMinutes(minutes: number) {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return `${h}:${String(m).padStart(2, '0')}`;
+}
+
+/** Minutes -> "Xh Ym", for larger sums (total hours, overtime) where a
+ * clock-style H:MM reads oddly once it crosses 24. */
+export function formatHoursMinutes(minutes: number) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}h ${m}m`;
 }
 
 function toMinutes(hhmm: string) {
@@ -81,6 +93,13 @@ export function computeDayStatus(
   const isEarly = outMin !== null && outMin < shiftEndMin;
   const earlyMinutes = isEarly ? shiftEndMin - outMin! : 0;
 
+  const shiftDurationMin =
+    shiftEndMin > shiftStartMin ? shiftEndMin - shiftStartMin : 24 * 60 - shiftStartMin + shiftEndMin;
+  const totalMinutes = hasOut
+    ? Math.round((new Date(checkOut!.punch_time).getTime() - new Date(checkIn.punch_time).getTime()) / 60000)
+    : 0;
+  const overtimeMinutes = totalMinutes > shiftDurationMin ? totalMinutes - shiftDurationMin : 0;
+
   return {
     hasIn: true,
     hasOut,
@@ -90,5 +109,7 @@ export function computeDayStatus(
     checkOut: hasOut ? checkOut : null,
     lateMinutes,
     earlyMinutes,
+    totalMinutes,
+    overtimeMinutes,
   };
 }

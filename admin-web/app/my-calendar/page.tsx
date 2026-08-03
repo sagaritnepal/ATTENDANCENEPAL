@@ -6,10 +6,20 @@ import EmployeeShell from '@/components/EmployeeShell';
 import MonthCalendar from '@/components/MonthCalendar';
 import { formatAdDate, localDateKey } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { computeDayStatus, formatMinutes, resolveShift } from '@/lib/shift';
+import { computeDayStatus, formatHoursMinutes, formatMinutes, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Employee, Shift } from '@/lib/types';
 
 const WINDOW_DAYS = 400;
+
+type CardKey = 'hours' | 'late' | 'early' | 'overtime';
+type CardEntry = { date: string; minutes: number };
+
+const CARD_STYLES: Record<CardKey, { label: string; bg: string; text: string }> = {
+  hours: { label: 'Total Work Hours', bg: 'bg-good-bg', text: 'text-good-text' },
+  late: { label: 'Late In', bg: 'bg-warning-bg', text: 'text-warning-text' },
+  early: { label: 'Early Out', bg: 'bg-critical-bg', text: 'text-critical-text' },
+  overtime: { label: 'Overtime', bg: 'bg-info-bg', text: 'text-info-text' },
+};
 
 export default function MyCalendarPage() {
   const { system } = useCalendarSystem();
@@ -21,6 +31,8 @@ export default function MyCalendarPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [dayLogs, setDayLogs] = useState<AttendanceLog[]>([]);
   const [dayLoading, setDayLoading] = useState(false);
+  const [visibleDates, setVisibleDates] = useState<string[]>([]);
+  const [expandedCard, setExpandedCard] = useState<CardKey | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -64,7 +76,40 @@ export default function MyCalendarPage() {
     return map;
   }, [logs, employee, shifts]);
 
-  const history = useMemo(() => [...logs].sort((a, b) => b.punch_time.localeCompare(a.punch_time)).slice(0, 50), [logs]);
+  const monthSummary = useMemo(() => {
+    const hours: CardEntry[] = [];
+    const late: CardEntry[] = [];
+    const early: CardEntry[] = [];
+    const overtime: CardEntry[] = [];
+    let totalWorkMinutes = 0;
+    let overtimeMinutes = 0;
+
+    for (const date of visibleDates) {
+      const status = dayStatus.get(date);
+      if (!status) continue;
+      if (status.hasOut) {
+        hours.push({ date, minutes: status.totalMinutes });
+        totalWorkMinutes += status.totalMinutes;
+      }
+      if (status.isLate) late.push({ date, minutes: status.lateMinutes });
+      if (status.isEarly) early.push({ date, minutes: status.earlyMinutes });
+      if (status.overtimeMinutes > 0) {
+        overtime.push({ date, minutes: status.overtimeMinutes });
+        overtimeMinutes += status.overtimeMinutes;
+      }
+    }
+    const byDateDesc = (a: CardEntry, b: CardEntry) => b.date.localeCompare(a.date);
+    return {
+      totalWorkMinutes,
+      overtimeMinutes,
+      entries: {
+        hours: hours.sort(byDateDesc),
+        late: late.sort(byDateDesc),
+        early: early.sort(byDateDesc),
+        overtime: overtime.sort(byDateDesc),
+      } satisfies Record<CardKey, CardEntry[]>,
+    };
+  }, [visibleDates, dayStatus]);
 
   const selectedDaySummary = useMemo(() => {
     if (dayLogs.length === 0 || !employee) return null;
@@ -92,6 +137,13 @@ export default function MyCalendarPage() {
       });
   }, [selectedDate, employeeId]);
 
+  function cardValue(key: CardKey) {
+    if (key === 'hours') return formatHoursMinutes(monthSummary.totalWorkMinutes);
+    if (key === 'overtime') return formatHoursMinutes(monthSummary.overtimeMinutes);
+    const count = monthSummary.entries[key].length;
+    return `${count} day${count === 1 ? '' : 's'}`;
+  }
+
   return (
     <EmployeeShell title="Calendar">
       {loading ? (
@@ -100,7 +152,12 @@ export default function MyCalendarPage() {
         <p className="mt-10 text-center text-sm text-warning-text">Your account isn&apos;t linked to an employee record yet.</p>
       ) : (
         <>
-          <MonthCalendar dayStatus={dayStatus} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+          <MonthCalendar
+            dayStatus={dayStatus}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+            onMonthChange={setVisibleDates}
+          />
 
           {selectedDate && (
             <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
@@ -144,29 +201,41 @@ export default function MyCalendarPage() {
             </div>
           )}
 
-          <h2 className="mb-3 mt-6 text-sm font-semibold text-ink">History</h2>
-          {history.length === 0 ? (
-            <p className="mt-2 text-center text-sm text-slate-400">No attendance records yet.</p>
-          ) : (
-            <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
-              {history.map(log => (
-                <div key={log.id} className="flex items-center gap-3 px-4 py-3">
-                  <span
-                    className={`w-12 shrink-0 rounded-md px-2 py-1 text-center text-xs font-bold ${
-                      log.punch_type === '0' ? 'bg-good-bg text-good-text' : 'bg-warning-bg text-warning-text'
-                    }`}
-                  >
-                    {log.punch_type === '0' ? 'IN' : 'OUT'}
-                  </span>
-                  <div className="flex-1">
-                    <div className="text-sm text-ink">
-                      {formatAdDate(localDateKey(log.punch_time), system)} ·{' '}
-                      {new Date(log.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          <h2 className="mb-3 mt-6 text-sm font-semibold text-ink">This Month</h2>
+          <div className="grid grid-cols-2 gap-3">
+            {(Object.keys(CARD_STYLES) as CardKey[]).map(key => {
+              const style = CARD_STYLES[key];
+              const open = expandedCard === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setExpandedCard(open ? null : key)}
+                  className={`rounded-xl p-4 text-left ${style.bg} ${open ? 'ring-2 ring-accent' : ''}`}
+                >
+                  <div className={`text-xs font-medium ${style.text}`}>{style.label}</div>
+                  <div className="mt-1 text-xl font-bold text-ink">{cardValue(key)}</div>
+                </button>
+              );
+            })}
+          </div>
+
+          {expandedCard && (
+            <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4">
+              <h3 className="mb-2 text-sm font-semibold text-ink">{CARD_STYLES[expandedCard].label}</h3>
+              {monthSummary.entries[expandedCard].length === 0 ? (
+                <p className="text-sm text-slate-400">Nothing to show for this month.</p>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {monthSummary.entries[expandedCard].map(entry => (
+                    <div key={entry.date} className="flex items-center justify-between py-2 text-sm">
+                      <span className="text-ink">{formatAdDate(entry.date, system)}</span>
+                      <span className="font-medium text-slate-600">
+                        {expandedCard === 'hours' ? formatHoursMinutes(entry.minutes) : formatMinutes(entry.minutes)}
+                      </span>
                     </div>
-                    <div className="text-xs capitalize text-slate-400">{log.method}</div>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </>

@@ -7,7 +7,9 @@ import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
 import { formatAdDate, localDateKey } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import type { AttendanceGpsRequest, CorrectionRequest, LeaveRequest, LeaveType } from '@/lib/types';
+import type { AttendanceGpsRequest, AttendanceLog, CorrectionRequest, LeaveRequest, LeaveType } from '@/lib/types';
+
+const HISTORY_WINDOW_DAYS = 90;
 
 type View = 'menu' | 'fix' | 'leave';
 type PunchModal = {
@@ -65,6 +67,7 @@ export default function CheckInPage() {
   const [message, setMessage] = useState<{ kind: 'good' | 'critical'; text: string } | null>(null);
   const [modal, setModal] = useState<PunchModal | null>(null);
   const [gpsRequests, setGpsRequests] = useState<AttendanceGpsRequest[]>([]);
+  const [history, setHistory] = useState<AttendanceLog[]>([]);
 
   // Fix-a-missed-punch state
   const [requests, setRequests] = useState<CorrectionRequest[]>([]);
@@ -92,7 +95,10 @@ export default function CheckInPage() {
 
   useEffect(() => {
     if (!employeeId) return;
-    if (view === 'menu') reloadGpsRequests(employeeId);
+    if (view === 'menu') {
+      reloadGpsRequests(employeeId);
+      reloadHistory(employeeId);
+    }
     if (view === 'fix') reloadCorrections(employeeId);
     if (view === 'leave') reloadLeave(employeeId);
   }, [view, employeeId]);
@@ -105,6 +111,17 @@ export default function CheckInPage() {
       .order('created_at', { ascending: false })
       .limit(10)
       .then(({ data }) => setGpsRequests(data ?? []));
+  }
+
+  function reloadHistory(empId: string) {
+    supabase
+      .from('attendance_logs')
+      .select('*')
+      .eq('employee_id', empId)
+      .gte('punch_time', new Date(Date.now() - HISTORY_WINDOW_DAYS * 86400000).toISOString())
+      .order('punch_time', { ascending: false })
+      .limit(50)
+      .then(({ data }) => setHistory(data ?? []));
   }
 
   function reloadCorrections(empId: string) {
@@ -307,6 +324,29 @@ export default function CheckInPage() {
                 ))}
               </div>
             </>
+          )}
+
+          <h2 className="mb-3 mt-6 text-sm font-semibold text-ink">History</h2>
+          {history.length === 0 ? (
+            <p className="mt-2 text-center text-sm text-slate-400">No attendance records yet.</p>
+          ) : (
+            <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+              {history.map(log => (
+                <div key={log.id} className="flex items-center gap-3 px-4 py-3">
+                  <span
+                    className={`w-12 shrink-0 rounded-md px-2 py-1 text-center text-xs font-bold ${
+                      log.punch_type === '0' ? 'bg-good-bg text-good-text' : 'bg-warning-bg text-warning-text'
+                    }`}
+                  >
+                    {log.punch_type === '0' ? 'IN' : 'OUT'}
+                  </span>
+                  <div className="flex-1">
+                    <div className="text-sm text-ink">{formatDateTime(log.punch_time, system)}</div>
+                    <div className="text-xs capitalize text-slate-400">{log.method}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </>
       )}

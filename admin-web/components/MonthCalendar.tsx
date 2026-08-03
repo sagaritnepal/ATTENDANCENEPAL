@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { buildMonth, stepAnchor, todayAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { DayStatus } from '@/lib/shift';
@@ -12,13 +12,22 @@ type Props = {
   dayStatus: Map<string, DayStatus>;
   selectedDate: string | null;
   onSelectDate: (adKey: string) => void;
+  /** Fires with the AD date keys currently in view (on mount and whenever
+   * the visible month changes) — lets a parent aggregate stats for exactly
+   * the month this grid is showing, without owning the anchor itself. */
+  onMonthChange?: (adKeys: string[]) => void;
 };
 
-export default function MonthCalendar({ dayStatus, selectedDate, onSelectDate }: Props) {
+export default function MonthCalendar({ dayStatus, selectedDate, onSelectDate, onMonthChange }: Props) {
   const { system } = useCalendarSystem();
   const [anchor, setAnchor] = useState(todayAnchor);
 
   const month = useMemo(() => buildMonth(system, anchor), [system, anchor]);
+
+  useEffect(() => {
+    onMonthChange?.(month.weeks.flat().filter(c => c.inMonth).map(c => c.adKey));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month]);
 
   function go(direction: 1 | -1) {
     setAnchor(stepAnchor(system, anchor, direction));
