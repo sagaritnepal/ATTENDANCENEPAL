@@ -10,6 +10,7 @@ import CalendarSystemSwitch from './CalendarSystemSwitch';
 const TABS = [
   { href: '/checkin', label: 'Check In/Out', icon: CheckInIcon },
   { href: '/my-calendar', label: 'Calendar', icon: CalendarTabIcon },
+  { href: '/my-payroll', label: 'Payroll', icon: PayrollTabIcon },
   { href: '/my-tasks', label: 'Tasks', icon: TaskTabIcon },
   { href: '/my-profile', label: 'Profile', icon: ProfileTabIcon },
 ];
@@ -181,6 +182,15 @@ function CalendarTabIcon({ className }: IconProps) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <rect x="3" y="5" width="18" height="16" rx="2" />
       <path strokeLinecap="round" d="M3 10h18M8 3v4M16 3v4" />
+    </svg>
+  );
+}
+function PayrollTabIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <rect x="3" y="6" width="18" height="13" rx="2" />
+      <path strokeLinecap="round" d="M3 10h18" />
+      <circle cx="12" cy="14.5" r="2.25" />
     </svg>
   );
 }

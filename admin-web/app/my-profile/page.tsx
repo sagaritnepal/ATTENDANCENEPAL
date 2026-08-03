@@ -9,7 +9,7 @@ import DatePicker from '@/components/DatePicker';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { compressImage } from '@/lib/image';
-import type { Employee, EmployeeEducation, EmployeeWorkExperience, LeaderboardRow, PointRedemption } from '@/lib/types';
+import type { Branch, Employee, EmployeeEducation, EmployeeWorkExperience, LeaderboardRow, PointRedemption } from '@/lib/types';
 
 const EMPTY_PROFILE_FORM = { name: '', email: '', phone: '', address: '', department: '', designation: '' };
 const EMPTY_EMERGENCY_FORM = { emergency_contact_name: '', emergency_contact_relationship: '', emergency_contact_phone: '' };
@@ -33,6 +33,7 @@ export default function MyProfilePage() {
   const { system } = useCalendarSystem();
   const router = useRouter();
   const [employee, setEmployee] = useState<Employee | null>(null);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [board, setBoard] = useState<LeaderboardRow | null>(null);
   const [redemptions, setRedemptions] = useState<PointRedemption[]>([]);
@@ -128,6 +129,7 @@ export default function MyProfilePage() {
       setLoading(false);
       if (profile?.employee_id) reload(profile.employee_id);
     });
+    supabase.from('branches').select('*').then(({ data }) => setBranches(data ?? []));
   }, []);
 
   // update_my_profile() replaces the whole editable row at once, so every
@@ -444,6 +446,22 @@ export default function MyProfilePage() {
             <span className="text-ink">{employee.fingerprint_id || '—'}</span>
           </div>
           <div className="flex justify-between">
+            <span className="text-slate-400">Branch</span>
+            <span className="text-ink">{branches.find(b => b.id === employee.branch_id)?.name ?? '—'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Department</span>
+            <span className="text-ink">{employee.department || '—'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Designation</span>
+            <span className="text-ink">{employee.designation || '—'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Current Salary</span>
+            <span className="text-ink">{employee.salary != null ? employee.salary.toLocaleString() : '—'}</span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-slate-400">Date of joining</span>
             <span className="text-ink">{formatAdDate(employee.date_of_joining, system)}</span>
           </div>
@@ -490,14 +508,6 @@ export default function MyProfilePage() {
               <span className="shrink-0 text-slate-400">Address</span>
               <span className="text-right text-ink">{employee.address || '—'}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Department</span>
-              <span className="text-ink">{employee.department || '—'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Designation</span>
-              <span className="text-ink">{employee.designation || '—'}</span>
-            </div>
           </div>
         ) : (
           <form onSubmit={handleSaveProfile}>
@@ -528,19 +538,6 @@ export default function MyProfilePage() {
               rows={2}
               className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
             />
-            <label className="mb-1 block text-xs font-medium text-slate-600">Department</label>
-            <input
-              value={profileForm.department}
-              onChange={e => updateField('department', e.target.value)}
-              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-            <label className="mb-1 block text-xs font-medium text-slate-600">Designation</label>
-            <input
-              value={profileForm.designation}
-              onChange={e => updateField('designation', e.target.value)}
-              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-
             {profileError && <p className="mb-3 text-sm text-critical">{profileError}</p>}
             <div className="flex gap-2">
               <button
