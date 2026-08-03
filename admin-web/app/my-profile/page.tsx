@@ -8,6 +8,7 @@ import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
+import { compressImage } from '@/lib/image';
 import type { Employee, EmployeeEducation, EmployeeWorkExperience, LeaderboardRow, PointRedemption } from '@/lib/types';
 
 const EMPTY_PROFILE_FORM = { name: '', email: '', phone: '', address: '', department: '', designation: '' };
@@ -37,6 +38,7 @@ export default function MyProfilePage() {
   const [redemptions, setRedemptions] = useState<PointRedemption[]>([]);
 
   const [profileForm, setProfileForm] = useState(EMPTY_PROFILE_FORM);
+  const [editingDetails, setEditingDetails] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -164,7 +166,34 @@ export default function MyProfilePage() {
       return;
     }
     setProfileSaved(true);
+    setEditingDetails(false);
     reload(employee.id);
+  }
+
+  function detailsFromEmployee(emp: Employee) {
+    return {
+      name: emp.name ?? '',
+      email: emp.email ?? '',
+      phone: emp.phone ?? '',
+      address: emp.address ?? '',
+      department: emp.department ?? '',
+      designation: emp.designation ?? '',
+    };
+  }
+
+  function startEditDetails() {
+    if (!employee) return;
+    setProfileForm(detailsFromEmployee(employee));
+    setProfileError(null);
+    setProfileSaved(false);
+    setEditingDetails(true);
+  }
+
+  function cancelEditDetails() {
+    if (!employee) return;
+    setProfileForm(detailsFromEmployee(employee));
+    setProfileError(null);
+    setEditingDetails(false);
   }
 
   async function handleSaveEmergency(e: React.FormEvent) {
@@ -271,24 +300,28 @@ export default function MyProfilePage() {
     if (!file || !employee) return;
 
     setUploadingPhoto(true);
-    const ext = file.name.split('.').pop() || 'jpg';
-    const path = `employee-photos/${employee.id}-${Date.now()}.${ext}`;
-    const { error: uploadError } = await supabase.storage.from('attendance-selfies').upload(path, file, {
-      contentType: file.type || 'image/jpeg',
-    });
-    if (uploadError) {
+    try {
+      const compressed = await compressImage(file);
+      const path = `employee-photos/${employee.id}-${Date.now()}.jpg`;
+      const { error: uploadError } = await supabase.storage.from('attendance-selfies').upload(path, compressed, {
+        contentType: 'image/jpeg',
+      });
+      if (uploadError) {
+        alert(`Photo upload failed: ${uploadError.message}`);
+        return;
+      }
+      const { data: publicUrl } = supabase.storage.from('attendance-selfies').getPublicUrl(path);
+      const rpcError = await saveProfile({ photoUrl: publicUrl.publicUrl });
+      if (rpcError) {
+        alert(`Could not save photo: ${rpcError.message}`);
+        return;
+      }
+      reload(employee.id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Photo upload failed.');
+    } finally {
       setUploadingPhoto(false);
-      alert(`Photo upload failed: ${uploadError.message}`);
-      return;
     }
-    const { data: publicUrl } = supabase.storage.from('attendance-selfies').getPublicUrl(path);
-    const rpcError = await saveProfile({ photoUrl: publicUrl.publicUrl });
-    setUploadingPhoto(false);
-    if (rpcError) {
-      alert(`Could not save photo: ${rpcError.message}`);
-      return;
-    }
-    reload(employee.id);
   }
 
   async function handleRedeemSubmit(e: React.FormEvent) {
@@ -403,9 +436,13 @@ export default function MyProfilePage() {
       </div>
 
       <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-ink">Employment</h2>
+        <h2 className="mb-3 text-sm font-semibold text-ink">Filled by Employer</h2>
         <p className="mb-3 text-xs text-slate-400">Set by HR/Admin — not editable here.</p>
         <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-slate-400">Enroll ID</span>
+            <span className="text-ink">{employee.fingerprint_id || '—'}</span>
+          </div>
           <div className="flex justify-between">
             <span className="text-slate-400">Date of joining</span>
             <span className="text-ink">{formatAdDate(employee.date_of_joining, system)}</span>
@@ -423,59 +460,107 @@ export default function MyProfilePage() {
         </div>
       </div>
 
-      <form onSubmit={handleSaveProfile} className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-ink">My Details</h2>
+      <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-ink">My Details</h2>
+          {!editingDetails && (
+            <button onClick={startEditDetails} title="Edit my details" className="text-slate-400 hover:text-accent">
+              <EditIcon className="h-4 w-4" />
+            </button>
+          )}
+        </div>
 
-        <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
-        <input
-          required
-          value={profileForm.name}
-          onChange={e => updateField('name', e.target.value)}
-          className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-        />
-        <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
-        <input
-          type="email"
-          value={profileForm.email}
-          onChange={e => updateField('email', e.target.value)}
-          className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-        />
-        <label className="mb-1 block text-xs font-medium text-slate-600">Phone</label>
-        <input
-          value={profileForm.phone}
-          onChange={e => updateField('phone', e.target.value)}
-          className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-        />
-        <label className="mb-1 block text-xs font-medium text-slate-600">Address</label>
-        <textarea
-          value={profileForm.address}
-          onChange={e => updateField('address', e.target.value)}
-          rows={2}
-          className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-        />
-        <label className="mb-1 block text-xs font-medium text-slate-600">Department</label>
-        <input
-          value={profileForm.department}
-          onChange={e => updateField('department', e.target.value)}
-          className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-        />
-        <label className="mb-1 block text-xs font-medium text-slate-600">Designation</label>
-        <input
-          value={profileForm.designation}
-          onChange={e => updateField('designation', e.target.value)}
-          className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-        />
+        {profileSaved && !editingDetails && <p className="mb-3 text-sm text-good-text">Saved.</p>}
 
-        {profileError && <p className="mb-3 text-sm text-critical">{profileError}</p>}
-        {profileSaved && <p className="mb-3 text-sm text-good-text">Saved.</p>}
-        <button
-          type="submit"
-          disabled={savingProfile}
-          className="w-full rounded-lg bg-accent py-2 text-sm font-semibold text-white disabled:opacity-60"
-        >
-          {savingProfile ? 'Saving…' : 'Save changes'}
-        </button>
-      </form>
+        {!editingDetails ? (
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-slate-400">Name</span>
+              <span className="text-ink">{employee.name || '—'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Email</span>
+              <span className="text-ink">{employee.email || '—'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Phone</span>
+              <span className="text-ink">{employee.phone || '—'}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="shrink-0 text-slate-400">Address</span>
+              <span className="text-right text-ink">{employee.address || '—'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Department</span>
+              <span className="text-ink">{employee.department || '—'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Designation</span>
+              <span className="text-ink">{employee.designation || '—'}</span>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleSaveProfile}>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
+            <input
+              required
+              value={profileForm.name}
+              onChange={e => updateField('name', e.target.value)}
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
+            <input
+              type="email"
+              value={profileForm.email}
+              onChange={e => updateField('email', e.target.value)}
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <label className="mb-1 block text-xs font-medium text-slate-600">Phone</label>
+            <input
+              value={profileForm.phone}
+              onChange={e => updateField('phone', e.target.value)}
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <label className="mb-1 block text-xs font-medium text-slate-600">Address</label>
+            <textarea
+              value={profileForm.address}
+              onChange={e => updateField('address', e.target.value)}
+              rows={2}
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <label className="mb-1 block text-xs font-medium text-slate-600">Department</label>
+            <input
+              value={profileForm.department}
+              onChange={e => updateField('department', e.target.value)}
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <label className="mb-1 block text-xs font-medium text-slate-600">Designation</label>
+            <input
+              value={profileForm.designation}
+              onChange={e => updateField('designation', e.target.value)}
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+
+            {profileError && <p className="mb-3 text-sm text-critical">{profileError}</p>}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={cancelEditDetails}
+                className="flex-1 rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={savingProfile}
+                className="flex-1 rounded-lg bg-accent py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {savingProfile ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
 
       <form onSubmit={handleSaveEmergency} className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-ink">Emergency Contact</h2>
@@ -740,5 +825,13 @@ export default function MyProfilePage() {
         </div>
       )}
     </EmployeeShell>
+  );
+}
+
+function EditIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
   );
 }
