@@ -682,7 +682,7 @@ export default function PayrollPage() {
           onClick={() => setDetailEmployeeId(null)}
         >
           <div
-            className="flex w-full max-w-4xl max-h-[85vh] flex-col rounded-xl bg-white shadow-lg"
+            className="flex w-full min-w-0 max-w-4xl max-h-[85vh] flex-col rounded-xl bg-white shadow-lg"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-4 sm:p-6">
@@ -701,7 +701,7 @@ export default function PayrollPage() {
                 <CloseIcon className="h-5 w-5" />
               </button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
               {/* Phones: same card list as before. Desktop: a real table
                   using the report table's own column names (Total Hours,
                   Overtime, Calculated Salary, Overtime Salary, Total
