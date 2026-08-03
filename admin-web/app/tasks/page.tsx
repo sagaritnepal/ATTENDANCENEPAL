@@ -34,6 +34,7 @@ export default function TasksPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
   const [pointsDraft, setPointsDraft] = useState<Record<string, number>>({});
+  const [reviewingTask, setReviewingTask] = useState<Task | null>(null);
 
   const [hoursEmployeeId, setHoursEmployeeId] = useState('');
   const [hoursLogs, setHoursLogs] = useState<TaskTimeLog[]>([]);
@@ -113,6 +114,7 @@ export default function TasksPage() {
       })
       .eq('id', task.id);
     setBusyId(null);
+    setReviewingTask(null);
     reload();
   }
 
@@ -161,12 +163,12 @@ export default function TasksPage() {
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-                <th className="px-5 py-3 font-medium">Employee</th>
+                <th className="w-40 px-5 py-3 font-medium">Employee</th>
                 <th className="px-5 py-3 font-medium">Task</th>
-                <th className="px-5 py-3 font-medium">Points</th>
-                <th className="px-5 py-3 font-medium">Due</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium">Actions</th>
+                <th className="w-20 px-5 py-3 font-medium">Points</th>
+                <th className="w-28 px-5 py-3 font-medium">Due</th>
+                <th className="w-28 px-5 py-3 font-medium">Status</th>
+                <th className="w-24 px-5 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -197,40 +199,12 @@ export default function TasksPage() {
                   </td>
                   <td className="px-5 py-3">
                     {t.status === 'submitted' ? (
-                      <div className="flex flex-col gap-2">
-                        <label className="text-xs text-slate-500">
-                          Points to award
-                          <input
-                            type="number"
-                            min={0}
-                            value={pointsDraft[t.id] ?? t.points}
-                            onChange={e => setPointsDraft(d => ({ ...d, [t.id]: Number(e.target.value) }))}
-                            className="mt-0.5 w-24 rounded-md border border-slate-200 px-2 py-1 text-xs"
-                          />
-                        </label>
-                        <input
-                          placeholder="Optional review note"
-                          value={noteDraft[t.id] ?? ''}
-                          onChange={e => setNoteDraft(d => ({ ...d, [t.id]: e.target.value }))}
-                          className="w-48 rounded-md border border-slate-200 px-2 py-1 text-xs"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            disabled={busyId === t.id}
-                            onClick={() => review(t, 'approved')}
-                            className="rounded-md bg-good px-3 py-1 text-xs font-semibold text-white hover:bg-good/90 disabled:opacity-50"
-                          >
-                            Approve
-                          </button>
-                          <button
-                            disabled={busyId === t.id}
-                            onClick={() => review(t, 'rejected')}
-                            className="rounded-md border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      </div>
+                      <button
+                        onClick={() => setReviewingTask(t)}
+                        className="rounded-md bg-accent px-3 py-1 text-xs font-semibold text-white hover:bg-accent/90"
+                      >
+                        Review
+                      </button>
                     ) : (
                       <span className="text-xs text-slate-400">
                         {t.status === 'pending' || t.status === 'in_progress' ? 'Awaiting employee' : 'Reviewed'}
@@ -420,6 +394,65 @@ export default function TasksPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {reviewingTask && (
+        <div
+          className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4"
+          onClick={() => setReviewingTask(null)}
+        >
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg" onClick={e => e.stopPropagation()}>
+            <h3 className="mb-1 text-lg font-semibold text-ink">Review Task</h3>
+            <p className="mb-4 text-sm text-slate-500">
+              {reviewingTask.title} · {employeeName(reviewingTask.assigned_to)}
+            </p>
+            {reviewingTask.description && <p className="mb-3 text-xs text-slate-400">{reviewingTask.description}</p>}
+            {reviewingTask.work_notes && (
+              <p className="mb-3 text-xs text-slate-500">
+                <span className="font-medium">Employee note:</span> {reviewingTask.work_notes}
+              </p>
+            )}
+
+            <label className="mb-1 block text-xs font-medium text-slate-600">Points to award</label>
+            <input
+              type="number"
+              min={0}
+              value={pointsDraft[reviewingTask.id] ?? reviewingTask.points}
+              onChange={e => setPointsDraft(d => ({ ...d, [reviewingTask.id]: Number(e.target.value) }))}
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <label className="mb-1 block text-xs font-medium text-slate-600">Review note (optional)</label>
+            <textarea
+              value={noteDraft[reviewingTask.id] ?? ''}
+              onChange={e => setNoteDraft(d => ({ ...d, [reviewingTask.id]: e.target.value }))}
+              rows={2}
+              className="mb-4 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setReviewingTask(null)}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={busyId === reviewingTask.id}
+                onClick={() => review(reviewingTask, 'rejected')}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Reject
+              </button>
+              <button
+                disabled={busyId === reviewingTask.id}
+                onClick={() => review(reviewingTask, 'approved')}
+                className="rounded-lg bg-good px-4 py-2 text-sm font-semibold text-white hover:bg-good/90 disabled:opacity-50"
+              >
+                {busyId === reviewingTask.id ? 'Saving…' : 'Approve'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </AppShell>
