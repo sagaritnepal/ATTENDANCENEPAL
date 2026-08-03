@@ -788,12 +788,19 @@ export default function EmployeeCvPage() {
           <form onSubmit={handleAddEducation} className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
             <h3 className="mb-4 text-lg font-semibold text-ink">Add Education</h3>
             <label className="mb-1 block text-xs font-medium text-slate-600">Degree</label>
-            <input
+            <select
               required
               value={educationForm.degree}
               onChange={e => setEducationForm(f => ({ ...f, degree: e.target.value }))}
               className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
+            >
+              <option value="" disabled>Select degree</option>
+              <option value="Under SEE">Under SEE</option>
+              <option value="SEE">SEE</option>
+              <option value="Intermediate">Intermediate</option>
+              <option value="Bachelors">Bachelors</option>
+              <option value="Masters">Masters</option>
+            </select>
             <label className="mb-1 block text-xs font-medium text-slate-600">Institution</label>
             <input
               value={educationForm.institution}
