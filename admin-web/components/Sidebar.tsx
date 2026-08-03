@@ -78,9 +78,9 @@ export default function Sidebar({ role, adminName, drawerOpen, onCloseDrawer }: 
           drawerOpen ? 'translate-x-0' : ''
         }`}
       >
-        <div className="flex items-center gap-2 px-5 py-6">
+        <div className="flex flex-col items-center gap-2 px-5 py-6 text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-mark.png" alt="Attendance Nepal" className="h-8 w-8 shrink-0" />
+          <img src="/logo-mark.png" alt="Attendance Nepal" className="h-32 w-32 shrink-0" />
           <span className="text-lg font-semibold text-white">Attendance Nepal</span>
         </div>
 
