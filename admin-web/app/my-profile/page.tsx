@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import Badge from '@/components/Badge';
+import DatePicker from '@/components/DatePicker';
 import type { Employee, EmployeeEducation, EmployeeWorkExperience, LeaderboardRow, PointRedemption } from '@/lib/types';
 
 const EMPTY_PROFILE_FORM = { name: '', email: '', phone: '', address: '', department: '', designation: '' };
@@ -702,21 +703,11 @@ export default function MyProfilePage() {
             <div className="mb-3 grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">Start date</label>
-                <input
-                  type="date"
-                  value={experienceForm.start_date}
-                  onChange={e => setExperienceForm(f => ({ ...f, start_date: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
+                <DatePicker value={experienceForm.start_date} onChange={v => setExperienceForm(f => ({ ...f, start_date: v }))} />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">End date</label>
-                <input
-                  type="date"
-                  value={experienceForm.end_date}
-                  onChange={e => setExperienceForm(f => ({ ...f, end_date: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
+                <DatePicker value={experienceForm.end_date} onChange={v => setExperienceForm(f => ({ ...f, end_date: v }))} />
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">

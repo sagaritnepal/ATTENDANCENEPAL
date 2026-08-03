@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import Badge from '@/components/Badge';
+import DatePicker from '@/components/DatePicker';
 import type { CorrectionRequest, LeaveRequest, LeaveType } from '@/lib/types';
 
 type View = 'menu' | 'fix' | 'leave';
@@ -192,6 +193,10 @@ export default function CheckInPage() {
     e.preventDefault();
     if (!employeeId) return;
     setLeaveError(null);
+    if (!leaveForm.start_date || !leaveForm.end_date) {
+      setLeaveError('Pick both a start date and an end date.');
+      return;
+    }
     setSubmittingLeave(true);
     const { error: insertError } = await supabase.from('leave_requests').insert({
       employee_id: employeeId,
@@ -272,13 +277,9 @@ export default function CheckInPage() {
 
           <form onSubmit={handleCorrectionSubmit} className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
             <label className="mb-1 block text-xs font-medium text-slate-600">Date</label>
-            <input
-              type="date"
-              required
-              value={correctionForm.work_date}
-              onChange={e => setCorrectionForm(f => ({ ...f, work_date: e.target.value }))}
-              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
+            <div className="mb-3">
+              <DatePicker value={correctionForm.work_date} onChange={v => setCorrectionForm(f => ({ ...f, work_date: v }))} />
+            </div>
             <div className="mb-3 grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">Check-in time</label>
@@ -362,21 +363,13 @@ export default function CheckInPage() {
             </div>
 
             <label className="mb-1 block text-xs font-medium text-slate-600">Start date</label>
-            <input
-              type="date"
-              required
-              value={leaveForm.start_date}
-              onChange={e => setLeaveForm(f => ({ ...f, start_date: e.target.value }))}
-              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
+            <div className="mb-3">
+              <DatePicker value={leaveForm.start_date} onChange={v => setLeaveForm(f => ({ ...f, start_date: v }))} />
+            </div>
             <label className="mb-1 block text-xs font-medium text-slate-600">End date</label>
-            <input
-              type="date"
-              required
-              value={leaveForm.end_date}
-              onChange={e => setLeaveForm(f => ({ ...f, end_date: e.target.value }))}
-              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
+            <div className="mb-3">
+              <DatePicker value={leaveForm.end_date} onChange={v => setLeaveForm(f => ({ ...f, end_date: v }))} />
+            </div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Reason (optional)</label>
             <textarea
               value={leaveForm.reason}

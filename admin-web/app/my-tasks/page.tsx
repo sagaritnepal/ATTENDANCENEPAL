@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import Badge from '@/components/Badge';
+import DatePicker from '@/components/DatePicker';
 import Leaderboard from '@/components/Leaderboard';
 import TaskHoursChart from '@/components/TaskHoursChart';
 import { totalsByTask } from '@/lib/taskHours';
@@ -312,12 +313,9 @@ export default function MyTasksPage() {
             />
 
             <label className="mb-1 block text-xs font-medium text-slate-600">Due date (optional)</label>
-            <input
-              type="date"
-              value={taskForm.due_date}
-              onChange={e => setTaskForm(f => ({ ...f, due_date: e.target.value }))}
-              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
+            <div className="mb-3">
+              <DatePicker value={taskForm.due_date} onChange={v => setTaskForm(f => ({ ...f, due_date: v }))} placeholder="Select due date" />
+            </div>
 
             {taskFormError && <p className="mb-3 text-sm text-critical">{taskFormError}</p>}
             <div className="mt-4 flex justify-end gap-2">

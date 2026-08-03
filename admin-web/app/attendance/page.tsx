@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
+import DatePicker from '@/components/DatePicker';
 import StatCard from '@/components/StatCard';
 import type { AttendanceLog, Device, Employee, PayrollSummary } from '@/lib/types';
 
@@ -265,25 +266,25 @@ function AttendanceView() {
             ))}
           </div>
           <span className="text-xs text-slate-400">or pick dates manually</span>
-          <input
-            type="date"
-            value={from}
-            onChange={e => {
-              setFrom(e.target.value);
-              setActivePreset(null);
-            }}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-          />
+          <div className="w-40">
+            <DatePicker
+              value={from}
+              onChange={v => {
+                setFrom(v);
+                setActivePreset(null);
+              }}
+            />
+          </div>
           <span className="text-slate-400">–</span>
-          <input
-            type="date"
-            value={to}
-            onChange={e => {
-              setTo(e.target.value);
-              setActivePreset(null);
-            }}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-          />
+          <div className="w-40">
+            <DatePicker
+              value={to}
+              onChange={v => {
+                setTo(v);
+                setActivePreset(null);
+              }}
+            />
+          </div>
         </div>
       </div>
 

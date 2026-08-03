@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
+import DatePicker from '@/components/DatePicker';
 import type { Employee, Shift, Profile, Branch, Department } from '@/lib/types';
 import { resolveShift, formatShiftHours } from '@/lib/shift';
 
@@ -1056,12 +1057,7 @@ export default function EmployeesPage() {
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-600">Date of joining</label>
-                  <input
-                    type="date"
-                    value={form.date_of_joining}
-                    onChange={e => setForm(f => ({ ...f, date_of_joining: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
-                  />
+                  <DatePicker value={form.date_of_joining} onChange={v => setForm(f => ({ ...f, date_of_joining: v }))} />
                 </div>
               </div>
               {formError && <p className="mt-3 text-sm text-critical">{formError}</p>}

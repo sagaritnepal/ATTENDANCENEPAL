@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
+import DatePicker from '@/components/DatePicker';
 import type { Branch, Department, Employee, EmployeeEducation, EmployeeWorkExperience } from '@/lib/types';
 
 function tenureDays(dateOfJoining: string | null, resignedAt: string | null) {
@@ -643,12 +644,7 @@ export default function EmployeeCvPage() {
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Date of joining</label>
-              <input
-                type="date"
-                value={coreForm.date_of_joining}
-                onChange={e => setCoreForm(f => ({ ...f, date_of_joining: e.target.value }))}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              />
+              <DatePicker value={coreForm.date_of_joining} onChange={v => setCoreForm(f => ({ ...f, date_of_joining: v }))} />
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1 block text-xs font-medium text-slate-600">Address</label>
@@ -848,21 +844,11 @@ export default function EmployeeCvPage() {
             <div className="mb-3 grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">Start date</label>
-                <input
-                  type="date"
-                  value={experienceForm.start_date}
-                  onChange={e => setExperienceForm(f => ({ ...f, start_date: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
+                <DatePicker value={experienceForm.start_date} onChange={v => setExperienceForm(f => ({ ...f, start_date: v }))} />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">End date</label>
-                <input
-                  type="date"
-                  value={experienceForm.end_date}
-                  onChange={e => setExperienceForm(f => ({ ...f, end_date: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
+                <DatePicker value={experienceForm.end_date} onChange={v => setExperienceForm(f => ({ ...f, end_date: v }))} />
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">

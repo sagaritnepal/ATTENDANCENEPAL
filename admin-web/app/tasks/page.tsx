@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
+import DatePicker from '@/components/DatePicker';
 import Leaderboard from '@/components/Leaderboard';
 import TaskHoursChart from '@/components/TaskHoursChart';
 import { totalsByTask } from '@/lib/taskHours';
@@ -394,7 +395,7 @@ export default function TasksPage() {
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">Due date (optional)</label>
-                <DueDatePicker value={form.due_date} onChange={v => setForm(f => ({ ...f, due_date: v }))} />
+                <DatePicker value={form.due_date} onChange={v => setForm(f => ({ ...f, due_date: v }))} placeholder="Select due date" />
               </div>
             </div>
 
@@ -419,147 +420,5 @@ export default function TasksPage() {
         </div>
       )}
     </AppShell>
-  );
-}
-
-// A click-to-pick month grid instead of the native <input type="date">
-// picker, with today's date always visible at the bottom so it's easy to
-// judge how far out the deadline is.
-function DueDatePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const today = new Date();
-  const todayIso = today.toISOString().slice(0, 10);
-
-  const [viewYear, setViewYear] = useState(today.getFullYear());
-  const [viewMonth, setViewMonth] = useState(today.getMonth());
-
-  function openPicker() {
-    const base = value ? new Date(`${value}T00:00:00`) : today;
-    setViewYear(base.getFullYear());
-    setViewMonth(base.getMonth());
-    setOpen(true);
-  }
-
-  function isoFor(day: number) {
-    return `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  }
-
-  function selectDay(day: number) {
-    onChange(isoFor(day));
-    setOpen(false);
-  }
-
-  function prevMonth() {
-    if (viewMonth === 0) {
-      setViewMonth(11);
-      setViewYear(y => y - 1);
-    } else {
-      setViewMonth(m => m - 1);
-    }
-  }
-
-  function nextMonth() {
-    if (viewMonth === 11) {
-      setViewMonth(0);
-      setViewYear(y => y + 1);
-    } else {
-      setViewMonth(m => m + 1);
-    }
-  }
-
-  const firstOfMonth = new Date(viewYear, viewMonth, 1);
-  const startWeekday = firstOfMonth.getDay();
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  const cells: (number | null)[] = [...Array(startWeekday).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
-
-  const monthLabel = firstOfMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-  const displayValue = value
-    ? new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
-    : '';
-  const todayLabel = today.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-
-  return (
-    <div
-      ref={rootRef}
-      tabIndex={-1}
-      onBlur={e => {
-        if (!rootRef.current?.contains(e.relatedTarget as Node)) setOpen(false);
-      }}
-      className="relative"
-    >
-      <button
-        type="button"
-        onClick={() => (open ? setOpen(false) : openPicker())}
-        className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left text-sm hover:border-accent/40"
-      >
-        <span className={displayValue ? 'text-ink' : 'text-slate-400'}>{displayValue || 'Select due date'}</span>
-        <MiniCalendarIcon className="h-4 w-4 shrink-0 text-slate-400" />
-      </button>
-      {open && (
-        <div className="absolute left-0 top-full z-20 mt-1 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
-          <div className="mb-2 flex items-center justify-between">
-            <button type="button" onClick={prevMonth} className="rounded p-1 text-slate-500 hover:bg-slate-100">
-              ‹
-            </button>
-            <span className="text-sm font-semibold text-ink">{monthLabel}</span>
-            <button type="button" onClick={nextMonth} className="rounded p-1 text-slate-500 hover:bg-slate-100">
-              ›
-            </button>
-          </div>
-          <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-medium text-slate-400">
-            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-              <span key={i}>{d}</span>
-            ))}
-          </div>
-          <div className="mt-1 grid grid-cols-7 gap-1">
-            {cells.map((day, i) => {
-              if (day === null) return <span key={i} />;
-              const iso = isoFor(day);
-              const isToday = iso === todayIso;
-              const isSelected = iso === value;
-              return (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => selectDay(day)}
-                  className={`h-7 w-7 rounded-full text-xs ${
-                    isSelected
-                      ? 'bg-accent font-semibold text-white'
-                      : isToday
-                        ? 'bg-accent/10 font-semibold text-accent'
-                        : 'text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  {day}
-                </button>
-              );
-            })}
-          </div>
-          <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2">
-            <span className="text-[11px] text-slate-400">Today: {todayLabel}</span>
-            <button
-              type="button"
-              onClick={() => {
-                onChange(todayIso);
-                setOpen(false);
-              }}
-              className="text-[11px] font-medium text-accent hover:underline"
-            >
-              Select today
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MiniCalendarIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
-      <rect x="3" y="5" width="18" height="16" rx="2" />
-      <path strokeLinecap="round" d="M3 10h18M8 3v4M16 3v4" />
-    </svg>
   );
 }
