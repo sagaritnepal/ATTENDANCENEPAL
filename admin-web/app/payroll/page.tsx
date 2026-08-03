@@ -701,12 +701,15 @@ export default function PayrollPage() {
                 <CloseIcon className="h-5 w-5" />
               </button>
             </div>
-            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-              {/* Phones: same card list as before. Desktop: a real table
-                  using the report table's own column names (Total Hours,
-                  Overtime, Calculated Salary, Overtime Salary, Total
-                  Salary), just one row per day instead of per employee. */}
-              <div className="p-4 md:hidden">
+            <div className="min-h-0 min-w-0 flex-1">
+              {/* Phones: same card list as before, its own vertical-only
+                  scroll. Desktop: the table gets ONE bounded scroll region
+                  (both axes together, sized to the visible modal body) —
+                  nesting a y-scroll outside an x-scroll instead put the
+                  horizontal scrollbar at the bottom of all 31 rows, so the
+                  Overtime/Total Salary columns were unreachable without
+                  scrolling all the way down first. */}
+              <div className="h-full overflow-y-auto p-4 md:hidden">
                 {detailRows.map(d => {
                   const earning = dailySalaryEarning(d);
                   return (
@@ -744,7 +747,7 @@ export default function PayrollPage() {
                 {detailRows.length === 0 && <p className="py-8 text-center text-sm text-slate-400">No days in this period.</p>}
               </div>
 
-              <div className="hidden overflow-x-auto md:block">
+              <div className="hidden h-full overflow-auto md:block">
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
