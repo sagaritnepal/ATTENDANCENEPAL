@@ -321,6 +321,7 @@ export default function PayrollPage() {
               </option>
             ))}
           </select>
+          <span className="text-xs text-slate-500">{daysInRange} days selected</span>
         </div>
         <button
           onClick={recalculateMonth}
