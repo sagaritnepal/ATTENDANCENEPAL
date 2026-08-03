@@ -28,7 +28,6 @@ const EMPTY_CORE_FORM = {
   branch_id: '',
   date_of_joining: '',
   address: '',
-  salary: '',
   emergency_contact_name: '',
   emergency_contact_relationship: '',
   emergency_contact_phone: '',
@@ -101,7 +100,6 @@ export default function EmployeeCvPage() {
             branch_id: data.branch_id ?? '',
             date_of_joining: data.date_of_joining ?? '',
             address: data.address ?? '',
-            salary: data.salary != null ? String(data.salary) : '',
             emergency_contact_name: data.emergency_contact_name ?? '',
             emergency_contact_relationship: data.emergency_contact_relationship ?? '',
             emergency_contact_phone: data.emergency_contact_phone ?? '',
@@ -162,7 +160,6 @@ export default function EmployeeCvPage() {
         branch_id: coreForm.branch_id || null,
         date_of_joining: coreForm.date_of_joining || null,
         address: coreForm.address || null,
-        salary: coreForm.salary ? Number(coreForm.salary) : null,
         emergency_contact_name: coreForm.emergency_contact_name || null,
         emergency_contact_relationship: coreForm.emergency_contact_relationship || null,
         emergency_contact_phone: coreForm.emergency_contact_phone || null,
@@ -519,10 +516,6 @@ export default function EmployeeCvPage() {
                 <span className="text-ink">{formatAdDate(employee.resigned_at, system)}</span>
               </div>
             )}
-            <div>
-              <span className="block text-xs text-slate-400">Salary</span>
-              <span className="text-ink">{employee.salary != null ? employee.salary.toLocaleString() : '—'}</span>
-            </div>
             {employee.address && (
               <div className="col-span-2 sm:col-span-3">
                 <span className="block text-xs text-slate-400">Address</span>
@@ -655,17 +648,6 @@ export default function EmployeeCvPage() {
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Date of joining</label>
               <DatePicker value={coreForm.date_of_joining} onChange={v => setCoreForm(f => ({ ...f, date_of_joining: v }))} />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Salary</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={coreForm.salary}
-                onChange={e => setCoreForm(f => ({ ...f, salary: e.target.value }))}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              />
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1 block text-xs font-medium text-slate-600">Address</label>

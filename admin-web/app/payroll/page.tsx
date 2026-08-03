@@ -22,6 +22,8 @@ export default function PayrollPage() {
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [recalculating, setRecalculating] = useState(false);
+  const [pendingSalary, setPendingSalary] = useState<Record<string, string>>({});
+  const [savingSalary, setSavingSalary] = useState(false);
 
   const { start, end, label } = monthBounds(offset);
 
@@ -60,9 +62,14 @@ export default function PayrollPage() {
     return { totalHours, overtimeHours, attendancePct };
   }, [summaries, employees, start, end]);
 
+  const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
+
   const byEmployee = useMemo(() => {
-    const map = new Map<string, { name: string; days: number; hours: number; overtime: number; lateDays: number }>();
-    for (const emp of employees) map.set(emp.id, { name: emp.name, days: 0, hours: 0, overtime: 0, lateDays: 0 });
+    const map = new Map<
+      string,
+      { id: string; name: string; salary: number | null; days: number; hours: number; overtime: number; lateDays: number }
+    >();
+    for (const emp of employees) map.set(emp.id, { id: emp.id, name: emp.name, salary: emp.salary, days: 0, hours: 0, overtime: 0, lateDays: 0 });
     for (const s of summaries) {
       const row = map.get(s.employee_id);
       if (!row) continue;
@@ -73,6 +80,29 @@ export default function PayrollPage() {
     }
     return Array.from(map.values());
   }, [summaries, employees]);
+
+  function calculatedSalary(row: { salary: number | null; days: number }): number | null {
+    if (row.salary == null) return null;
+    return Math.round((row.salary / daysInRange) * row.days);
+  }
+
+  async function applySalaryChange(employeeId: string, salary: string) {
+    const { error } = await supabase.from('employees').update({ salary: salary ? Number(salary) : null }).eq('id', employeeId);
+    return error;
+  }
+
+  async function handleSaveSalary() {
+    setSavingSalary(true);
+    const errors: string[] = [];
+    for (const [employeeId, salary] of Object.entries(pendingSalary)) {
+      const error = await applySalaryChange(employeeId, salary);
+      if (error) errors.push(error.message);
+    }
+    setSavingSalary(false);
+    setPendingSalary({});
+    if (errors.length > 0) alert(`Some changes could not be saved:\n${errors.join('\n')}`);
+    reload();
+  }
 
   const employeeName = (id: string) => employees.find(e => e.id === id)?.name ?? 'Unknown';
   const pendingOvertime = useMemo(
@@ -156,7 +186,30 @@ export default function PayrollPage() {
       )}
 
       <div className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-base font-semibold text-ink">Roster hours breakdown</h2>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-ink">Roster hours breakdown</h2>
+          {Object.keys(pendingSalary).length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-slate-500">
+                {Object.keys(pendingSalary).length} unsaved salary change{Object.keys(pendingSalary).length === 1 ? '' : 's'}
+              </span>
+              <button
+                onClick={() => setPendingSalary({})}
+                disabled={savingSalary}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveSalary}
+                disabled={savingSalary}
+                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+              >
+                {savingSalary ? 'Saving…' : 'Save salary'}
+              </button>
+            </div>
+          )}
+        </div>
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
@@ -165,21 +218,37 @@ export default function PayrollPage() {
               <th className="py-2 font-medium">Total Hours</th>
               <th className="py-2 font-medium">Overtime</th>
               <th className="py-2 font-medium">Late Days</th>
+              <th className="py-2 font-medium">Salary</th>
+              <th className="py-2 font-medium">Calculated Salary</th>
             </tr>
           </thead>
           <tbody>
             {byEmployee.map(row => (
-              <tr key={row.name} className="border-b border-slate-100 last:border-0">
+              <tr key={row.id} className="border-b border-slate-100 last:border-0">
                 <td className="py-2.5 font-medium text-ink">{row.name}</td>
                 <td className="py-2.5 text-slate-600">{row.days}</td>
                 <td className="py-2.5 text-slate-600">{row.hours.toFixed(1)} hrs</td>
                 <td className="py-2.5 text-slate-600">{row.overtime.toFixed(1)} hrs</td>
                 <td className="py-2.5 text-slate-600">{row.lateDays}</td>
+                <td className="py-2.5">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="—"
+                    value={pendingSalary[row.id] ?? (row.salary != null ? String(row.salary) : '')}
+                    onChange={e => setPendingSalary(p => ({ ...p, [row.id]: e.target.value }))}
+                    className="w-28 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                  />
+                </td>
+                <td className="py-2.5 text-slate-600">
+                  {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
+                </td>
               </tr>
             ))}
             {byEmployee.length === 0 && (
               <tr>
-                <td colSpan={5} className="py-8 text-center text-slate-400">No active employees.</td>
+                <td colSpan={7} className="py-8 text-center text-slate-400">No active employees.</td>
               </tr>
             )}
           </tbody>
