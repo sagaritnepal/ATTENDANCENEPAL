@@ -8,7 +8,7 @@ import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { computeDayStatus, resolveShift } from '@/lib/shift';
+import { computeDayStatus, formatMinutes, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Device, Employee, PayrollSummary, Shift } from '@/lib/types';
 
 type Row = {
@@ -17,6 +17,7 @@ type Row = {
   enrollId: string;
   employeeName: string;
   device: string;
+  shiftLabel: string;
   checkIn: string | null;
   checkOut: string | null;
   hours: number;
@@ -129,6 +130,8 @@ function AttendanceView() {
         const dayLogs = logs
           .filter(l => l.employee_id === emp.id && l.punch_time.slice(0, 10) === day)
           .sort((a, b) => a.punch_time.localeCompare(b.punch_time));
+        const shift = resolveShift(emp, shifts);
+        const shiftLabel = `${shift.name} (${shift.start_time.slice(0, 5)}–${shift.end_time.slice(0, 5)})`;
 
         if (summary) {
           out.push({
@@ -137,6 +140,7 @@ function AttendanceView() {
             enrollId: emp.fingerprint_id ?? '—',
             employeeName: emp.name,
             device: deviceName(dayLogs[0]?.device_id ?? null),
+            shiftLabel,
             checkIn: summary.check_in,
             checkOut: summary.check_out,
             hours: summary.total_hours,
@@ -151,13 +155,14 @@ function AttendanceView() {
           // Payroll) — compute late/early/hours/overtime live from the raw
           // punches (same math payroll itself uses, see lib/shift.ts)
           // instead of leaving them blank until that job runs.
-          const live = computeDayStatus(dayLogs, resolveShift(emp, shifts));
+          const live = computeDayStatus(dayLogs, shift);
           out.push({
             key: `${emp.id}-${day}`,
             date: day,
             enrollId: emp.fingerprint_id ?? '—',
             employeeName: emp.name,
             device: deviceName(dayLogs[0].device_id ?? null),
+            shiftLabel,
             checkIn: live.checkIn.punch_time,
             checkOut: live.checkOut?.punch_time ?? null,
             hours: live.totalMinutes / 60,
@@ -174,6 +179,7 @@ function AttendanceView() {
             enrollId: emp.fingerprint_id ?? '—',
             employeeName: emp.name,
             device: 'N/A',
+            shiftLabel,
             checkIn: null,
             checkOut: null,
             hours: 0,
@@ -202,6 +208,7 @@ function AttendanceView() {
       'Enroll ID',
       'Employee',
       'Device',
+      'Shift',
       'Check-In',
       'Check-Out',
       'Late By (min)',
@@ -216,6 +223,7 @@ function AttendanceView() {
         r.enrollId,
         r.employeeName,
         r.device,
+        r.shiftLabel,
         r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour12: false }) : '',
         r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour12: false }) : '',
         r.lateMinutes || '',
@@ -342,6 +350,7 @@ function AttendanceView() {
               <th className="whitespace-nowrap px-5 py-3 font-medium">Enroll ID</th>
               <th className="whitespace-nowrap px-5 py-3 font-medium">Employee</th>
               <th className="whitespace-nowrap px-5 py-3 font-medium">Device</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">Shift</th>
               <th className="whitespace-nowrap px-5 py-3 font-medium">Check-In</th>
               <th className="whitespace-nowrap px-5 py-3 font-medium">Check-Out</th>
               <th className="whitespace-nowrap px-5 py-3 font-medium">
@@ -378,6 +387,7 @@ function AttendanceView() {
                 <td className="px-5 py-3 text-slate-600">{r.enrollId}</td>
                 <td className="px-5 py-3 font-medium text-ink">{r.employeeName}</td>
                 <td className="px-5 py-3 text-slate-600">{r.device}</td>
+                <td className="px-5 py-3 whitespace-nowrap text-slate-600">{r.shiftLabel}</td>
                 <td className="px-5 py-3 text-slate-600">
                   {r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
                 </td>
@@ -386,14 +396,14 @@ function AttendanceView() {
                 </td>
                 <td className="px-5 py-3">
                   {r.lateMinutes > 0 ? (
-                    <span className="font-medium text-warning-text">{r.lateMinutes} min</span>
+                    <span className="font-medium text-warning-text">{formatMinutes(r.lateMinutes)}</span>
                   ) : (
                     <span className="text-slate-400">—</span>
                   )}
                 </td>
                 <td className="px-5 py-3">
                   {r.earlyMinutes > 0 ? (
-                    <span className="font-medium text-warning-text">{r.earlyMinutes} min</span>
+                    <span className="font-medium text-warning-text">{formatMinutes(r.earlyMinutes)}</span>
                   ) : (
                     <span className="text-slate-400">—</span>
                   )}
@@ -413,7 +423,7 @@ function AttendanceView() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-5 py-8 text-center text-slate-400">
+                <td colSpan={12} className="px-5 py-8 text-center text-slate-400">
                   No records in this range.
                 </td>
               </tr>
