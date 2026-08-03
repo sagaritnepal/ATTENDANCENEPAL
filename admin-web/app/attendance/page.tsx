@@ -179,6 +179,14 @@ function AttendanceView() {
     return out.filter(r => status === 'All' || r.status === status).sort((a, b) => b.date.localeCompare(a.date));
   }, [scopedEmployees, summaries, logs, devices, from, to, status]);
 
+  const totals = useMemo(() => {
+    const workHours = rows.reduce((sum, r) => sum + (r.pending ? 0 : r.hours), 0);
+    const overtimeHours = rows.reduce((sum, r) => sum + (r.pending ? 0 : r.overtime), 0);
+    const lateMinutes = rows.reduce((sum, r) => sum + r.lateMinutes, 0);
+    const earlyMinutes = rows.reduce((sum, r) => sum + r.earlyMinutes, 0);
+    return { workHours, overtimeHours, lateMinutes, earlyMinutes };
+  }, [rows]);
+
   function exportCsv() {
     const header = [
       'Date',
@@ -301,10 +309,10 @@ function AttendanceView() {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="max-h-[65vh] overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-left text-sm">
           <thead>
-            <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+            <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <th className="px-5 py-3 font-medium">Date</th>
               <th className="px-5 py-3 font-medium">Employee</th>
               <th className="px-5 py-3 font-medium">Device</th>
@@ -354,6 +362,20 @@ function AttendanceView() {
               </tr>
             )}
           </tbody>
+          {rows.length > 0 && (
+            <tfoot>
+              <tr className="sticky bottom-0 z-10 border-t-2 border-accent/30 bg-accent/5 text-sm font-bold text-ink">
+                <td className="px-5 py-3" colSpan={5}>
+                  Totals
+                </td>
+                <td className="px-5 py-3">{totals.lateMinutes > 0 ? `${(totals.lateMinutes / 60).toFixed(1)} hrs` : '—'}</td>
+                <td className="px-5 py-3">{totals.earlyMinutes > 0 ? `${(totals.earlyMinutes / 60).toFixed(1)} hrs` : '—'}</td>
+                <td className="px-5 py-3">{totals.workHours.toFixed(1)} hrs</td>
+                <td className="px-5 py-3">{totals.overtimeHours.toFixed(1)} hrs</td>
+                <td className="px-5 py-3" />
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
     </AppShell>
