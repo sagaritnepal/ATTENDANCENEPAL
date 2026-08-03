@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import MonthCalendar from '@/components/MonthCalendar';
-import { localDateKey } from '@/lib/calendar';
-import { computeDayStatus, formatMinutes, resolveShift } from '@/lib/shift';
+import Badge from '@/components/Badge';
+import { formatAdDate, localDateKey } from '@/lib/calendar';
+import { useCalendarSystem } from '@/lib/calendarSystem';
+import { computeDayStatus, formatHoursMinutes, formatMinutes, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Employee, LeaveRequest, Shift } from '@/lib/types';
 
 const WINDOW_DAYS = 400;
@@ -24,7 +26,23 @@ function datesBetween(start: string, end: string): string[] {
   return dates;
 }
 
+type CardKey = 'hours' | 'late' | 'early' | 'overtime' | 'present' | 'absent';
+type CardEntry = { date: string; minutes: number };
+/** Cards whose expanded list shows a duration next to each date — the rest
+ * (present/absent) are plain date lists with nothing to measure. */
+const DURATION_CARDS: CardKey[] = ['hours', 'late', 'early', 'overtime'];
+
+const CARD_STYLES: Record<CardKey, { label: string; bg: string; text: string }> = {
+  hours: { label: 'Total Work Hours', bg: 'bg-good-bg', text: 'text-good-text' },
+  late: { label: 'Late In', bg: 'bg-warning-bg', text: 'text-warning-text' },
+  early: { label: 'Early Out', bg: 'bg-critical-bg', text: 'text-critical-text' },
+  overtime: { label: 'Overtime', bg: 'bg-info-bg', text: 'text-info-text' },
+  present: { label: 'Present Days', bg: 'bg-good-bg', text: 'text-good-text' },
+  absent: { label: 'Absent Days', bg: 'bg-critical-bg', text: 'text-critical-text' },
+};
+
 export default function CalendarPage() {
+  const { system } = useCalendarSystem();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [employeeId, setEmployeeId] = useState<string>('');
@@ -33,6 +51,8 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [dayLogs, setDayLogs] = useState<AttendanceLog[]>([]);
   const [dayLoading, setDayLoading] = useState(false);
+  const [visibleDates, setVisibleDates] = useState<string[]>([]);
+  const [expandedCard, setExpandedCard] = useState<CardKey | null>(null);
 
   useEffect(() => {
     supabase
@@ -50,6 +70,7 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!employeeId) return;
     setSelectedDate(null);
+    setExpandedCard(null);
     const since = new Date(Date.now() - WINDOW_DAYS * 86400000).toISOString();
     supabase
       .from('attendance_logs')
@@ -66,16 +87,7 @@ export default function CalendarPage() {
       .then(({ data }) => setLeaveRequests(data ?? []));
   }, [employeeId]);
 
-  const leaveByDate = useMemo(() => {
-    const map = new Map<string, LeaveRequest>();
-    for (const lr of leaveRequests) {
-      for (const date of datesBetween(lr.start_date, lr.end_date)) map.set(date, lr);
-    }
-    return map;
-  }, [leaveRequests]);
-
-  const leaveDates = useMemo(() => new Set(leaveByDate.keys()), [leaveByDate]);
-  const selectedLeave = selectedDate ? leaveByDate.get(selectedDate) ?? null : null;
+  const employee = useMemo(() => employees.find(e => e.id === employeeId) ?? null, [employees, employeeId]);
 
   const dayStatus = useMemo(() => {
     const byDate = new Map<string, AttendanceLog[]>();
@@ -86,19 +98,72 @@ export default function CalendarPage() {
       else byDate.set(key, [log]);
     }
     const map = new Map<string, ReturnType<typeof computeDayStatus>>();
-    const employee = employees.find(e => e.id === employeeId);
     if (!employee) return map;
     const shift = resolveShift(employee, shifts);
     for (const [date, dayLogs] of byDate) map.set(date, computeDayStatus(dayLogs, shift));
     return map;
-  }, [logs, employees, employeeId, shifts]);
+  }, [logs, employee, shifts]);
+
+  const leaveByDate = useMemo(() => {
+    const map = new Map<string, LeaveRequest>();
+    for (const lr of leaveRequests) {
+      for (const date of datesBetween(lr.start_date, lr.end_date)) map.set(date, lr);
+    }
+    return map;
+  }, [leaveRequests]);
+
+  const leaveDates = useMemo(() => new Set(leaveByDate.keys()), [leaveByDate]);
+
+  const monthSummary = useMemo(() => {
+    const hours: CardEntry[] = [];
+    const late: CardEntry[] = [];
+    const early: CardEntry[] = [];
+    const overtime: CardEntry[] = [];
+    const present: CardEntry[] = [];
+    const absent: CardEntry[] = [];
+    let totalWorkMinutes = 0;
+    let overtimeMinutes = 0;
+    const todayKey = localDateKey(new Date().toISOString());
+
+    for (const date of visibleDates) {
+      const status = dayStatus.get(date);
+      if (status) {
+        present.push({ date, minutes: 0 });
+        if (status.hasOut) {
+          hours.push({ date, minutes: status.totalMinutes });
+          totalWorkMinutes += status.totalMinutes;
+        }
+        if (status.isLate) late.push({ date, minutes: status.lateMinutes });
+        if (status.isEarly) early.push({ date, minutes: status.earlyMinutes });
+        if (status.overtimeMinutes > 0) {
+          overtime.push({ date, minutes: status.overtimeMinutes });
+          overtimeMinutes += status.overtimeMinutes;
+        }
+      } else if (date <= todayKey && !leaveDates.has(date)) {
+        absent.push({ date, minutes: 0 });
+      }
+    }
+    const byDateDesc = (a: CardEntry, b: CardEntry) => b.date.localeCompare(a.date);
+    return {
+      totalWorkMinutes,
+      overtimeMinutes,
+      entries: {
+        hours: hours.sort(byDateDesc),
+        late: late.sort(byDateDesc),
+        early: early.sort(byDateDesc),
+        overtime: overtime.sort(byDateDesc),
+        present: present.sort(byDateDesc),
+        absent: absent.sort(byDateDesc),
+      } satisfies Record<CardKey, CardEntry[]>,
+    };
+  }, [visibleDates, dayStatus, leaveDates]);
+
+  const selectedLeave = selectedDate ? leaveByDate.get(selectedDate) ?? null : null;
 
   const selectedDaySummary = useMemo(() => {
-    if (dayLogs.length === 0) return null;
-    const employee = employees.find(e => e.id === employeeId);
-    if (!employee) return null;
+    if (dayLogs.length === 0 || !employee) return null;
     return computeDayStatus(dayLogs, resolveShift(employee, shifts));
-  }, [dayLogs, employees, employeeId, shifts]);
+  }, [dayLogs, employee, shifts]);
 
   useEffect(() => {
     if (!selectedDate || !employeeId) {
@@ -121,6 +186,13 @@ export default function CalendarPage() {
       });
   }, [selectedDate, employeeId]);
 
+  function cardValue(key: CardKey) {
+    if (key === 'hours') return formatHoursMinutes(monthSummary.totalWorkMinutes);
+    if (key === 'overtime') return formatHoursMinutes(monthSummary.overtimeMinutes);
+    const count = monthSummary.entries[key].length;
+    return `${count} day${count === 1 ? '' : 's'}`;
+  }
+
   return (
     <AppShell title="Attendance Calendar">
       <div className="mb-5 max-w-xs">
@@ -138,56 +210,129 @@ export default function CalendarPage() {
         </select>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
-        <MonthCalendar dayStatus={dayStatus} leaveDates={leaveDates} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+      <div className="mx-auto max-w-md">
+        <MonthCalendar
+          dayStatus={dayStatus}
+          leaveDates={leaveDates}
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
+          onMonthChange={setVisibleDates}
+        />
 
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <h2 className="mb-3 text-sm font-semibold text-ink">{selectedDate ?? 'Select a day'}</h2>
-          {selectedLeave && (
-            <div className="mb-3 rounded-xl bg-purple-100 p-3">
-              <div className="text-xs font-medium text-purple-700">On Leave</div>
-              <div className="text-base font-bold capitalize text-ink">{selectedLeave.leave_type}</div>
-            </div>
-          )}
-          {!selectedDate ? (
-            <p className="text-sm text-slate-400">Tap a date on the calendar to see punch times.</p>
-          ) : dayLoading ? (
-            <p className="text-sm text-slate-400">Loading…</p>
-          ) : !selectedDaySummary ? (
-            !selectedLeave && <p className="text-sm text-slate-400">No punches recorded.</p>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex items-center gap-3">
-                <span className="w-12 shrink-0 rounded-md bg-good-bg px-2 py-1 text-center text-xs font-bold text-good-text">
-                  IN
-                </span>
-                <span className="text-sm text-ink">
-                  {new Date(selectedDaySummary.checkIn.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
-                <span className="text-xs capitalize text-slate-400">{selectedDaySummary.checkIn.method}</span>
+        {selectedDate && (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+            <h2 className="mb-2 text-sm font-semibold text-ink">{formatAdDate(selectedDate, system)}</h2>
+            {selectedLeave && (
+              <div className="mb-3 rounded-xl bg-purple-100 p-3">
+                <div className="text-xs font-medium text-purple-700">On Leave</div>
+                <div className="text-base font-bold capitalize text-ink">{selectedLeave.leave_type}</div>
               </div>
-              {selectedDaySummary.checkOut && (
-                <div className="flex items-center gap-3">
-                  <span className="w-12 shrink-0 rounded-md bg-warning-bg px-2 py-1 text-center text-xs font-bold text-warning-text">
-                    OUT
-                  </span>
-                  <span className="text-sm text-ink">
-                    {new Date(selectedDaySummary.checkOut.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                  <span className="text-xs capitalize text-slate-400">{selectedDaySummary.checkOut.method}</span>
+            )}
+            {dayLoading ? (
+              <p className="text-sm text-slate-400">Loading…</p>
+            ) : !selectedDaySummary ? (
+              !selectedLeave && <p className="text-sm text-slate-400">No punches recorded.</p>
+            ) : (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-good-bg p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="text-xs font-medium text-good-text">IN</div>
+                        <div className="text-base font-bold text-ink">
+                          {new Date(selectedDaySummary.checkIn.punch_time).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </div>
+                        <div className="text-xs capitalize text-slate-500">{selectedDaySummary.checkIn.method}</div>
+                      </div>
+                      {selectedDaySummary.isLate && (
+                        <Badge tone="warning">Late by {formatMinutes(selectedDaySummary.lateMinutes)}</Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-warning-bg p-3">
+                    {selectedDaySummary.checkOut ? (
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-xs font-medium text-warning-text">OUT</div>
+                          <div className="text-base font-bold text-ink">
+                            {new Date(selectedDaySummary.checkOut.punch_time).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </div>
+                          <div className="text-xs capitalize text-slate-500">{selectedDaySummary.checkOut.method}</div>
+                        </div>
+                        {selectedDaySummary.isEarly && (
+                          <Badge tone="critical">Early by {formatMinutes(selectedDaySummary.earlyMinutes)}</Badge>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        <div className="text-xs font-medium text-warning-text">OUT</div>
+                        <div className="text-sm text-slate-400">Not yet</div>
+                      </>
+                    )}
+                  </div>
                 </div>
-              )}
-              {selectedDaySummary.isLate && (
-                <p className="text-xs font-medium text-warning-text">Late by {formatMinutes(selectedDaySummary.lateMinutes)}</p>
-              )}
-              {selectedDaySummary.isEarly && (
-                <p className="text-xs font-medium text-critical-text">
-                  Early out by {formatMinutes(selectedDaySummary.earlyMinutes)}
-                </p>
-              )}
-            </div>
-          )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-good-bg p-3">
+                    <div className="text-xs font-medium text-good-text">Total Work Hours</div>
+                    <div className="text-base font-bold text-ink">{formatHoursMinutes(selectedDaySummary.totalMinutes)}</div>
+                  </div>
+                  <div className="rounded-xl bg-info-bg p-3">
+                    <div className="text-xs font-medium text-info-text">Overtime</div>
+                    <div className="text-base font-bold text-ink">{formatHoursMinutes(selectedDaySummary.overtimeMinutes)}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <h2 className="mb-3 mt-6 text-sm font-semibold text-ink">This Month</h2>
+        <div className="grid grid-cols-2 gap-3">
+          {(Object.keys(CARD_STYLES) as CardKey[]).map(key => {
+            const style = CARD_STYLES[key];
+            const open = expandedCard === key;
+            return (
+              <button
+                key={key}
+                onClick={() => setExpandedCard(open ? null : key)}
+                className={`rounded-xl p-4 text-left ${style.bg} ${open ? 'ring-2 ring-accent' : ''}`}
+              >
+                <div className={`text-xs font-medium ${style.text}`}>{style.label}</div>
+                <div className="mt-1 text-xl font-bold text-ink">{cardValue(key)}</div>
+              </button>
+            );
+          })}
         </div>
+
+        {expandedCard && (
+          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4">
+            <h3 className="mb-2 text-sm font-semibold text-ink">{CARD_STYLES[expandedCard].label}</h3>
+            {monthSummary.entries[expandedCard].length === 0 ? (
+              <p className="text-sm text-slate-400">Nothing to show for this month.</p>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {monthSummary.entries[expandedCard].map(entry => (
+                  <div key={entry.date} className="flex items-center justify-between py-2 text-sm">
+                    <span className="text-ink">{formatAdDate(entry.date, system)}</span>
+                    {DURATION_CARDS.includes(expandedCard) && (
+                      <span className="font-medium text-slate-600">
+                        {expandedCard === 'hours' || expandedCard === 'overtime'
+                          ? formatHoursMinutes(entry.minutes)
+                          : formatMinutes(entry.minutes)}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </AppShell>
   );
