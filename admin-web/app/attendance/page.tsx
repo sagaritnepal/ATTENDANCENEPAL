@@ -8,7 +8,8 @@ import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import type { AttendanceLog, Device, Employee, PayrollSummary } from '@/lib/types';
+import { computeDayStatus, resolveShift } from '@/lib/shift';
+import type { AttendanceLog, Device, Employee, PayrollSummary, Shift } from '@/lib/types';
 
 type Row = {
   key: string;
@@ -24,9 +25,9 @@ type Row = {
   earlyMinutes: number;
   overtime: number;
   /** No payroll_summaries row yet (only computed by the nightly job or
-   * "Recalculate month" on the Payroll page) — hours/late status aren't
-   * final, this row is built straight from today's raw punches so it's
-   * not invisible until that recompute runs. */
+   * "Recalculate month" on the Payroll page) — late/early/hours/overtime
+   * here are computed live client-side from the raw punches (same math,
+   * see lib/shift.ts) rather than left blank until that job runs. */
   pending?: boolean;
 };
 
@@ -74,12 +75,14 @@ function AttendanceView() {
   const [status, setStatus] = useState<'All' | 'Present' | 'Late' | 'Absent'>('All');
   const [employeeId, setEmployeeId] = useState<string>(initialEmployeeId ?? 'all');
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [shifts, setShifts] = useState<Shift[]>([]);
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
 
   useEffect(() => {
     supabase.from('employees').select('*').eq('status', 'active').order('name').then(({ data }) => setEmployees(data ?? []));
+    supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
     supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
   }, []);
 
@@ -145,21 +148,23 @@ function AttendanceView() {
         } else if (dayLogs.length > 0) {
           // Not yet processed by compute_payroll_summaries() (runs nightly
           // for the previous day, or manually via "Recalculate month" on
-          // Payroll) — show the raw punches now rather than "Absent" until
-          // final hours/late status are computed.
+          // Payroll) — compute late/early/hours/overtime live from the raw
+          // punches (same math payroll itself uses, see lib/shift.ts)
+          // instead of leaving them blank until that job runs.
+          const live = computeDayStatus(dayLogs, resolveShift(emp, shifts));
           out.push({
             key: `${emp.id}-${day}`,
             date: day,
             enrollId: emp.fingerprint_id ?? '—',
             employeeName: emp.name,
             device: deviceName(dayLogs[0].device_id ?? null),
-            checkIn: dayLogs[0].punch_time,
-            checkOut: dayLogs.length > 1 ? dayLogs[dayLogs.length - 1].punch_time : null,
-            hours: 0,
-            status: 'Present',
-            lateMinutes: 0,
-            earlyMinutes: 0,
-            overtime: 0,
+            checkIn: live.checkIn.punch_time,
+            checkOut: live.checkOut?.punch_time ?? null,
+            hours: live.totalMinutes / 60,
+            status: live.isLate ? 'Late' : 'Present',
+            lateMinutes: live.lateMinutes,
+            earlyMinutes: live.earlyMinutes,
+            overtime: live.overtimeMinutes / 60,
             pending: true,
           });
         } else {
@@ -181,11 +186,11 @@ function AttendanceView() {
       }
     }
     return out.filter(r => status === 'All' || r.status === status).sort((a, b) => b.date.localeCompare(a.date));
-  }, [scopedEmployees, summaries, logs, devices, from, to, status]);
+  }, [scopedEmployees, summaries, logs, devices, shifts, from, to, status]);
 
   const totals = useMemo(() => {
-    const workHours = rows.reduce((sum, r) => sum + (r.pending ? 0 : r.hours), 0);
-    const overtimeHours = rows.reduce((sum, r) => sum + (r.pending ? 0 : r.overtime), 0);
+    const workHours = rows.reduce((sum, r) => sum + r.hours, 0);
+    const overtimeHours = rows.reduce((sum, r) => sum + r.overtime, 0);
     const lateMinutes = rows.reduce((sum, r) => sum + r.lateMinutes, 0);
     const earlyMinutes = rows.reduce((sum, r) => sum + r.earlyMinutes, 0);
     return { workHours, overtimeHours, lateMinutes, earlyMinutes };
@@ -393,8 +398,14 @@ function AttendanceView() {
                     <span className="text-slate-400">—</span>
                   )}
                 </td>
-                <td className="px-5 py-3 text-slate-600">{r.pending ? 'Pending calc' : `${r.hours.toFixed(1)} hrs`}</td>
-                <td className="px-5 py-3 text-slate-600">{r.pending ? '–' : `${r.overtime.toFixed(1)} hr`}</td>
+                <td className="px-5 py-3 text-slate-600">
+                  {r.hours.toFixed(1)} hrs
+                  {r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
+                </td>
+                <td className="px-5 py-3 text-slate-600">
+                  {r.overtime.toFixed(1)} hr
+                  {r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
+                </td>
                 <td className="px-5 py-3">
                   <Badge tone={r.status === 'Present' ? 'good' : r.status === 'Late' ? 'warning' : 'critical'}>{r.status}</Badge>
                 </td>
