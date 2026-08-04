@@ -84,6 +84,10 @@ function PayrollEmployeeDetailView() {
 
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
   const monthLabel = useMemo(() => buildMonth(system, parseAdKey(start) ?? todayAnchor()).label, [system, start]);
+  // The flat "salary ÷ days in period" rate — same figure on every row,
+  // shown for reference next to My Salary/OT Salary which are earned per
+  // hour instead (see dailySalaryEarning() in lib/payrollDetail.ts).
+  const salaryPerDay = useMemo(() => (employee?.salary != null ? employee.salary / daysInRange : null), [employee, daysInRange]);
 
   const dayRows = useMemo(() => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end) : []), [
     employee,
@@ -221,7 +225,9 @@ function PayrollEmployeeDetailView() {
                         <td className="px-4 py-3">
                           {d.checkIn ? <Badge tone="good">Present</Badge> : <Badge tone="critical">Absent</Badge>}
                         </td>
-                        <td className="px-4 py-3 text-slate-600">{earning ? Math.round(earning.total).toLocaleString() : '—'}</td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {salaryPerDay != null ? Math.round(salaryPerDay).toLocaleString() : '—'}
+                        </td>
                         <td className="px-4 py-3 text-slate-600">{earning ? Math.round(earning.base).toLocaleString() : '—'}</td>
                         <td className="px-4 py-3 text-slate-600">{earning ? Math.round(earning.overtime).toLocaleString() : '—'}</td>
                         <td className="px-4 py-3 font-bold text-good-text">{earning ? Math.round(earning.total).toLocaleString() : '—'}</td>

@@ -125,7 +125,17 @@ export default function PayrollPage() {
 
     const map = new Map<
       string,
-      { id: string; enrollId: string; name: string; salary: number | null; days: number; hours: number; overtime: number; lateDays: number }
+      {
+        id: string;
+        enrollId: string;
+        name: string;
+        salary: number | null;
+        days: number;
+        hours: number;
+        overtime: number;
+        lateDays: number;
+        earlyDays: number;
+      }
     >();
     for (const emp of employees) {
       map.set(emp.id, {
@@ -137,6 +147,7 @@ export default function PayrollPage() {
         hours: 0,
         overtime: 0,
         lateDays: 0,
+        earlyDays: 0,
       });
     }
 
@@ -150,6 +161,7 @@ export default function PayrollPage() {
           row.hours += Number(summary.total_hours);
           row.overtime += Number(summary.overtime_hours);
           if (summary.is_late) row.lateDays += 1;
+          if (summary.is_early_departure) row.earlyDays += 1;
           continue;
         }
         const dayLogs = logs
@@ -163,6 +175,7 @@ export default function PayrollPage() {
         row.hours += live.totalMinutes / 60;
         row.overtime += live.overtimeMinutes / 60;
         if (live.isLate) row.lateDays += 1;
+        if (live.isEarly) row.earlyDays += 1;
       }
     }
     return Array.from(map.values());
@@ -519,7 +532,7 @@ export default function PayrollPage() {
                       {row.name}
                     </Link>
                     <div className="text-xs text-slate-500">
-                      ID {row.enrollId} · {row.days} days · {row.lateDays} late
+                      ID {row.enrollId} · {row.days} days · {row.lateDays} late · {row.earlyDays} early
                     </div>
                   </div>
                 </div>
@@ -567,6 +580,7 @@ export default function PayrollPage() {
               <th className="px-4 py-3 font-medium">Total Hours</th>
               <th className="px-4 py-3 font-medium">Overtime</th>
               <th className="px-4 py-3 font-medium">Late Days</th>
+              <th className="px-4 py-3 font-medium">Early Days</th>
               <th className="px-4 py-3 font-medium">Salary</th>
               <th className="px-4 py-3 font-medium">Calculated Salary</th>
               <th className="pl-2 pr-4 py-3 font-medium">Overtime Salary</th>
@@ -587,6 +601,7 @@ export default function PayrollPage() {
                 <td className="px-4 py-3 text-slate-600">{row.hours.toFixed(1)} hrs</td>
                 <td className="px-4 py-3 text-slate-600">{row.overtime.toFixed(1)} hrs</td>
                 <td className="px-4 py-3 text-slate-600">{row.lateDays}</td>
+                <td className="px-4 py-3 text-slate-600">{row.earlyDays}</td>
                 <td className="px-4 py-3">{salaryCellContent(row)}</td>
                 <td className="px-4 py-3 text-slate-600">
                   {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
@@ -599,7 +614,7 @@ export default function PayrollPage() {
             ))}
             {byEmployee.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-4 py-8 text-center text-slate-400">No active employees.</td>
+                <td colSpan={11} className="px-4 py-8 text-center text-slate-400">No active employees.</td>
               </tr>
             )}
           </tbody>
