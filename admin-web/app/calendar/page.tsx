@@ -29,13 +29,13 @@ function datesBetween(start: string, end: string): string[] {
 type CardKey = 'hours' | 'late' | 'early' | 'overtime' | 'present' | 'absent';
 type CardEntry = { date: string; minutes: number };
 
-const CARD_STYLES: Record<CardKey, { label: string; bg: string; text: string }> = {
-  hours: { label: 'Total Work Hours', bg: 'bg-good-bg', text: 'text-good-text' },
-  late: { label: 'Late In', bg: 'bg-warning-bg', text: 'text-warning-text' },
-  early: { label: 'Early Out', bg: 'bg-critical-bg', text: 'text-critical-text' },
-  overtime: { label: 'Overtime', bg: 'bg-info-bg', text: 'text-info-text' },
-  present: { label: 'Present Days', bg: 'bg-good-bg', text: 'text-good-text' },
-  absent: { label: 'Absent Days', bg: 'bg-critical-bg', text: 'text-critical-text' },
+const CARD_STYLES: Record<CardKey, { label: string; hint: string; numberText: string }> = {
+  hours: { label: 'Total Work Hours', hint: 'This month', numberText: 'text-good-text' },
+  late: { label: 'Late In', hint: 'Days this month', numberText: 'text-warning-text' },
+  early: { label: 'Early Out', hint: 'Days this month', numberText: 'text-critical-text' },
+  overtime: { label: 'Overtime', hint: 'This month', numberText: 'text-info-text' },
+  present: { label: 'Present Days', hint: 'This month', numberText: 'text-good-text' },
+  absent: { label: 'Absent Days', hint: 'No attendance logs', numberText: 'text-critical-text' },
 };
 
 export default function CalendarPage() {
@@ -50,6 +50,7 @@ export default function CalendarPage() {
   const [dayLoading, setDayLoading] = useState(false);
   const [visibleDates, setVisibleDates] = useState<string[]>([]);
   const [expandedCard, setExpandedCard] = useState<CardKey | null>(null);
+  const [selectedTab, setSelectedTab] = useState<'day' | 'leave'>('day');
 
   useEffect(() => {
     supabase
@@ -207,17 +208,108 @@ export default function CalendarPage() {
         </select>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[300px_380px]">
+      <div className="mb-5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 sm:grid-cols-3 sm:divide-y-0">
+          {(Object.keys(CARD_STYLES) as CardKey[]).map(key => {
+            const style = CARD_STYLES[key];
+            const open = expandedCard === key;
+            return (
+              <button
+                key={key}
+                onClick={() => setExpandedCard(open ? null : key)}
+                className={`p-4 text-left transition-colors hover:bg-slate-50 ${open ? 'bg-accent/5' : ''}`}
+              >
+                <div className={`text-xl font-bold sm:text-2xl ${style.numberText}`}>{cardValue(key)}</div>
+                <div className="mt-0.5 text-sm font-medium text-ink">{style.label}</div>
+                <div className="text-xs text-slate-400">{style.hint}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {expandedCard && (
+          <div className="border-t border-slate-100 p-4">
+            <h3 className="mb-2 text-sm font-semibold text-ink">{CARD_STYLES[expandedCard].label} this month</h3>
+            {monthSummary.entries[expandedCard].length === 0 ? (
+              <p className="text-sm text-slate-400">Nothing to show for this month.</p>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {monthSummary.entries[expandedCard].map(entry => {
+                  const day = dayStatus.get(entry.date);
+                  return (
+                    <div key={entry.date} className="py-2 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-ink">{formatAdDate(entry.date, system)}</span>
+                        {!day && <Badge tone="critical">Absent</Badge>}
+                        {day?.isLate && <Badge tone="warning">Late</Badge>}
+                      </div>
+                      {day && (
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                          <span>
+                            IN {new Date(day.checkIn.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <span>
+                            OUT{' '}
+                            {day.checkOut
+                              ? new Date(day.checkOut.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                              : '–:–'}
+                          </span>
+                          {day.isLate && <span className="text-warning-text">Late {formatMinutes(day.lateMinutes)}</span>}
+                          {day.isEarly && <span className="text-critical-text">Early {formatMinutes(day.earlyMinutes)}</span>}
+                          <span>{formatHoursMinutes(day.totalMinutes)}</span>
+                          {day.overtimeMinutes > 0 && (
+                            <span className="text-info-text">OT {formatHoursMinutes(day.overtimeMinutes)}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
         <MonthCalendar
           dayStatus={dayStatus}
           leaveDates={leaveDates}
           selectedDate={selectedDate}
-          onSelectDate={setSelectedDate}
+          onSelectDate={d => {
+            setSelectedDate(d);
+            setSelectedTab('day');
+          }}
           onMonthChange={setVisibleDates}
         />
 
         <div>
-        {selectedDate && (
+        <div className="mb-3 inline-flex gap-1 rounded-lg border border-slate-200 bg-white p-1 text-sm font-semibold shadow-sm">
+          <button
+            onClick={() => setSelectedTab('day')}
+            className={`rounded-md px-3 py-1.5 transition-colors ${
+              selectedTab === 'day' ? 'bg-accent text-white' : 'text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            Day Detail
+          </button>
+          <button
+            onClick={() => setSelectedTab('leave')}
+            className={`rounded-md px-3 py-1.5 transition-colors ${
+              selectedTab === 'leave' ? 'bg-accent text-white' : 'text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            Recent Leave
+          </button>
+        </div>
+
+        {selectedTab === 'day' && !selectedDate && (
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <p className="text-sm text-slate-400">Pick a day on the calendar to see its detail.</p>
+          </div>
+        )}
+
+        {selectedTab === 'day' && selectedDate && (
           <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="mb-2 text-sm font-semibold text-ink">{formatAdDate(selectedDate, system)}</h2>
             {selectedLeave && (
@@ -290,62 +382,24 @@ export default function CalendarPage() {
           </div>
         )}
 
-        <h2 className="mb-3 mt-6 text-sm font-semibold text-ink">This Month</h2>
-        <div className="grid grid-cols-2 gap-3">
-          {(Object.keys(CARD_STYLES) as CardKey[]).map(key => {
-            const style = CARD_STYLES[key];
-            const open = expandedCard === key;
-            return (
-              <button
-                key={key}
-                onClick={() => setExpandedCard(open ? null : key)}
-                className={`rounded-xl p-4 text-left ${style.bg} ${open ? 'ring-2 ring-accent' : ''}`}
-              >
-                <div className={`text-xs font-medium ${style.text}`}>{style.label}</div>
-                <div className="mt-1 text-xl font-bold text-ink">{cardValue(key)}</div>
-              </button>
-            );
-          })}
-        </div>
-
-        {expandedCard && (
-          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4">
-            <h3 className="mb-2 text-sm font-semibold text-ink">{CARD_STYLES[expandedCard].label}</h3>
-            {monthSummary.entries[expandedCard].length === 0 ? (
-              <p className="text-sm text-slate-400">Nothing to show for this month.</p>
+        {selectedTab === 'leave' && (
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <h3 className="mb-3 text-sm font-semibold text-ink">Recent Leave</h3>
+            {leaveRequests.length === 0 ? (
+              <p className="text-sm text-slate-400">No approved leave on record.</p>
             ) : (
               <div className="divide-y divide-slate-100">
-                {monthSummary.entries[expandedCard].map(entry => {
-                  const day = dayStatus.get(entry.date);
-                  return (
-                    <div key={entry.date} className="py-2 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-ink">{formatAdDate(entry.date, system)}</span>
-                        {!day && <Badge tone="critical">Absent</Badge>}
-                        {day?.isLate && <Badge tone="warning">Late</Badge>}
+                {[...leaveRequests]
+                  .sort((a, b) => b.start_date.localeCompare(a.start_date))
+                  .map(lr => (
+                    <div key={lr.id} className="flex items-center justify-between gap-3 py-2.5">
+                      <div className="text-sm text-ink">
+                        {formatAdDate(lr.start_date, system)}
+                        {lr.start_date !== lr.end_date && <> – {formatAdDate(lr.end_date, system)}</>}
                       </div>
-                      {day && (
-                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-                          <span>
-                            IN {new Date(day.checkIn.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                          <span>
-                            OUT{' '}
-                            {day.checkOut
-                              ? new Date(day.checkOut.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                              : '–:–'}
-                          </span>
-                          {day.isLate && <span className="text-warning-text">Late {formatMinutes(day.lateMinutes)}</span>}
-                          {day.isEarly && <span className="text-critical-text">Early {formatMinutes(day.earlyMinutes)}</span>}
-                          <span>{formatHoursMinutes(day.totalMinutes)}</span>
-                          {day.overtimeMinutes > 0 && (
-                            <span className="text-info-text">OT {formatHoursMinutes(day.overtimeMinutes)}</span>
-                          )}
-                        </div>
-                      )}
+                      <Badge tone="info">{lr.leave_type}</Badge>
                     </div>
-                  );
-                })}
+                  ))}
               </div>
             )}
           </div>
