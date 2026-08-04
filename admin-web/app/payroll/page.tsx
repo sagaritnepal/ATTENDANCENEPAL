@@ -335,12 +335,12 @@ export default function PayrollPage() {
   return (
     <AppShell title="Attendance-based Payroll Controller">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-          <span className="text-xs text-slate-500">Overtime Salary</span>
-          <div className="mt-1 text-base font-bold text-ink">
+        <div className="rounded-xl bg-warning-bg p-3 shadow-sm ring-1 ring-inset ring-warning/10">
+          <span className="text-xs font-medium text-warning-text/80">Overtime Salary</span>
+          <div className="mt-1 text-base font-bold text-warning-text">
             {totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </div>
-          <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
+          <div className="mt-1 flex items-center gap-1 text-[11px] text-warning-text/70">
             <input
               type="number"
               min="0"
@@ -348,7 +348,7 @@ export default function PayrollPage() {
               value={otHoursPerDay}
               onChange={e => setOtHoursPerDay(Number(e.target.value) || 0)}
               title="Standard hours per day"
-              className="w-10 rounded border border-slate-200 px-1 py-0.5 text-center"
+              className="w-10 rounded border border-warning/30 bg-white px-1 py-0.5 text-center text-warning-text"
             />
             h/day ×
             <input
@@ -358,35 +358,61 @@ export default function PayrollPage() {
               value={otMultiplier}
               onChange={e => setOtMultiplier(Number(e.target.value) || 0)}
               title="Overtime rate multiplier"
-              className="w-10 rounded border border-slate-200 px-1 py-0.5 text-center"
+              className="w-10 rounded border border-warning/30 bg-white px-1 py-0.5 text-center text-warning-text"
             />
             x
           </div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-          <span className="text-xs text-slate-500">Total Salary Payable</span>
-          <div className="mt-1 text-base font-bold text-ink">{totals.totalSalaryPayable.toLocaleString()}</div>
-          <div className="mt-0.5 text-[11px] text-slate-500">Earned so far this period</div>
+        <div className="rounded-xl bg-good-bg p-3 shadow-sm ring-1 ring-inset ring-good/10">
+          <span className="text-xs font-medium text-good-text/80">Total Salary Payable</span>
+          <div className="mt-1 text-base font-bold text-good-text">{totals.totalSalaryPayable.toLocaleString()}</div>
+          <div className="mt-0.5 text-[11px] text-good-text/70">Earned so far this period</div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-          <span className="text-xs text-slate-500">Total Employees Salary</span>
-          <div className="mt-1 text-base font-bold text-ink">{totals.totalEmployeeSalary.toLocaleString()}</div>
-          <div className="mt-0.5 text-[11px] text-slate-500">Full monthly salary, all staff</div>
+        <div className="rounded-xl bg-info-bg p-3 shadow-sm ring-1 ring-inset ring-info/10">
+          <span className="text-xs font-medium text-info-text/80">Total Employees Salary</span>
+          <div className="mt-1 text-base font-bold text-info-text">{totals.totalEmployeeSalary.toLocaleString()}</div>
+          <div className="mt-0.5 text-[11px] text-info-text/70">Full monthly salary, all staff</div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-          <span className="text-xs text-slate-500">Overtime Tracked</span>
-          <div className="mt-1 text-base font-bold text-ink">{totals.overtimeHours.toFixed(1)} hrs</div>
-          <div className="mt-0.5 text-[11px] text-slate-500">This period</div>
+        <div className="rounded-xl bg-purple-50 p-3 shadow-sm ring-1 ring-inset ring-purple-200">
+          <span className="text-xs font-medium text-purple-700/80">Overtime Tracked</span>
+          <div className="mt-1 text-base font-bold text-purple-700">{totals.overtimeHours.toFixed(1)} hrs</div>
+          <div className="mt-0.5 text-[11px] text-purple-700/70">This period</div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-          <span className="text-xs text-slate-500">Total Payable Hours</span>
-          <div className="mt-1 text-base font-bold text-ink">{totals.totalHours.toFixed(1)} hrs</div>
-          <div className="mt-0.5 text-[11px] text-slate-500">Across {employees.length} staff</div>
+        <div className="rounded-xl bg-accent/10 p-3 shadow-sm ring-1 ring-inset ring-accent/10">
+          <span className="text-xs font-medium text-accent/80">Total Payable Hours</span>
+          <div className="mt-1 text-base font-bold text-accent">{totals.totalHours.toFixed(1)} hrs</div>
+          <div className="mt-0.5 text-[11px] text-accent/70">Across {employees.length} staff</div>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-          <span className="text-xs text-slate-500">Average Attendance</span>
-          <div className="mt-1 text-base font-bold text-ink">{totals.attendancePct}%</div>
-          <div className="mt-0.5 text-[11px] text-slate-500">Worked days vs possible</div>
+        <div
+          className={`rounded-xl p-3 shadow-sm ring-1 ring-inset ${
+            totals.attendancePct >= 75
+              ? 'bg-good-bg ring-good/10'
+              : totals.attendancePct >= 50
+                ? 'bg-warning-bg ring-warning/10'
+                : 'bg-critical-bg ring-critical/10'
+          }`}
+        >
+          <span
+            className={`text-xs font-medium ${
+              totals.attendancePct >= 75 ? 'text-good-text/80' : totals.attendancePct >= 50 ? 'text-warning-text/80' : 'text-critical-text/80'
+            }`}
+          >
+            Average Attendance
+          </span>
+          <div
+            className={`mt-1 text-base font-bold ${
+              totals.attendancePct >= 75 ? 'text-good-text' : totals.attendancePct >= 50 ? 'text-warning-text' : 'text-critical-text'
+            }`}
+          >
+            {totals.attendancePct}%
+          </div>
+          <div
+            className={`mt-0.5 text-[11px] ${
+              totals.attendancePct >= 75 ? 'text-good-text/70' : totals.attendancePct >= 50 ? 'text-warning-text/70' : 'text-critical-text/70'
+            }`}
+          >
+            Worked days vs possible
+          </div>
         </div>
       </div>
 
@@ -486,17 +512,20 @@ export default function PayrollPage() {
           {byEmployee.map(row => (
             <div key={row.id} className="p-4">
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <Link href={detailHref(row.id)} className="truncate font-medium text-ink hover:text-accent hover:underline">
-                    {row.name}
-                  </Link>
-                  <div className="text-xs text-slate-500">
-                    ID {row.enrollId} · {row.days} days · {row.lateDays} late
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <Avatar name={row.name} />
+                  <div className="min-w-0">
+                    <Link href={detailHref(row.id)} className="truncate font-medium text-ink hover:text-accent hover:underline">
+                      {row.name}
+                    </Link>
+                    <div className="text-xs text-slate-500">
+                      ID {row.enrollId} · {row.days} days · {row.lateDays} late
+                    </div>
                   </div>
                 </div>
                 <div className="shrink-0 text-right">
                   <div className="text-[11px] uppercase tracking-wide text-slate-400">Total Salary</div>
-                  <div className="text-base font-bold text-ink">
+                  <div className="text-base font-bold text-good-text">
                     {totalSalary(row) != null ? totalSalary(row)!.toLocaleString() : '—'}
                   </div>
                 </div>
@@ -545,11 +574,12 @@ export default function PayrollPage() {
             </tr>
           </thead>
           <tbody>
-            {byEmployee.map(row => (
-              <tr key={row.id} className="border-b border-slate-100 last:border-0">
+            {byEmployee.map((row, i) => (
+              <tr key={row.id} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
                 <td className="px-4 py-3 text-slate-600">{row.enrollId}</td>
                 <td className="px-4 py-3 font-medium text-ink">
-                  <Link href={detailHref(row.id)} className="hover:text-accent hover:underline">
+                  <Link href={detailHref(row.id)} className="flex items-center gap-2.5 hover:text-accent hover:underline">
+                    <Avatar name={row.name} />
                     {row.name}
                   </Link>
                 </td>
@@ -562,7 +592,7 @@ export default function PayrollPage() {
                   {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
                 </td>
                 <td className="pl-2 pr-4 py-3 text-slate-600">{overtimeCellContent(row)}</td>
-                <td className="px-4 py-3 font-medium text-ink">
+                <td className="px-4 py-3 font-bold text-good-text">
                   {totalSalary(row) != null ? totalSalary(row)!.toLocaleString() : '—'}
                 </td>
               </tr>
@@ -577,6 +607,34 @@ export default function PayrollPage() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+const AVATAR_TONES = [
+  'bg-accent/15 text-accent',
+  'bg-info-bg text-info-text',
+  'bg-warning-bg text-warning-text',
+  'bg-purple-50 text-purple-700',
+  'bg-critical-bg text-critical-text',
+];
+
+function avatarTone(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_TONES[hash % AVATAR_TONES.length];
+}
+
+function Avatar({ name }: { name: string }) {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0]!.toUpperCase())
+    .join('');
+  return (
+    <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${avatarTone(name)}`}>
+      {initials || '?'}
+    </span>
   );
 }
 
