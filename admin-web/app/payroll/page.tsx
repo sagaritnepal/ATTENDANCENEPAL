@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
@@ -55,8 +55,13 @@ export default function PayrollPage() {
   // Overtime pay is optional per employee (some employees just aren't paid
   // extra for it) — on by default, toggled off per row.
   const [overtimeEnabled, setOvertimeEnabled] = useState<Record<string, boolean>>({});
-  // Which employee's day-1-to-day-31 breakdown is open in the detail modal.
+  // Which employee's day-1-to-day-31 breakdown is expanded inline, in
+  // whichever list (salary report or overtime approval) their name was
+  // clicked in.
   const [detailEmployeeId, setDetailEmployeeId] = useState<string | null>(null);
+  function toggleDetail(employeeId: string) {
+    setDetailEmployeeId(id => (id === employeeId ? null : employeeId));
+  }
 
   const { start, end } = period;
 
@@ -431,6 +436,187 @@ export default function PayrollPage() {
     return { base, overtime, total: base + overtime };
   }
 
+  // Day 1 through the period's last day, expanded inline (not a popup)
+  // right under whichever employee's name was clicked — a card list for
+  // mobile, a real table for desktop, both closing over detailRows/
+  // detailRow/dailySalaryEarning which already point at detailEmployeeId.
+  function dayBreakdownHeader() {
+    return (
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Day 1–{daysInRange} breakdown
+        </span>
+        <button onClick={() => setDetailEmployeeId(null)} className="text-xs font-medium text-slate-400 hover:text-slate-600">
+          Hide
+        </button>
+      </div>
+    );
+  }
+
+  function dayBreakdownCards() {
+    return (
+      <div className="mt-3 border-t border-slate-100 pt-3">
+        {dayBreakdownHeader()}
+        {detailRows.map(d => {
+          const earning = dailySalaryEarning(d);
+          return (
+            <div key={d.date} className="border-b border-slate-100 py-2.5 last:border-0">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-ink">{formatAdDate(d.date, system)}</span>
+                <div className="flex flex-wrap justify-end gap-1.5">
+                  <Badge tone={d.status === 'Present' ? 'good' : d.status === 'Late' ? 'warning' : 'critical'}>{d.status}</Badge>
+                  {d.status !== 'Present' && d.checkIn && d.checkOut && <Badge tone="good">Present</Badge>}
+                </div>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                <span>
+                  {d.checkIn ? fmtTime(d.checkIn) : '–:–'} – {d.checkOut ? fmtTime(d.checkOut) : '–:–'}
+                </span>
+                <span>
+                  {d.hours.toFixed(1)}h{d.pending && ' (live)'}
+                </span>
+                {d.overtime > 0 && <span className="font-medium text-info-text">OT {d.overtime.toFixed(1)}h</span>}
+                {d.lateMinutes > 0 && <span className="font-medium text-warning-text">Late {formatMinutes(d.lateMinutes)}</span>}
+                {d.earlyMinutes > 0 && <span className="font-medium text-warning-text">Early {formatMinutes(d.earlyMinutes)}</span>}
+              </div>
+              {earning && (
+                <div className="mt-1.5 flex items-center justify-between text-xs">
+                  <span className="text-slate-400">
+                    Salary {Math.round(earning.base).toLocaleString()}
+                    {earning.overtime > 0 && ` + OT ${Math.round(earning.overtime).toLocaleString()}`}
+                  </span>
+                  <span className="font-semibold text-ink">{Math.round(earning.total).toLocaleString()}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {detailRows.length === 0 && <p className="py-4 text-center text-sm text-slate-400">No days in this period.</p>}
+        {detailRow && (
+          <div className="mt-3 grid grid-cols-3 gap-3 rounded-lg bg-slate-50 p-3 text-center">
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">Salary</div>
+              <div className="text-xs font-semibold text-ink">
+                {calculatedSalary(detailRow) != null ? calculatedSalary(detailRow)!.toLocaleString() : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">OT Salary</div>
+              <div className="text-xs font-semibold text-ink">
+                {overtimeSalary(detailRow) != null ? overtimeSalary(detailRow)!.toLocaleString() : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wide text-slate-400">Total</div>
+              <div className="text-sm font-bold text-accent">
+                {totalSalary(detailRow) != null ? totalSalary(detailRow)!.toLocaleString() : '—'}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function dayBreakdownTable() {
+    return (
+      <div className="border-t border-slate-100 bg-slate-50 p-4">
+        {dayBreakdownHeader()}
+        <div className="max-h-96 overflow-auto rounded-lg border border-slate-200 bg-white">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <th className="whitespace-nowrap px-3 py-2 font-medium">Date</th>
+                <th className="whitespace-nowrap px-3 py-2 font-medium">Check-In</th>
+                <th className="whitespace-nowrap px-3 py-2 font-medium">Check-Out</th>
+                <th className="whitespace-nowrap px-3 py-2 font-medium">Total Hours</th>
+                <th className="whitespace-nowrap px-3 py-2 font-medium">Overtime</th>
+                <th className="whitespace-nowrap px-3 py-2 font-medium">Late By</th>
+                <th className="whitespace-nowrap px-3 py-2 font-medium">Status</th>
+                <th className="whitespace-nowrap px-3 py-2 font-medium">Calculated Salary</th>
+                <th className="whitespace-nowrap px-3 py-2 font-medium">Overtime Salary</th>
+                <th className="whitespace-nowrap px-3 py-2 font-medium">Total Salary</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detailRows.map(d => {
+                const earning = dailySalaryEarning(d);
+                return (
+                  <tr key={d.date} className="border-b border-slate-100 last:border-0">
+                    <td className="whitespace-nowrap px-3 py-2 text-slate-600">{formatAdDate(d.date, system)}</td>
+                    <td className="px-3 py-2 text-slate-600">{d.checkIn ? fmtTime(d.checkIn) : '–:–'}</td>
+                    <td className="px-3 py-2 text-slate-600">{d.checkOut ? fmtTime(d.checkOut) : '–:–'}</td>
+                    <td className="px-3 py-2 text-slate-600">
+                      {d.hours.toFixed(1)} hrs{d.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
+                    </td>
+                    <td className="px-3 py-2 text-slate-600">{d.overtime.toFixed(1)} hrs</td>
+                    <td className="px-3 py-2">
+                      {d.lateMinutes > 0 ? (
+                        <span className="font-medium text-warning-text">{formatMinutes(d.lateMinutes)}</span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap gap-1.5">
+                        <Badge tone={d.status === 'Present' ? 'good' : d.status === 'Late' ? 'warning' : 'critical'}>{d.status}</Badge>
+                        {d.status !== 'Present' && d.checkIn && d.checkOut && <Badge tone="good">Present</Badge>}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-slate-600">{earning ? Math.round(earning.base).toLocaleString() : '—'}</td>
+                    <td className="px-3 py-2 text-slate-600">{earning ? Math.round(earning.overtime).toLocaleString() : '—'}</td>
+                    <td className="px-3 py-2 font-medium text-ink">{earning ? Math.round(earning.total).toLocaleString() : '—'}</td>
+                  </tr>
+                );
+              })}
+              {detailRows.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
+                    No days in this period.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {detailRow && (
+          <div className="mt-3 grid grid-cols-6 gap-3 rounded-lg border border-slate-200 bg-white p-3 text-center">
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">Days</div>
+              <div className="text-sm font-semibold text-ink">{detailRow.days}</div>
+            </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">Hours</div>
+              <div className="text-sm font-semibold text-ink">{detailRow.hours.toFixed(1)}</div>
+            </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">Overtime</div>
+              <div className="text-sm font-semibold text-ink">{detailRow.overtime.toFixed(1)}</div>
+            </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">Salary</div>
+              <div className="text-sm font-semibold text-ink">
+                {calculatedSalary(detailRow) != null ? calculatedSalary(detailRow)!.toLocaleString() : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">OT Salary</div>
+              <div className="text-sm font-semibold text-ink">
+                {overtimeSalary(detailRow) != null ? overtimeSalary(detailRow)!.toLocaleString() : '—'}
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-slate-400">Total</div>
+              <div className="text-base font-bold text-accent">
+                {totalSalary(detailRow) != null ? totalSalary(detailRow)!.toLocaleString() : '—'}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <AppShell title="Attendance-based Payroll Controller">
       <div className="mb-5 flex flex-wrap items-center gap-3">
@@ -525,24 +711,27 @@ export default function PayrollPage() {
           <h2 className="mb-2 text-base font-semibold text-ink sm:mb-4">Overtime awaiting approval</h2>
           <div className="divide-y divide-slate-100 md:hidden">
             {pendingOvertime.map(s => (
-              <div key={s.id} className="flex items-center justify-between gap-3 py-3">
-                <div className="min-w-0">
-                  <button
-                    onClick={() => setDetailEmployeeId(s.employee_id)}
-                    className="truncate font-medium text-ink hover:text-accent hover:underline"
-                  >
-                    {employeeName(s.employee_id)}
-                  </button>
-                  <div className="text-xs text-slate-500">
-                    {formatAdDate(s.work_date, system)} · {Number(s.overtime_hours).toFixed(1)} hrs
+              <div key={s.id} className="py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <button
+                      onClick={() => toggleDetail(s.employee_id)}
+                      className="truncate font-medium text-ink hover:text-accent hover:underline"
+                    >
+                      {employeeName(s.employee_id)}
+                    </button>
+                    <div className="text-xs text-slate-500">
+                      {formatAdDate(s.work_date, system)} · {Number(s.overtime_hours).toFixed(1)} hrs
+                    </div>
                   </div>
+                  <button
+                    onClick={() => approveOvertime(s.id)}
+                    className="shrink-0 rounded-md bg-good px-3 py-1.5 text-xs font-semibold text-white hover:bg-good/90"
+                  >
+                    Approve
+                  </button>
                 </div>
-                <button
-                  onClick={() => approveOvertime(s.id)}
-                  className="shrink-0 rounded-md bg-good px-3 py-1.5 text-xs font-semibold text-white hover:bg-good/90"
-                >
-                  Approve
-                </button>
+                {detailEmployeeId === s.employee_id && dayBreakdownCards()}
               </div>
             ))}
           </div>
@@ -558,23 +747,32 @@ export default function PayrollPage() {
               </thead>
               <tbody>
                 {pendingOvertime.map(s => (
-                  <tr key={s.id} className="border-b border-slate-100 last:border-0">
-                    <td className="py-2.5 font-medium text-ink">
-                      <button onClick={() => setDetailEmployeeId(s.employee_id)} className="hover:text-accent hover:underline">
-                        {employeeName(s.employee_id)}
-                      </button>
-                    </td>
-                    <td className="py-2.5 text-slate-600">{formatAdDate(s.work_date, system)}</td>
-                    <td className="py-2.5 text-slate-600">{Number(s.overtime_hours).toFixed(1)} hrs</td>
-                    <td className="py-2.5">
-                      <button
-                        onClick={() => approveOvertime(s.id)}
-                        className="rounded-md bg-good px-3 py-1 text-xs font-semibold text-white hover:bg-good/90"
-                      >
-                        Approve
-                      </button>
-                    </td>
-                  </tr>
+                  <Fragment key={s.id}>
+                    <tr className="border-b border-slate-100 last:border-0">
+                      <td className="py-2.5 font-medium text-ink">
+                        <button onClick={() => toggleDetail(s.employee_id)} className="hover:text-accent hover:underline">
+                          {employeeName(s.employee_id)}
+                        </button>
+                      </td>
+                      <td className="py-2.5 text-slate-600">{formatAdDate(s.work_date, system)}</td>
+                      <td className="py-2.5 text-slate-600">{Number(s.overtime_hours).toFixed(1)} hrs</td>
+                      <td className="py-2.5">
+                        <button
+                          onClick={() => approveOvertime(s.id)}
+                          className="rounded-md bg-good px-3 py-1 text-xs font-semibold text-white hover:bg-good/90"
+                        >
+                          Approve
+                        </button>
+                      </td>
+                    </tr>
+                    {detailEmployeeId === s.employee_id && (
+                      <tr className="border-b border-slate-100">
+                        <td colSpan={4} className="p-0">
+                          {dayBreakdownTable()}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -593,7 +791,7 @@ export default function PayrollPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <button
-                    onClick={() => setDetailEmployeeId(row.id)}
+                    onClick={() => toggleDetail(row.id)}
                     className="truncate font-medium text-ink hover:text-accent hover:underline"
                   >
                     {row.name}
@@ -631,6 +829,7 @@ export default function PayrollPage() {
                   <dd className="mt-1">{overtimeCellContent(row)}</dd>
                 </div>
               </dl>
+              {detailEmployeeId === row.id && dayBreakdownCards()}
             </div>
           ))}
           {byEmployee.length === 0 && <p className="p-8 text-center text-sm text-slate-400">No active employees.</p>}
@@ -654,26 +853,35 @@ export default function PayrollPage() {
           </thead>
           <tbody>
             {byEmployee.map(row => (
-              <tr key={row.id} className="border-b border-slate-100 last:border-0">
-                <td className="px-4 py-3 text-slate-600">{row.enrollId}</td>
-                <td className="px-4 py-3 font-medium text-ink">
-                  <button onClick={() => setDetailEmployeeId(row.id)} className="hover:text-accent hover:underline">
-                    {row.name}
-                  </button>
-                </td>
-                <td className="px-4 py-3 text-slate-600">{row.days}</td>
-                <td className="px-4 py-3 text-slate-600">{row.hours.toFixed(1)} hrs</td>
-                <td className="px-4 py-3 text-slate-600">{row.overtime.toFixed(1)} hrs</td>
-                <td className="px-4 py-3 text-slate-600">{row.lateDays}</td>
-                <td className="px-4 py-3">{salaryCellContent(row)}</td>
-                <td className="px-4 py-3 text-slate-600">
-                  {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
-                </td>
-                <td className="pl-2 pr-4 py-3 text-slate-600">{overtimeCellContent(row)}</td>
-                <td className="px-4 py-3 font-medium text-ink">
-                  {totalSalary(row) != null ? totalSalary(row)!.toLocaleString() : '—'}
-                </td>
-              </tr>
+              <Fragment key={row.id}>
+                <tr className="border-b border-slate-100 last:border-0">
+                  <td className="px-4 py-3 text-slate-600">{row.enrollId}</td>
+                  <td className="px-4 py-3 font-medium text-ink">
+                    <button onClick={() => toggleDetail(row.id)} className="hover:text-accent hover:underline">
+                      {row.name}
+                    </button>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">{row.days}</td>
+                  <td className="px-4 py-3 text-slate-600">{row.hours.toFixed(1)} hrs</td>
+                  <td className="px-4 py-3 text-slate-600">{row.overtime.toFixed(1)} hrs</td>
+                  <td className="px-4 py-3 text-slate-600">{row.lateDays}</td>
+                  <td className="px-4 py-3">{salaryCellContent(row)}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
+                  </td>
+                  <td className="pl-2 pr-4 py-3 text-slate-600">{overtimeCellContent(row)}</td>
+                  <td className="px-4 py-3 font-medium text-ink">
+                    {totalSalary(row) != null ? totalSalary(row)!.toLocaleString() : '—'}
+                  </td>
+                </tr>
+                {detailEmployeeId === row.id && (
+                  <tr className="border-b border-slate-100">
+                    <td colSpan={10} className="p-0">
+                      {dayBreakdownTable()}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
             {byEmployee.length === 0 && (
               <tr>
@@ -684,180 +892,6 @@ export default function PayrollPage() {
         </table>
         </div>
       </div>
-
-      {detailEmployee && (
-        <div
-          className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 p-4"
-          onClick={() => setDetailEmployeeId(null)}
-        >
-          <div
-            className="flex w-full min-w-0 max-w-6xl max-h-[85vh] flex-col overflow-hidden rounded-xl bg-white shadow-lg"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-4 sm:p-6">
-              <div>
-                <h3 className="text-lg font-semibold text-ink">{detailEmployee.name}</h3>
-                <p className="text-xs text-slate-500">
-                  ID {detailEmployee.fingerprint_id ?? '—'} · {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)} (
-                  {daysInRange}d)
-                </p>
-              </div>
-              <button
-                onClick={() => setDetailEmployeeId(null)}
-                aria-label="Close"
-                className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              >
-                <CloseIcon className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="min-h-0 min-w-0 flex-1">
-              {/* Phones: same card list as before, its own vertical-only
-                  scroll. Desktop: the table gets ONE bounded scroll region
-                  (both axes together, sized to the visible modal body) —
-                  nesting a y-scroll outside an x-scroll instead put the
-                  horizontal scrollbar at the bottom of all 31 rows, so the
-                  Overtime/Total Salary columns were unreachable without
-                  scrolling all the way down first. */}
-              <div className="h-full overflow-y-auto p-4 md:hidden">
-                {detailRows.map(d => {
-                  const earning = dailySalaryEarning(d);
-                  return (
-                    <div key={d.date} className="border-b border-slate-100 py-2.5 last:border-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium text-ink">{formatAdDate(d.date, system)}</span>
-                        <div className="flex flex-wrap justify-end gap-1.5">
-                          <Badge tone={d.status === 'Present' ? 'good' : d.status === 'Late' ? 'warning' : 'critical'}>{d.status}</Badge>
-                          {d.status !== 'Present' && d.checkIn && d.checkOut && <Badge tone="good">Present</Badge>}
-                        </div>
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                        <span>
-                          {d.checkIn ? fmtTime(d.checkIn) : '–:–'} – {d.checkOut ? fmtTime(d.checkOut) : '–:–'}
-                        </span>
-                        <span>
-                          {d.hours.toFixed(1)}h{d.pending && ' (live)'}
-                        </span>
-                        {d.overtime > 0 && <span className="font-medium text-info-text">OT {d.overtime.toFixed(1)}h</span>}
-                        {d.lateMinutes > 0 && <span className="font-medium text-warning-text">Late {formatMinutes(d.lateMinutes)}</span>}
-                        {d.earlyMinutes > 0 && <span className="font-medium text-warning-text">Early {formatMinutes(d.earlyMinutes)}</span>}
-                      </div>
-                      {earning && (
-                        <div className="mt-1.5 flex items-center justify-between text-xs">
-                          <span className="text-slate-400">
-                            Salary {Math.round(earning.base).toLocaleString()}
-                            {earning.overtime > 0 && ` + OT ${Math.round(earning.overtime).toLocaleString()}`}
-                          </span>
-                          <span className="font-semibold text-ink">{Math.round(earning.total).toLocaleString()}</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                {detailRows.length === 0 && <p className="py-8 text-center text-sm text-slate-400">No days in this period.</p>}
-              </div>
-
-              <div className="hidden h-full overflow-auto md:block">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                      <th className="whitespace-nowrap px-3 py-2 font-medium">Date</th>
-                      <th className="whitespace-nowrap px-3 py-2 font-medium">Check-In</th>
-                      <th className="whitespace-nowrap px-3 py-2 font-medium">Check-Out</th>
-                      <th className="whitespace-nowrap px-3 py-2 font-medium">Total Hours</th>
-                      <th className="whitespace-nowrap px-3 py-2 font-medium">Overtime</th>
-                      <th className="whitespace-nowrap px-3 py-2 font-medium">Late By</th>
-                      <th className="whitespace-nowrap px-3 py-2 font-medium">Status</th>
-                      <th className="whitespace-nowrap px-3 py-2 font-medium">Calculated Salary</th>
-                      <th className="whitespace-nowrap px-3 py-2 font-medium">Overtime Salary</th>
-                      <th className="whitespace-nowrap px-3 py-2 font-medium">Total Salary</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detailRows.map(d => {
-                      const earning = dailySalaryEarning(d);
-                      return (
-                        <tr key={d.date} className="border-b border-slate-100 last:border-0">
-                          <td className="whitespace-nowrap px-3 py-2 text-slate-600">{formatAdDate(d.date, system)}</td>
-                          <td className="px-3 py-2 text-slate-600">{d.checkIn ? fmtTime(d.checkIn) : '–:–'}</td>
-                          <td className="px-3 py-2 text-slate-600">{d.checkOut ? fmtTime(d.checkOut) : '–:–'}</td>
-                          <td className="px-3 py-2 text-slate-600">
-                            {d.hours.toFixed(1)} hrs{d.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
-                          </td>
-                          <td className="px-3 py-2 text-slate-600">{d.overtime.toFixed(1)} hrs</td>
-                          <td className="px-3 py-2">
-                            {d.lateMinutes > 0 ? (
-                              <span className="font-medium text-warning-text">{formatMinutes(d.lateMinutes)}</span>
-                            ) : (
-                              <span className="text-slate-400">—</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="flex flex-wrap gap-1.5">
-                              <Badge tone={d.status === 'Present' ? 'good' : d.status === 'Late' ? 'warning' : 'critical'}>{d.status}</Badge>
-                              {d.status !== 'Present' && d.checkIn && d.checkOut && <Badge tone="good">Present</Badge>}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-slate-600">{earning ? Math.round(earning.base).toLocaleString() : '—'}</td>
-                          <td className="px-3 py-2 text-slate-600">
-                            {earning ? Math.round(earning.overtime).toLocaleString() : '—'}
-                          </td>
-                          <td className="px-3 py-2 font-medium text-ink">
-                            {earning ? Math.round(earning.total).toLocaleString() : '—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {detailRows.length === 0 && (
-                      <tr>
-                        <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
-                          No days in this period.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {detailRow && (
-              <div className="border-t border-slate-200 bg-slate-50 p-4 sm:p-6">
-                <div className="grid grid-cols-3 gap-3 text-center sm:grid-cols-6">
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wide text-slate-400">Days</div>
-                    <div className="text-sm font-semibold text-ink">{detailRow.days}</div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wide text-slate-400">Hours</div>
-                    <div className="text-sm font-semibold text-ink">{detailRow.hours.toFixed(1)}</div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wide text-slate-400">Overtime</div>
-                    <div className="text-sm font-semibold text-ink">{detailRow.overtime.toFixed(1)}</div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wide text-slate-400">Salary</div>
-                    <div className="text-sm font-semibold text-ink">
-                      {calculatedSalary(detailRow) != null ? calculatedSalary(detailRow)!.toLocaleString() : '—'}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wide text-slate-400">OT Salary</div>
-                    <div className="text-sm font-semibold text-ink">
-                      {overtimeSalary(detailRow) != null ? overtimeSalary(detailRow)!.toLocaleString() : '—'}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wide text-slate-400">Total</div>
-                    <div className="text-base font-bold text-accent">
-                      {totalSalary(detailRow) != null ? totalSalary(detailRow)!.toLocaleString() : '—'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </AppShell>
   );
 }
@@ -866,14 +900,6 @@ function EditIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
-  );
-}
-
-function CloseIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M18 6 6 18M6 6l12 12" />
     </svg>
   );
 }
