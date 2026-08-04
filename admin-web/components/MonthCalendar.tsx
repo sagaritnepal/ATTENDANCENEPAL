@@ -20,18 +20,22 @@ type Props = {
   onMonthChange?: (adKeys: string[]) => void;
 };
 
-/** A day cell's caption + dot color when it has something worth flagging at
- * a glance — mirrors the small in-cell event labels ("Sick Leave", "0.5 day
+/** A day cell's caption(s) + dot color for anything worth flagging at a
+ * glance — mirrors the small in-cell event labels ("Sick Leave", "0.5 day
  * Annual Leave") from the reference dashboard, using our own real
- * attendance/leave data instead of invented event types. */
-function dayCaption(status: DayStatus | undefined, onLeave: boolean): { label: string; dot: string } | null {
-  if (onLeave) return { label: 'Leave', dot: 'bg-purple-500' };
-  if (!status) return null;
-  if (status.isLate) return { label: 'Late', dot: 'bg-warning' };
-  if (status.isEarly) return { label: 'Early', dot: 'bg-critical' };
-  if (status.hasOut) return { label: 'Present', dot: 'bg-good' };
-  if (status.hasIn) return { label: 'In', dot: 'bg-warning' };
-  return null;
+ * attendance/leave data instead of invented event types. Late and Early can
+ * both apply to the same day (late in AND left early), so this returns
+ * every flag that applies instead of just the first match. */
+function dayCaptions(status: DayStatus | undefined, onLeave: boolean): { label: string; dot: string }[] {
+  if (onLeave) return [{ label: 'Leave', dot: 'bg-purple-500' }];
+  if (!status) return [];
+  const flags: { label: string; dot: string }[] = [];
+  if (status.isLate) flags.push({ label: 'Late', dot: 'bg-warning' });
+  if (status.isEarly) flags.push({ label: 'Early', dot: 'bg-critical' });
+  if (flags.length > 0) return flags;
+  if (status.hasOut) return [{ label: 'Present', dot: 'bg-good' }];
+  if (status.hasIn) return [{ label: 'In', dot: 'bg-warning' }];
+  return [];
 }
 
 export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onSelectDate, onMonthChange }: Props) {
@@ -94,25 +98,30 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
               const status = dayStatus.get(cell.adKey);
               const onLeave = leaveDates?.has(cell.adKey) ?? false;
               const selected = selectedDate === cell.adKey;
-              const caption = cell.inMonth ? dayCaption(status, onLeave) : null;
+              const captions = cell.inMonth ? dayCaptions(status, onLeave) : [];
               const attendanceBg = onLeave ? 'bg-purple-50' : status?.hasOut ? 'bg-good-bg' : status?.hasIn ? 'bg-warning-bg' : '';
               return (
                 <button
                   key={`${cell.adKey}-${i}`}
                   onClick={() => onSelectDate(cell.adKey)}
+                  title={captions.map(c => c.label).join(' & ') || undefined}
                   className={`relative flex min-h-[40px] flex-col items-center justify-center gap-0.5 rounded-lg text-sm sm:min-h-[50px] ${
                     !cell.inMonth ? 'text-slate-300' : cell.isToday ? 'font-bold text-accent' : 'text-ink'
                   } ${selected ? 'bg-accent text-white' : `${attendanceBg} hover:bg-slate-100`}`}
                 >
                   <span>{cell.displayDay}</span>
-                  {caption && (
+                  {captions.length > 0 && (
                     <span
                       className={`flex items-center gap-1 truncate px-1 text-[9px] font-medium leading-none ${
                         selected ? 'text-white/90' : 'text-slate-500'
                       }`}
                     >
-                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${selected ? 'bg-white' : caption.dot}`} />
-                      {caption.label}
+                      <span className="flex shrink-0 items-center gap-0.5">
+                        {captions.map((c, ci) => (
+                          <span key={ci} className={`h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : c.dot}`} />
+                        ))}
+                      </span>
+                      {captions.map(c => c.label).join(' & ')}
                     </span>
                   )}
                 </button>
@@ -125,7 +134,7 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
           {inMonthCells.map(cell => {
             const status = dayStatus.get(cell.adKey);
             const onLeave = leaveDates?.has(cell.adKey) ?? false;
-            const caption = dayCaption(status, onLeave);
+            const captions = dayCaptions(status, onLeave);
             const selected = selectedDate === cell.adKey;
             return (
               <button
@@ -138,10 +147,14 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
                 <span className={`text-sm ${cell.isToday ? 'font-bold text-accent' : 'text-ink'}`}>
                   {cell.displayDay} {month.label.split(' ')[0]}
                 </span>
-                {caption ? (
+                {captions.length > 0 ? (
                   <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-                    <span className={`h-2 w-2 rounded-full ${caption.dot}`} />
-                    {caption.label}
+                    <span className="flex items-center gap-1">
+                      {captions.map((c, ci) => (
+                        <span key={ci} className={`h-2 w-2 rounded-full ${c.dot}`} />
+                      ))}
+                    </span>
+                    {captions.map(c => c.label).join(' & ')}
                   </span>
                 ) : (
                   <span className="text-xs text-slate-300">—</span>
