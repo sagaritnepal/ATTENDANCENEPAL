@@ -75,6 +75,8 @@ export type Profile = {
   role: 'admin' | 'hr' | 'employee';
   full_name: string | null;
   company_name: string | null;
+  pan_no: string | null;
+  location: string | null;
 };
 
 export type Device = {

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import CalendarSystemSwitch from './CalendarSystemSwitch';
+import AccountMenu from './AccountMenu';
 
 type SearchProps = { value: string; onChange: (value: string) => void; placeholder?: string; suggestions?: string[] };
 
@@ -10,10 +11,14 @@ export default function TopBar({
   title,
   onOpenMenu,
   search,
+  adminName,
+  role,
 }: {
   title: string;
   onOpenMenu: () => void;
   search?: SearchProps;
+  adminName: string;
+  role: 'admin' | 'hr';
 }) {
   const [deviceCounts, setDeviceCounts] = useState<{ online: number; total: number }>({ online: 0, total: 0 });
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -107,12 +112,16 @@ export default function TopBar({
             <BellIcon className="h-5 w-5" />
           </button>
 
-          <div className="hidden text-right text-xs leading-tight text-slate-500 sm:block">
+          <div className="hidden text-right text-xs leading-tight text-slate-500 lg:block">
             Connected Devices
             <div className="text-sm font-semibold text-ink">
               {deviceCounts.online}/{deviceCounts.total} Online
             </div>
           </div>
+
+          <div className="hidden h-8 w-px bg-slate-200 sm:block" />
+
+          <AccountMenu adminName={adminName} role={role} />
         </div>
       </div>
 

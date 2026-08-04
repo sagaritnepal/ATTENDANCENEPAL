@@ -65,9 +65,9 @@ export default function AppShell({
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar role={role} adminName={adminName} drawerOpen={drawerOpen} onCloseDrawer={() => setDrawerOpen(false)} />
+      <Sidebar role={role} drawerOpen={drawerOpen} onCloseDrawer={() => setDrawerOpen(false)} />
       <div className="flex flex-1 flex-col overflow-y-auto">
-        <TopBar title={title} onOpenMenu={() => setDrawerOpen(true)} search={search} />
+        <TopBar title={title} onOpenMenu={() => setDrawerOpen(true)} search={search} adminName={adminName} role={role} />
         <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
     </div>
