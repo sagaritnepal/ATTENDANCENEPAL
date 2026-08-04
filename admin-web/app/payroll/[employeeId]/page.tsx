@@ -155,6 +155,8 @@ function PayrollEmployeeDetailView() {
         <p className="text-center text-sm text-critical">Employee not found.</p>
       ) : (
         <>
+          <h2 className="mb-3 text-center text-lg font-bold text-ink">{monthLabel} Breakdown</h2>
+
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-gradient-to-r from-accent/10 via-accent/5 to-transparent p-4 shadow-sm sm:p-6">
             <div className="flex items-center gap-3">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-base font-bold text-white">
@@ -181,10 +183,6 @@ function PayrollEmployeeDetailView() {
           </div>
 
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-100 px-4 py-4 sm:px-6">
-              <h3 className="text-lg font-bold text-ink">{monthLabel} Breakdown</h3>
-            </div>
-
             {/* Phones get a card per day, desktop gets the full table. */}
             <div className="mt-3 divide-y divide-slate-100 p-4 md:hidden">
               {dayRows.map(d => {

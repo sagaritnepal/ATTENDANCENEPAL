@@ -374,17 +374,6 @@ export default function PayrollPage() {
     );
   }
 
-  const employeeName = (id: string) => employees.find(e => e.id === id)?.name ?? 'Unknown';
-  const pendingOvertime = useMemo(
-    () => summaries.filter(s => Number(s.overtime_hours) > 0 && !s.overtime_approved).sort((a, b) => a.work_date.localeCompare(b.work_date)),
-    [summaries]
-  );
-
-  async function approveOvertime(id: string) {
-    await supabase.from('payroll_summaries').update({ overtime_approved: true }).eq('id', id);
-    reload();
-  }
-
   return (
     <AppShell title="Attendance-based Payroll Controller">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -468,65 +457,6 @@ export default function PayrollPage() {
           </div>
         </div>
       </div>
-
-      {pendingOvertime.length > 0 && (
-        <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-          <h2 className="mb-2 text-base font-semibold text-ink sm:mb-4">Overtime awaiting approval</h2>
-          <div className="divide-y divide-slate-100 md:hidden">
-            {pendingOvertime.map(s => (
-              <div key={s.id} className="flex items-center justify-between gap-3 py-3">
-                <div className="min-w-0">
-                  <Link href={detailHref(s.employee_id)} className="truncate font-medium text-ink hover:text-accent hover:underline">
-                    {employeeName(s.employee_id)}
-                  </Link>
-                  <div className="text-xs text-slate-500">
-                    {formatAdDate(s.work_date, system)} · {fmtHrs(Number(s.overtime_hours))}
-                  </div>
-                </div>
-                <button
-                  onClick={() => approveOvertime(s.id)}
-                  className="shrink-0 rounded-md bg-good px-3 py-1.5 text-xs font-semibold text-white hover:bg-good/90"
-                >
-                  Approve
-                </button>
-              </div>
-            ))}
-          </div>
-          <div className="hidden overflow-x-auto md:block">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-                  <th className="py-2 font-medium">Employee</th>
-                  <th className="py-2 font-medium">Date</th>
-                  <th className="py-2 font-medium">Overtime</th>
-                  <th className="py-2 font-medium">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pendingOvertime.map(s => (
-                  <tr key={s.id} className="border-b border-slate-100 last:border-0">
-                    <td className="py-2.5 font-medium text-ink">
-                      <Link href={detailHref(s.employee_id)} className="hover:text-accent hover:underline">
-                        {employeeName(s.employee_id)}
-                      </Link>
-                    </td>
-                    <td className="py-2.5 text-slate-600">{formatAdDate(s.work_date, system)}</td>
-                    <td className="py-2.5 text-slate-600">{fmtHrs(Number(s.overtime_hours))}</td>
-                    <td className="py-2.5">
-                      <button
-                        onClick={() => approveOvertime(s.id)}
-                        className="rounded-md bg-good px-3 py-1 text-xs font-semibold text-white hover:bg-good/90"
-                      >
-                        Approve
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white pb-2 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-accent/10 via-accent/5 to-transparent px-4 py-4 sm:px-6">

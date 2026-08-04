@@ -1,12 +1,19 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import type { Employee, CorrectionRequest, AttendanceGpsRequest } from '@/lib/types';
+import { formatHoursMinutes } from '@/lib/shift';
+import type { Employee, CorrectionRequest, AttendanceGpsRequest, PayrollSummary } from '@/lib/types';
+
+/** Decimal hours -> "Xh Ym". */
+function fmtHrs(hours: number) {
+  return formatHoursMinutes(Math.round(hours * 60));
+}
 
 function formatTime(value: string | null) {
   if (!value) return '—';
@@ -22,6 +29,7 @@ export default function CorrectionsPage() {
   const [requests, setRequests] = useState<CorrectionRequest[]>([]);
   const [gpsRequests, setGpsRequests] = useState<AttendanceGpsRequest[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [filter, setFilter] = useState<'All' | 'pending' | 'approved' | 'rejected'>('pending');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,10 +46,24 @@ export default function CorrectionsPage() {
       .order('created_at', { ascending: false })
       .then(({ data }) => setGpsRequests(data ?? []));
     supabase.from('employees').select('*').then(({ data }) => setEmployees(data ?? []));
+    supabase
+      .from('payroll_summaries')
+      .select('*')
+      .gt('overtime_hours', 0)
+      .eq('overtime_approved', false)
+      .order('work_date', { ascending: false })
+      .then(({ data }) => setSummaries(data ?? []));
   }
   useEffect(reload, []);
 
   const employeeName = (id: string) => employees.find(e => e.id === id)?.name ?? 'Unknown';
+
+  const pendingOvertime = useMemo(() => [...summaries].sort((a, b) => b.work_date.localeCompare(a.work_date)), [summaries]);
+
+  async function approveOvertime(id: string) {
+    await supabase.from('payroll_summaries').update({ overtime_approved: true }).eq('id', id);
+    reload();
+  }
 
   const unified: UnifiedRequest[] = useMemo(() => {
     const corrections: UnifiedRequest[] = requests.map(r => ({
@@ -107,6 +129,65 @@ export default function CorrectionsPage() {
         overtime, and locks the day so the nightly recompute won&apos;t overwrite it. Approving a GPS check-in
         records it as that day&apos;s attendance.
       </p>
+
+      {pendingOvertime.length > 0 && (
+        <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <h2 className="mb-2 text-base font-semibold text-ink sm:mb-4">Overtime awaiting approval</h2>
+          <div className="divide-y divide-slate-100 md:hidden">
+            {pendingOvertime.map(s => (
+              <div key={s.id} className="flex items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <Link href={`/payroll/${s.employee_id}`} className="truncate font-medium text-ink hover:text-accent hover:underline">
+                    {employeeName(s.employee_id)}
+                  </Link>
+                  <div className="text-xs text-slate-500">
+                    {formatAdDate(s.work_date, system)} · {fmtHrs(Number(s.overtime_hours))}
+                  </div>
+                </div>
+                <button
+                  onClick={() => approveOvertime(s.id)}
+                  className="shrink-0 rounded-md bg-good px-3 py-1.5 text-xs font-semibold text-white hover:bg-good/90"
+                >
+                  Approve
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                  <th className="py-2 font-medium">Employee</th>
+                  <th className="py-2 font-medium">Date</th>
+                  <th className="py-2 font-medium">Overtime</th>
+                  <th className="py-2 font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingOvertime.map(s => (
+                  <tr key={s.id} className="border-b border-slate-100 last:border-0">
+                    <td className="py-2.5 font-medium text-ink">
+                      <Link href={`/payroll/${s.employee_id}`} className="hover:text-accent hover:underline">
+                        {employeeName(s.employee_id)}
+                      </Link>
+                    </td>
+                    <td className="py-2.5 text-slate-600">{formatAdDate(s.work_date, system)}</td>
+                    <td className="py-2.5 text-slate-600">{fmtHrs(Number(s.overtime_hours))}</td>
+                    <td className="py-2.5">
+                      <button
+                        onClick={() => approveOvertime(s.id)}
+                        className="rounded-md bg-good px-3 py-1 text-xs font-semibold text-white hover:bg-good/90"
+                      >
+                        Approve
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="mb-5 flex flex-wrap gap-2">
         {(['pending', 'approved', 'rejected', 'All'] as const).map(f => (
