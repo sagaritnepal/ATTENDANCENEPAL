@@ -224,9 +224,18 @@ export default function EmployeesPage() {
   const templateShifts = useMemo(() => shifts.filter(s => s.employee_id === null), [shifts]);
 
   const filtered = useMemo(() => {
+    // "Mark Resigned" promises to remove someone from active views — this is
+    // the view that promise was never actually kept for, so a resigned
+    // employee stayed mixed in with active staff indefinitely. Resigned
+    // employees now only show up under the explicit "Resigned" filter.
     let list = employees;
-    if (filter === 'Unenrolled') list = list.filter(e => !e.fingerprint_id);
-    else if (filter !== 'All') list = list.filter(e => e.department === filter);
+    if (filter === 'Resigned') {
+      list = list.filter(e => e.status !== 'active');
+    } else {
+      list = list.filter(e => e.status === 'active');
+      if (filter === 'Unenrolled') list = list.filter(e => !e.fingerprint_id);
+      else if (filter !== 'All') list = list.filter(e => e.department === filter);
+    }
 
     const term = search.trim().toLowerCase();
     if (term) {
@@ -539,9 +548,9 @@ export default function EmployeesPage() {
             }}
             className="min-w-[13rem] rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm font-medium text-ink shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
           >
-            {['All', ...departments, 'Unenrolled'].map(f => (
+            {['All', ...departments, 'Unenrolled', 'Resigned'].map(f => (
               <option key={f} value={f}>
-                {f === 'All' ? 'All Departments' : f === 'Unenrolled' ? 'Biometric Unenrolled' : f}
+                {f === 'All' ? 'All Departments' : f === 'Unenrolled' ? 'Biometric Unenrolled' : f === 'Resigned' ? 'Resigned Employees' : f}
               </option>
             ))}
           </select>
