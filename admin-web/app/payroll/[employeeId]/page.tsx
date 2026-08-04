@@ -92,8 +92,12 @@ function PayrollEmployeeDetailView() {
     const hours = dayRows.reduce((s, d) => s + d.hours, 0);
     const overtime = dayRows.reduce((s, d) => s + d.overtime, 0);
     const salary = employee?.salary ?? null;
-    const calculatedSalary = salary != null ? Math.round((salary / daysInRange) * workedDays) : null;
     const hourlyRate = salary != null ? salary / (daysInRange * otHoursPerDay) : null;
+    // Pay is earned per hour actually worked, not per day shown up — see
+    // dailySalaryEarning() in lib/payrollDetail.ts for the same math applied
+    // per-day (regular hours = total hours minus the overtime portion
+    // already folded into them, so overtime isn't paid twice).
+    const calculatedSalary = hourlyRate != null ? Math.round(hourlyRate * Math.max(0, hours - overtime)) : null;
     const overtimeSalary = salary != null ? (otOn && overtime > 0 && hourlyRate != null ? Math.round(hourlyRate * otMultiplier * overtime) : 0) : null;
     const totalSalary = calculatedSalary != null ? calculatedSalary + (overtimeSalary ?? 0) : null;
     return { workedDays, hours, overtime, calculatedSalary, overtimeSalary, totalSalary };

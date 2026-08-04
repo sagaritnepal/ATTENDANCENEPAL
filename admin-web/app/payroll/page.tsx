@@ -175,10 +175,7 @@ export default function PayrollPage() {
     const possibleDays = employees.length * daysInRange;
     const attendancePct = possibleDays ? Math.round((workedDays / possibleDays) * 1000) / 10 : 0;
     const totalEmployeeSalary = byEmployee.reduce((s, r) => s + (r.salary ?? 0), 0);
-    const totalSalaryPayable = byEmployee.reduce(
-      (s, r) => (r.salary == null ? s : s + Math.round((r.salary / daysInRange) * r.days)),
-      0
-    );
+    const totalSalaryPayable = byEmployee.reduce((s, r) => s + (calculatedSalary(r) ?? 0), 0);
     const totalOvertimeSalary = byEmployee.reduce((s, r) => {
       if (r.salary == null || r.overtime <= 0 || !(overtimeEnabled[r.id] ?? true)) return s;
       const hourlyRate = r.salary / (daysInRange * otHoursPerDay);
@@ -187,9 +184,16 @@ export default function PayrollPage() {
     return { totalHours, overtimeHours, attendancePct, totalEmployeeSalary, totalSalaryPayable, totalOvertimeSalary };
   }, [byEmployee, employees, daysInRange, otHoursPerDay, otMultiplier, overtimeEnabled]);
 
-  function calculatedSalary(row: { salary: number | null; days: number }): number | null {
+  // Pay is earned per hour actually worked, not per day shown up — a day
+  // where someone left after 2 hours pays 2 hours, not a full day's worth.
+  // Overtime hours are already counted inside `hours` (see computeDayStatus),
+  // so they're subtracted back out here and paid separately below at the
+  // overtime multiplier instead of twice at the regular rate.
+  function calculatedSalary(row: { salary: number | null; hours: number; overtime: number }): number | null {
     if (row.salary == null) return null;
-    return Math.round((row.salary / daysInRange) * row.days);
+    const hourlyRate = row.salary / (daysInRange * otHoursPerDay);
+    const regularHours = Math.max(0, row.hours - row.overtime);
+    return Math.round(hourlyRate * regularHours);
   }
 
   function overtimeSalary(row: { id: string; salary: number | null; overtime: number }): number | null {
@@ -199,7 +203,7 @@ export default function PayrollPage() {
     return Math.round(hourlyRate * otMultiplier * row.overtime);
   }
 
-  function totalSalary(row: { id: string; salary: number | null; days: number; overtime: number }): number | null {
+  function totalSalary(row: { id: string; salary: number | null; hours: number; overtime: number }): number | null {
     const calculated = calculatedSalary(row);
     if (calculated == null) return null;
     return calculated + (overtimeSalary(row) ?? 0);
@@ -330,28 +334,6 @@ export default function PayrollPage() {
 
   return (
     <AppShell title="Attendance-based Payroll Controller">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <select
-          value={period.key}
-          onChange={e => {
-            const found = periodOptions.find(o => o.key === e.target.value);
-            if (found) setPeriod(found);
-          }}
-          className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-600"
-        >
-          {periodOptions.map(o => (
-            <option key={o.key} value={o.key}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-ink shadow-sm">
-          <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
-          {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
-          <span className="font-medium text-slate-400">({daysInRange}d)</span>
-        </div>
-      </div>
-
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
           <span className="text-xs text-slate-500">Overtime Salary</span>
@@ -468,7 +450,30 @@ export default function PayrollPage() {
       )}
 
       <div className="mt-6 rounded-xl border border-slate-200 bg-white pb-2 shadow-sm">
-        <h2 className="px-4 pt-4 text-base font-semibold text-ink sm:px-6 sm:pt-6">This Month Salary Report</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-4 sm:px-6 sm:pt-6">
+          <h2 className="text-base font-semibold text-ink">This Month Salary Report</h2>
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              value={period.key}
+              onChange={e => {
+                const found = periodOptions.find(o => o.key === e.target.value);
+                if (found) setPeriod(found);
+              }}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-600"
+            >
+              {periodOptions.map(o => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-ink shadow-sm">
+              <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
+              {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
+              <span className="font-medium text-slate-400">({daysInRange}d)</span>
+            </div>
+          </div>
+        </div>
 
         {/* Phones get one card per employee — the 10-column table below
             would otherwise need horizontal scrolling to read anything. */}

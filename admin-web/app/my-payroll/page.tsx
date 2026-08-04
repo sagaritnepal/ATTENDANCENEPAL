@@ -168,7 +168,11 @@ export default function MyPayrollPage() {
   }, [dayRows]);
 
   const daysInMonth = daysInCurrentMonth();
-  const received = employee?.salary != null ? Math.round((employee.salary / daysInMonth) * totals.presentDays) : null;
+  // Pay is earned per hour actually worked, not per day shown up — matches
+  // the admin Payroll page's calculatedSalary(), assuming the same 8-hour
+  // standard day it defaults to (this page has no otHoursPerDay control).
+  const hourlyRate = employee?.salary != null ? employee.salary / (daysInMonth * 8) : null;
+  const received = hourlyRate != null ? Math.round(hourlyRate * totals.totalHours) : null;
   const remaining = employee?.salary != null && received != null ? Math.max(0, employee.salary - received) : null;
 
   return (

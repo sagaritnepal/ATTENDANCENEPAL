@@ -72,9 +72,14 @@ export function buildEmployeeDayRows(
   });
 }
 
-/** One day's slice of the monthly Salary — same proration the Payroll
- * page's calculatedSalary()/overtimeSalary() use for the whole period,
- * just for one day, so per-day figures always add up to the period total. */
+/** One day's slice of the monthly Salary — same hourly proration the
+ * Payroll page's calculatedSalary()/overtimeSalary() use for the whole
+ * period, just for one day, so per-day figures always add up to the period
+ * total. Pay is earned per hour actually worked, not a flat day rate — a
+ * day worked for 2 hours pays 2 hours, not a full day. `d.hours` already
+ * includes any overtime portion (see computeDayStatus), so it's subtracted
+ * back out here and paid separately at the overtime multiplier instead of
+ * twice at the regular rate. */
 export function dailySalaryEarning(
   d: DayDetail,
   salary: number | null,
@@ -84,8 +89,9 @@ export function dailySalaryEarning(
   otOn: boolean
 ): { base: number; overtime: number; total: number } | null {
   if (salary == null) return null;
-  const base = d.status === 'Absent' ? 0 : salary / daysInRange;
   const hourlyRate = salary / (daysInRange * otHoursPerDay);
+  const regularHours = Math.max(0, d.hours - d.overtime);
+  const base = hourlyRate * regularHours;
   const overtime = otOn && d.overtime > 0 ? hourlyRate * otMultiplier * d.overtime : 0;
   return { base, overtime, total: base + overtime };
 }
