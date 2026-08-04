@@ -6,7 +6,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
-import { formatAdDate, formatDdMmYyyy } from '@/lib/calendar';
+import { buildMonth, formatAdDate, formatDdMmYyyy, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { formatMinutes } from '@/lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning } from '@/lib/payrollDetail';
@@ -18,6 +18,12 @@ function fmtTime(iso: string) {
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function parseAdKey(value: string): CalendarAnchor | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return null;
+  return { year: Number(m[1]), month: Number(m[2]) - 1, day: Number(m[3]) };
 }
 
 function startOfMonthIso() {
@@ -77,6 +83,7 @@ function PayrollEmployeeDetailView() {
   }, [employeeId, start, end]);
 
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
+  const monthLabel = useMemo(() => buildMonth(system, parseAdKey(start) ?? todayAnchor()).label, [system, start]);
 
   const dayRows = useMemo(() => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end) : []), [
     employee,
@@ -87,21 +94,6 @@ function PayrollEmployeeDetailView() {
     end,
   ]);
 
-  const totals = useMemo(() => {
-    const workedDays = dayRows.filter(d => d.status !== 'Absent').length;
-    const hours = dayRows.reduce((s, d) => s + d.hours, 0);
-    const overtime = dayRows.reduce((s, d) => s + d.overtime, 0);
-    const salary = employee?.salary ?? null;
-    const hourlyRate = salary != null ? salary / (daysInRange * otHoursPerDay) : null;
-    // Pay is earned per hour actually worked, not per day shown up — see
-    // dailySalaryEarning() in lib/payrollDetail.ts for the same math applied
-    // per-day (regular hours = total hours minus the overtime portion
-    // already folded into them, so overtime isn't paid twice).
-    const calculatedSalary = hourlyRate != null ? Math.round(hourlyRate * Math.max(0, hours - overtime)) : null;
-    const overtimeSalary = salary != null ? (otOn && overtime > 0 && hourlyRate != null ? Math.round(hourlyRate * otMultiplier * overtime) : 0) : null;
-    const totalSalary = calculatedSalary != null ? calculatedSalary + (overtimeSalary ?? 0) : null;
-    return { workedDays, hours, overtime, calculatedSalary, overtimeSalary, totalSalary };
-  }, [dayRows, employee, daysInRange, otHoursPerDay, otMultiplier, otOn]);
 
   const periodQuery = `?start=${start}&end=${end}&otHoursPerDay=${otHoursPerDay}&otMultiplier=${otMultiplier}&otOn=${otOn}`;
 
@@ -121,46 +113,30 @@ function PayrollEmployeeDetailView() {
         <p className="text-center text-sm text-critical">Employee not found.</p>
       ) : (
         <>
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <div className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-gradient-to-r from-accent/10 via-accent/5 to-transparent p-4 shadow-sm sm:p-6">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-base font-bold text-white">
+              {employee.name
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map(part => part[0]!.toUpperCase())
+                .join('')}
+            </span>
             <div>
-              <h2 className="text-lg font-semibold text-ink">{employee.name}</h2>
+              <h2 className="text-lg font-bold text-ink">{employee.name}</h2>
               <p className="text-xs text-slate-500">
                 ID {employee.fingerprint_id ?? '—'} · {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)} ({daysInRange}d)
               </p>
             </div>
           </div>
 
-          <div className="mb-5 grid grid-cols-3 gap-3 sm:grid-cols-6">
-            <div className="rounded-xl border border-slate-200 bg-white p-3 text-center shadow-sm">
-              <div className="text-[11px] uppercase tracking-wide text-slate-400">Days</div>
-              <div className="text-base font-bold text-ink">{totals.workedDays}</div>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center gap-2.5 bg-gradient-to-r from-accent/10 via-accent/5 to-transparent px-4 py-4 sm:px-6">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-white">
+                <ReportIcon className="h-5 w-5" />
+              </span>
+              <h3 className="text-lg font-bold text-ink">{monthLabel} Breakdown</h3>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-3 text-center shadow-sm">
-              <div className="text-[11px] uppercase tracking-wide text-slate-400">Hours</div>
-              <div className="text-base font-bold text-ink">{totals.hours.toFixed(1)}</div>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-3 text-center shadow-sm">
-              <div className="text-[11px] uppercase tracking-wide text-slate-400">Overtime</div>
-              <div className="text-base font-bold text-ink">{totals.overtime.toFixed(1)}</div>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-3 text-center shadow-sm">
-              <div className="text-[11px] uppercase tracking-wide text-slate-400">Salary</div>
-              <div className="text-base font-bold text-ink">{totals.calculatedSalary != null ? totals.calculatedSalary.toLocaleString() : '—'}</div>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-3 text-center shadow-sm">
-              <div className="text-[11px] uppercase tracking-wide text-slate-400">OT Salary</div>
-              <div className="text-base font-bold text-ink">{totals.overtimeSalary != null ? totals.overtimeSalary.toLocaleString() : '—'}</div>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-3 text-center shadow-sm">
-              <div className="text-[11px] uppercase tracking-wide text-slate-400">Total</div>
-              <div className="text-base font-bold text-accent">{totals.totalSalary != null ? totals.totalSalary.toLocaleString() : '—'}</div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-            <h3 className="px-4 pt-4 text-base font-semibold text-ink sm:px-6 sm:pt-6">
-              Day 1–{daysInRange} Breakdown
-            </h3>
 
             {/* Phones get a card per day, desktop gets the full table. */}
             <div className="mt-3 divide-y divide-slate-100 p-4 md:hidden">
@@ -170,10 +146,7 @@ function PayrollEmployeeDetailView() {
                   <div key={d.date} className="py-2.5 first:pt-0 last:pb-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-medium text-ink">{formatAdDate(d.date, system)}</span>
-                      <div className="flex flex-wrap justify-end gap-1.5">
-                        <Badge tone={d.status === 'Present' ? 'good' : d.status === 'Late' ? 'warning' : 'critical'}>{d.status}</Badge>
-                        {d.status !== 'Present' && d.checkIn && d.checkOut && <Badge tone="good">Present</Badge>}
-                      </div>
+                      {d.checkIn ? <Badge tone="good">Present</Badge> : <Badge tone="critical">Absent</Badge>}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                       <span>
@@ -184,15 +157,15 @@ function PayrollEmployeeDetailView() {
                       </span>
                       {d.overtime > 0 && <span className="font-medium text-info-text">OT {d.overtime.toFixed(1)}h</span>}
                       {d.lateMinutes > 0 && <span className="font-medium text-warning-text">Late {formatMinutes(d.lateMinutes)}</span>}
-                      {d.earlyMinutes > 0 && <span className="font-medium text-warning-text">Early {formatMinutes(d.earlyMinutes)}</span>}
+                      {d.earlyMinutes > 0 && <span className="font-medium text-critical-text">Early {formatMinutes(d.earlyMinutes)}</span>}
                     </div>
                     {earning && (
                       <div className="mt-1.5 flex items-center justify-between text-xs">
                         <span className="text-slate-400">
-                          Salary {Math.round(earning.base).toLocaleString()}
-                          {earning.overtime > 0 && ` + OT ${Math.round(earning.overtime).toLocaleString()}`}
+                          My Salary {Math.round(earning.base).toLocaleString()}
+                          {earning.overtime > 0 && ` + OT Salary ${Math.round(earning.overtime).toLocaleString()}`}
                         </span>
-                        <span className="font-semibold text-ink">{Math.round(earning.total).toLocaleString()}</span>
+                        <span className="font-semibold text-good-text">{Math.round(earning.total).toLocaleString()}</span>
                       </div>
                     )}
                   </div>
@@ -211,17 +184,19 @@ function PayrollEmployeeDetailView() {
                     <th className="whitespace-nowrap px-4 py-3 font-medium">Total Hours</th>
                     <th className="whitespace-nowrap px-4 py-3 font-medium">Overtime</th>
                     <th className="whitespace-nowrap px-4 py-3 font-medium">Late By</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">Early Out</th>
                     <th className="whitespace-nowrap px-4 py-3 font-medium">Status</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium">Calculated Salary</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium">Overtime Salary</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">Salary/Day</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">My Salary</th>
+                    <th className="whitespace-nowrap px-4 py-3 font-medium">OT Salary</th>
                     <th className="whitespace-nowrap px-4 py-3 font-medium">Total Salary</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {dayRows.map(d => {
+                  {dayRows.map((d, i) => {
                     const earning = dailySalaryEarning(d, employee.salary, daysInRange, otHoursPerDay, otMultiplier, otOn);
                     return (
-                      <tr key={d.date} className="border-b border-slate-100 last:border-0">
+                      <tr key={d.date} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
                         <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatAdDate(d.date, system)}</td>
                         <td className="px-4 py-3 text-slate-600">{d.checkIn ? fmtTime(d.checkIn) : '–:–'}</td>
                         <td className="px-4 py-3 text-slate-600">{d.checkOut ? fmtTime(d.checkOut) : '–:–'}</td>
@@ -237,20 +212,25 @@ function PayrollEmployeeDetailView() {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1.5">
-                            <Badge tone={d.status === 'Present' ? 'good' : d.status === 'Late' ? 'warning' : 'critical'}>{d.status}</Badge>
-                            {d.status !== 'Present' && d.checkIn && d.checkOut && <Badge tone="good">Present</Badge>}
-                          </div>
+                          {d.earlyMinutes > 0 ? (
+                            <span className="font-medium text-critical-text">{formatMinutes(d.earlyMinutes)}</span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
                         </td>
+                        <td className="px-4 py-3">
+                          {d.checkIn ? <Badge tone="good">Present</Badge> : <Badge tone="critical">Absent</Badge>}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">{earning ? Math.round(earning.total).toLocaleString() : '—'}</td>
                         <td className="px-4 py-3 text-slate-600">{earning ? Math.round(earning.base).toLocaleString() : '—'}</td>
                         <td className="px-4 py-3 text-slate-600">{earning ? Math.round(earning.overtime).toLocaleString() : '—'}</td>
-                        <td className="px-4 py-3 font-medium text-ink">{earning ? Math.round(earning.total).toLocaleString() : '—'}</td>
+                        <td className="px-4 py-3 font-bold text-good-text">{earning ? Math.round(earning.total).toLocaleString() : '—'}</td>
                       </tr>
                     );
                   })}
                   {dayRows.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
+                      <td colSpan={12} className="px-4 py-8 text-center text-slate-400">
                         No days in this period.
                       </td>
                     </tr>
@@ -262,6 +242,15 @@ function PayrollEmployeeDetailView() {
         </>
       )}
     </AppShell>
+  );
+}
+
+function ReportIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14 3v5h5M9 13h6M9 17h6M9 9h2" />
+    </svg>
   );
 }
 
