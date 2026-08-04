@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
-import DatePicker from '@/components/DatePicker';
+import DateRangePicker from '@/components/DateRangePicker';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { computeDayStatus, formatMinutes, resolveShift } from '@/lib/shift';
@@ -73,7 +73,7 @@ function AttendanceView() {
   const [from, setFrom] = useState(isoDaysAgo(6));
   const [to, setTo] = useState(isoDaysAgo(0));
   const [activePreset, setActivePreset] = useState<string | null>(null);
-  const [status, setStatus] = useState<'All' | 'Present' | 'Late' | 'Absent'>('All');
+  const [status, setStatus] = useState<'All' | 'Present' | 'Late' | 'Early' | 'Absent'>('All');
   const [employeeId, setEmployeeId] = useState<string>(initialEmployeeId ?? 'all');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -191,7 +191,9 @@ function AttendanceView() {
         }
       }
     }
-    return out.filter(r => status === 'All' || r.status === status).sort((a, b) => b.date.localeCompare(a.date));
+    return out
+      .filter(r => status === 'All' || (status === 'Early' ? r.earlyMinutes > 0 : r.status === status))
+      .sort((a, b) => b.date.localeCompare(a.date));
   }, [scopedEmployees, summaries, logs, devices, shifts, from, to, status]);
 
   const totals = useMemo(() => {
@@ -262,7 +264,7 @@ function AttendanceView() {
                   <option value="all">All Employees</option>
                   {employees.map(e => (
                     <option key={e.id} value={e.id}>
-                      {e.name}
+                      {e.name} (ID {e.fingerprint_id ?? '—'})
                     </option>
                   ))}
                 </select>
@@ -286,8 +288,9 @@ function AttendanceView() {
               >
                 <option value="All">All Logs</option>
                 <option value="Present">Present</option>
-                <option value="Late">Late</option>
                 <option value="Absent">Absent</option>
+                <option value="Late">Late</option>
+                <option value="Early">Early</option>
               </select>
             </div>
           </div>
@@ -297,34 +300,30 @@ function AttendanceView() {
           <div>
             <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Date Range</label>
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex gap-1.5 rounded-lg bg-slate-100 p-1">
+              <select
+                value={activePreset ?? ''}
+                onChange={e => {
+                  const preset = PRESETS.find(p => p.key === e.target.value);
+                  if (preset) applyPreset(preset);
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+              >
+                <option value="" disabled>
+                  Quick range…
+                </option>
                 {PRESETS.map(p => (
-                  <button
-                    key={p.key}
-                    onClick={() => applyPreset(p)}
-                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-                      activePreset === p.key ? 'bg-accent text-white shadow-sm' : 'text-slate-600 hover:bg-white'
-                    }`}
-                  >
+                  <option key={p.key} value={p.key}>
                     {p.label}
-                  </button>
+                  </option>
                 ))}
-              </div>
-              <div className="w-36">
-                <DatePicker
-                  value={from}
-                  onChange={v => {
-                    setFrom(v);
-                    setActivePreset(null);
-                  }}
-                />
-              </div>
-              <span className="text-slate-400">–</span>
-              <div className="w-36">
-                <DatePicker
-                  value={to}
-                  onChange={v => {
-                    setTo(v);
+              </select>
+              <div className="w-56">
+                <DateRangePicker
+                  from={from}
+                  to={to}
+                  onChange={(f, t) => {
+                    setFrom(f);
+                    setTo(t);
                     setActivePreset(null);
                   }}
                 />
@@ -355,8 +354,7 @@ function AttendanceView() {
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
-                  <Badge tone={r.status === 'Present' ? 'good' : r.status === 'Late' ? 'warning' : 'critical'}>{r.status}</Badge>
-                  {r.status !== 'Present' && r.checkIn && r.checkOut && <Badge tone="good">Present</Badge>}
+                  {r.checkIn ? <Badge tone="good">Present</Badge> : <Badge tone="critical">Absent</Badge>}
                 </div>
               </div>
               <div className="mt-1.5 text-xs text-slate-500">{r.shiftLabel}</div>
@@ -486,10 +484,7 @@ function AttendanceView() {
                   {r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2">
-                  <div className="flex flex-nowrap gap-1.5">
-                    <Badge tone={r.status === 'Present' ? 'good' : r.status === 'Late' ? 'warning' : 'critical'}>{r.status}</Badge>
-                    {r.status !== 'Present' && r.checkIn && r.checkOut && <Badge tone="good">Present</Badge>}
-                  </div>
+                  {r.checkIn ? <Badge tone="good">Present</Badge> : <Badge tone="critical">Absent</Badge>}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2 text-slate-600">{r.device}</td>
               </tr>
