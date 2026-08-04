@@ -9,7 +9,16 @@ type NavItem = { href: string; label: string; icon: (props: IconProps) => JSX.El
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: HomeIcon, adminOnly: false },
-  { href: '/employees', label: 'Employees', icon: UsersIcon, adminOnly: false },
+  {
+    href: '/employees',
+    label: 'Employees',
+    icon: UsersIcon,
+    adminOnly: false,
+    children: [
+      { href: '/shifts', label: 'Shifts', icon: CalendarIcon, adminOnly: true },
+      { href: '/branches', label: 'Branch/Depart', icon: BranchIcon, adminOnly: true },
+    ],
+  },
   {
     href: '/attendance',
     label: 'Attendance',
@@ -19,8 +28,6 @@ const NAV_ITEMS: NavItem[] = [
       { href: '/leave', label: 'Leave', icon: LeaveIcon, adminOnly: false },
       { href: '/corrections', label: 'Corrections', icon: CorrectionIcon, adminOnly: false },
       { href: '/calendar', label: 'Calendar', icon: CalendarViewIcon, adminOnly: false },
-      { href: '/shifts', label: 'Shifts', icon: CalendarIcon, adminOnly: true },
-      { href: '/branches', label: 'Branch/Depart', icon: BranchIcon, adminOnly: true },
     ],
   },
   { href: '/payroll', label: 'Payroll', icon: CardIcon, adminOnly: false },
