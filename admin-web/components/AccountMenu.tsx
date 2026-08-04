@@ -15,6 +15,7 @@ export default function AccountMenu({ adminName, role }: { adminName: string; ro
   const [open, setOpen] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  const [email, setEmail] = useState('');
   const [form, setForm] = useState<ProfileForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +41,7 @@ export default function AccountMenu({ adminName, role }: { adminName: string; ro
       setLoadingProfile(false);
       return;
     }
+    setEmail(userData.user.email ?? '');
     const { data: profile } = await supabase
       .from('profiles')
       .select('full_name, company_name, pan_no, location')
@@ -140,6 +142,15 @@ export default function AccountMenu({ adminName, role }: { adminName: string; ro
               <p className="py-4 text-center text-sm text-slate-400">Loading…</p>
             ) : (
               <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
+                  <input
+                    value={email}
+                    disabled
+                    title="Sign-in email — read-only here"
+                    className="w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500"
+                  />
+                </div>
                 <div>
                   <label className="mb-1 block text-xs font-medium text-slate-600">Admin Name</label>
                   <input
