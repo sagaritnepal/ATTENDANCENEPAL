@@ -449,17 +449,22 @@ export default function PayrollPage() {
         </div>
       )}
 
-      <div className="mt-6 rounded-xl border border-slate-200 bg-white pb-2 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-4 sm:px-6 sm:pt-6">
-          <h2 className="text-base font-bold text-ink">This Month Salary Report</h2>
-          <div className="flex flex-wrap items-center gap-3">
+      <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white pb-2 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-accent/10 via-accent/5 to-transparent px-4 py-4 sm:px-6">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-white">
+              <ReportIcon className="h-5 w-5" />
+            </span>
+            <h2 className="text-lg font-bold text-ink">This Month Salary Report</h2>
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5">
             <select
               value={period.key}
               onChange={e => {
                 const found = periodOptions.find(o => o.key === e.target.value);
                 if (found) setPeriod(found);
               }}
-              className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm font-bold text-ink"
+              className="rounded-lg border border-accent/30 bg-white px-3 py-2 text-sm font-bold text-ink shadow-sm"
             >
               {periodOptions.map(o => (
                 <option key={o.key} value={o.key}>
@@ -467,7 +472,7 @@ export default function PayrollPage() {
                 </option>
               ))}
             </select>
-            <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-400 shadow-sm">
+            <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-400 shadow-sm">
               <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
               {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
               <span className="text-slate-400">({daysInRange}d)</span>
@@ -572,6 +577,15 @@ export default function PayrollPage() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function ReportIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14 3v5h5M9 13h6M9 17h6M9 9h2" />
+    </svg>
   );
 }
 
