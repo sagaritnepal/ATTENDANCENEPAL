@@ -6,7 +6,6 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
-import SortMenu, { type SortKey } from '@/components/SortMenu';
 import type { Employee, Shift, Profile, Branch, Department } from '@/lib/types';
 import { resolveShift, formatShiftHours } from '@/lib/shift';
 
@@ -84,7 +83,6 @@ export default function EmployeesPage() {
   const [search, setSearch] = useState('');
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const searchBoxRef = useRef<HTMLDivElement>(null);
-  const [sortKey, setSortKey] = useState<SortKey>('enrollId');
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -260,9 +258,6 @@ export default function EmployeesPage() {
       });
     }
     return [...list].sort((a, b) => {
-      if (sortKey === 'name') return a.name.localeCompare(b.name);
-      if (sortKey === 'date') return (a.date_of_joining ?? '').localeCompare(b.date_of_joining ?? '');
-      if (sortKey === 'modified') return a.created_at.localeCompare(b.created_at);
       const aId = a.fingerprint_id ?? '';
       const bId = b.fingerprint_id ?? '';
       if (!aId && !bId) return 0;
@@ -270,7 +265,7 @@ export default function EmployeesPage() {
       if (!bId) return -1;
       return aId.localeCompare(bId, undefined, { numeric: true, sensitivity: 'base' });
     });
-  }, [employees, shifts, filter, search, sortKey]);
+  }, [employees, shifts, filter, search]);
 
   const searchSuggestions = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -630,8 +625,6 @@ export default function EmployeesPage() {
               </div>
             )}
           </div>
-
-          <SortMenu value={sortKey} onChange={setSortKey} />
         </div>
         <div className="flex gap-2">
           <input ref={fileInputRef} type="file" accept=".csv" onChange={handleCsvSelected} className="hidden" />

@@ -58,19 +58,25 @@ function toMinutes(hhmm: string) {
   return h * 60 + m;
 }
 
-/** Minute-of-day for a punch, in the browser's local time — the same time
- * every check-in/check-out column on screen already renders with
- * toLocaleTimeString() (no timeZone override, so it's local too). Using
- * getUTCHours() here instead (as this used to) compared each punch against
- * the shift's 09:00-18:00 as if it were a UTC clock reading, which for a
- * Nepal-local punch is off by the whole UTC+5:45 offset — every on-time
- * checkout after shift end was scored as leaving nearly 5 hours "early".
- * calc_payroll_fields() in supabase/payroll.sql converts at time zone
- * 'Asia/Kathmandu' for the same reason, so this needs to keep agreeing with
- * that (not UTC) for live and finalized numbers to match. */
+/** Asia/Kathmandu is a fixed UTC+5:45 offset (no DST) — same value
+ * calc_payroll_fields() in supabase/payroll.sql converts to via
+ * `at time zone 'Asia/Kathmandu'`. */
+const NEPAL_OFFSET_MINUTES = 5 * 60 + 45;
+
+/** Minute-of-day for a punch, in Nepal local time — computed from the punch's
+ * real UTC instant plus the fixed Nepal offset, NOT the viewer's own system
+ * clock. This used to read the browser's local time (via Date#getHours()),
+ * which only produced correct Late/Early numbers when the person looking at
+ * the screen happened to have their computer set to Nepal time too — anyone
+ * viewing from a different timezone got systematically wrong late/early
+ * minutes for every "live" (not yet in payroll_summaries) row, while
+ * finalized rows (computed server-side with the fixed Asia/Kathmandu
+ * conversion) were correct. Must keep agreeing with that server-side
+ * conversion for live and finalized numbers to match. */
 function punchMinuteOfDay(iso: string) {
   const d = new Date(iso);
-  return d.getHours() * 60 + d.getMinutes();
+  const utcMinutes = d.getUTCHours() * 60 + d.getUTCMinutes();
+  return (((utcMinutes + NEPAL_OFFSET_MINUTES) % 1440) + 1440) % 1440;
 }
 
 /** One calendar day's punches -> the two that actually count: first

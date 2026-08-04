@@ -6,7 +6,6 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import DateRangePicker from '@/components/DateRangePicker';
-import SortMenu, { type SortKey } from '@/components/SortMenu';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { computeDayStatus, formatMinutes, resolveShift } from '@/lib/shift';
@@ -60,7 +59,6 @@ function AttendanceView() {
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
-  const [sortKey, setSortKey] = useState<SortKey>('enrollId');
 
   useEffect(() => {
     supabase.from('employees').select('*').eq('status', 'active').order('name').then(({ data }) => setEmployees(data ?? []));
@@ -169,9 +167,6 @@ function AttendanceView() {
     return out
       .filter(r => status === 'All' || (status === 'Early' ? r.earlyMinutes > 0 : r.status === status))
       .sort((a, b) => {
-        if (sortKey === 'name') return a.employeeName.localeCompare(b.employeeName);
-        if (sortKey === 'date') return a.date.localeCompare(b.date);
-        if (sortKey === 'modified') return (a.checkIn ?? '').localeCompare(b.checkIn ?? '');
         const aId = a.enrollId ?? '';
         const bId = b.enrollId ?? '';
         if (!aId && !bId) return 0;
@@ -179,7 +174,7 @@ function AttendanceView() {
         if (!bId) return -1;
         return aId.localeCompare(bId, undefined, { numeric: true, sensitivity: 'base' });
       });
-  }, [scopedEmployees, summaries, logs, devices, shifts, from, to, status, sortKey]);
+  }, [scopedEmployees, summaries, logs, devices, shifts, from, to, status]);
 
   const totals = useMemo(() => {
     const workHours = rows.reduce((sum, r) => sum + r.hours, 0);
@@ -290,11 +285,6 @@ function AttendanceView() {
                 setTo(t);
               }} />
             </div>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">&nbsp;</label>
-            <SortMenu value={sortKey} onChange={setSortKey} />
           </div>
 
           <button
