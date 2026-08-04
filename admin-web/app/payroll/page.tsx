@@ -38,6 +38,7 @@ export default function PayrollPage() {
   // Overtime pay is optional per employee (some employees just aren't paid
   // extra for it) — on by default, toggled off per row.
   const [overtimeEnabled, setOvertimeEnabled] = useState<Record<string, boolean>>({});
+  const [employeeId, setEmployeeId] = useState('all');
 
   const { start, end } = period;
 
@@ -114,6 +115,11 @@ export default function PayrollPage() {
 
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
 
+  const scopedEmployees = useMemo(
+    () => (employeeId === 'all' ? employees : employees.filter(e => e.id === employeeId)),
+    [employees, employeeId]
+  );
+
   const byEmployee = useMemo(() => {
     const days: string[] = [];
     const cur = new Date(start + 'T00:00:00Z');
@@ -137,7 +143,7 @@ export default function PayrollPage() {
         earlyDays: number;
       }
     >();
-    for (const emp of employees) {
+    for (const emp of scopedEmployees) {
       map.set(emp.id, {
         id: emp.id,
         enrollId: emp.fingerprint_id ?? '—',
@@ -152,7 +158,7 @@ export default function PayrollPage() {
     }
 
     for (const day of days) {
-      for (const emp of employees) {
+      for (const emp of scopedEmployees) {
         const row = map.get(emp.id);
         if (!row) continue;
         const summary = summaries.find(s => s.employee_id === emp.id && s.work_date === day);
@@ -179,13 +185,15 @@ export default function PayrollPage() {
       }
     }
     return Array.from(map.values());
-  }, [summaries, logs, shifts, employees, start, end]);
+  }, [summaries, logs, shifts, scopedEmployees, start, end]);
 
   const totals = useMemo(() => {
     const totalHours = byEmployee.reduce((s, r) => s + r.hours, 0);
     const overtimeHours = byEmployee.reduce((s, r) => s + r.overtime, 0);
     const workedDays = byEmployee.reduce((s, r) => s + r.days, 0);
-    const possibleDays = employees.length * daysInRange;
+    const lateDays = byEmployee.reduce((s, r) => s + r.lateDays, 0);
+    const earlyDays = byEmployee.reduce((s, r) => s + r.earlyDays, 0);
+    const possibleDays = scopedEmployees.length * daysInRange;
     const attendancePct = possibleDays ? Math.round((workedDays / possibleDays) * 1000) / 10 : 0;
     const totalEmployeeSalary = byEmployee.reduce((s, r) => s + (r.salary ?? 0), 0);
     const totalSalaryPayable = byEmployee.reduce((s, r) => s + (calculatedSalary(r) ?? 0), 0);
@@ -194,8 +202,18 @@ export default function PayrollPage() {
       const hourlyRate = r.salary / (daysInRange * otHoursPerDay);
       return s + hourlyRate * otMultiplier * r.overtime;
     }, 0);
-    return { totalHours, overtimeHours, attendancePct, totalEmployeeSalary, totalSalaryPayable, totalOvertimeSalary };
-  }, [byEmployee, employees, daysInRange, otHoursPerDay, otMultiplier, overtimeEnabled]);
+    return {
+      totalHours,
+      overtimeHours,
+      workedDays,
+      lateDays,
+      earlyDays,
+      attendancePct,
+      totalEmployeeSalary,
+      totalSalaryPayable,
+      totalOvertimeSalary,
+    };
+  }, [byEmployee, scopedEmployees, daysInRange, otHoursPerDay, otMultiplier, overtimeEnabled]);
 
   // Pay is earned per hour actually worked, not per day shown up — a day
   // where someone left after 2 hours pays 2 hours, not a full day's worth.
@@ -347,6 +365,32 @@ export default function PayrollPage() {
 
   return (
     <AppShell title="Attendance-based Payroll Controller">
+      <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Employee</label>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <PersonIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-accent" />
+            <select
+              value={employeeId}
+              onChange={e => setEmployeeId(e.target.value)}
+              className="min-w-[13rem] rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            >
+              <option value="all">All Employees</option>
+              {employees.map(e => (
+                <option key={e.id} value={e.id}>
+                  {e.name} (ID {e.fingerprint_id ?? '—'})
+                </option>
+              ))}
+            </select>
+          </div>
+          {employeeId !== 'all' && (
+            <button onClick={() => setEmployeeId('all')} className="text-xs font-medium text-accent hover:underline">
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <div className="rounded-xl bg-warning-bg p-3 shadow-sm ring-1 ring-inset ring-warning/10">
           <span className="text-xs font-medium text-warning-text/80">Overtime Salary</span>
@@ -394,7 +438,7 @@ export default function PayrollPage() {
         <div className="rounded-xl bg-accent/10 p-3 shadow-sm ring-1 ring-inset ring-accent/10">
           <span className="text-xs font-medium text-accent/80">Total Payable Hours</span>
           <div className="mt-1 text-base font-bold text-accent">{totals.totalHours.toFixed(1)} hrs</div>
-          <div className="mt-0.5 text-[11px] text-accent/70">Across {employees.length} staff</div>
+          <div className="mt-0.5 text-[11px] text-accent/70">Across {scopedEmployees.length} staff</div>
         </div>
         <div
           className={`rounded-xl p-3 shadow-sm ring-1 ring-inset ${
@@ -570,44 +614,44 @@ export default function PayrollPage() {
           {byEmployee.length === 0 && <p className="p-8 text-center text-sm text-slate-400">No active employees.</p>}
         </div>
 
-        <div className="mt-4 hidden overflow-x-auto md:block">
+        <div className="mt-4 hidden max-h-[65vh] overflow-auto md:block">
         <table className="w-full text-left text-sm">
           <thead>
-            <tr className="border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <th className="px-4 py-3 font-medium">ID</th>
-              <th className="px-4 py-3 font-medium">Employee</th>
-              <th className="px-4 py-3 font-medium">Worked Days</th>
-              <th className="px-4 py-3 font-medium">Total Hours</th>
-              <th className="px-4 py-3 font-medium">Overtime</th>
-              <th className="px-4 py-3 font-medium">Late Days</th>
-              <th className="px-4 py-3 font-medium">Early Days</th>
-              <th className="px-4 py-3 font-medium">Salary</th>
-              <th className="px-4 py-3 font-medium">Calculated Salary</th>
-              <th className="pl-2 pr-4 py-3 font-medium">Overtime Salary</th>
-              <th className="px-4 py-3 font-medium">Total Salary</th>
+            <tr className="sticky top-0 z-10 border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <th className="whitespace-nowrap px-4 py-2 font-medium">ID</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Employee</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Worked Days</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Total Hours</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Overtime</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Late Days</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Early Days</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Salary</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Calculated Salary</th>
+              <th className="whitespace-nowrap pl-2 pr-4 py-2 font-medium">Overtime Salary</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Total Salary</th>
             </tr>
           </thead>
           <tbody>
             {byEmployee.map((row, i) => (
               <tr key={row.id} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
-                <td className="px-4 py-3 text-slate-600">{row.enrollId}</td>
-                <td className="px-4 py-3 font-medium text-ink">
+                <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.enrollId}</td>
+                <td className="whitespace-nowrap px-4 py-2 font-medium text-ink">
                   <Link href={detailHref(row.id)} className="flex items-center gap-2.5 hover:text-accent hover:underline">
                     <Avatar name={row.name} />
                     {row.name}
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-slate-600">{row.days}</td>
-                <td className="px-4 py-3 text-slate-600">{row.hours.toFixed(1)} hrs</td>
-                <td className="px-4 py-3 text-slate-600">{row.overtime.toFixed(1)} hrs</td>
-                <td className="px-4 py-3 text-slate-600">{row.lateDays}</td>
-                <td className="px-4 py-3 text-slate-600">{row.earlyDays}</td>
-                <td className="px-4 py-3">{salaryCellContent(row)}</td>
-                <td className="px-4 py-3 text-slate-600">
+                <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.days}</td>
+                <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.hours.toFixed(1)} hrs</td>
+                <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.overtime.toFixed(1)} hrs</td>
+                <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.lateDays}</td>
+                <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.earlyDays}</td>
+                <td className="whitespace-nowrap px-4 py-2">{salaryCellContent(row)}</td>
+                <td className="whitespace-nowrap px-4 py-2 text-slate-600">
                   {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
                 </td>
-                <td className="pl-2 pr-4 py-3 text-slate-600">{overtimeCellContent(row)}</td>
-                <td className="px-4 py-3 font-bold text-good-text">
+                <td className="whitespace-nowrap pl-2 pr-4 py-2 text-slate-600">{overtimeCellContent(row)}</td>
+                <td className="whitespace-nowrap px-4 py-2 font-bold text-good-text">
                   {totalSalary(row) != null ? totalSalary(row)!.toLocaleString() : '—'}
                 </td>
               </tr>
@@ -618,6 +662,28 @@ export default function PayrollPage() {
               </tr>
             )}
           </tbody>
+          {byEmployee.length > 0 && (
+            <tfoot>
+              <tr className="sticky bottom-0 border-t-2 border-slate-200 bg-slate-50 text-sm font-bold text-ink">
+                <td colSpan={2} className="whitespace-nowrap px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Total
+                </td>
+                <td className="whitespace-nowrap px-4 py-2">{totals.workedDays}</td>
+                <td className="whitespace-nowrap px-4 py-2">{totals.totalHours.toFixed(1)} hrs</td>
+                <td className="whitespace-nowrap px-4 py-2">{totals.overtimeHours.toFixed(1)} hrs</td>
+                <td className="whitespace-nowrap px-4 py-2">{totals.lateDays}</td>
+                <td className="whitespace-nowrap px-4 py-2">{totals.earlyDays}</td>
+                <td className="whitespace-nowrap px-4 py-2">{totals.totalEmployeeSalary.toLocaleString()}</td>
+                <td className="whitespace-nowrap px-4 py-2">{totals.totalSalaryPayable.toLocaleString()}</td>
+                <td className="whitespace-nowrap pl-2 pr-4 py-2">
+                  {totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </td>
+                <td className="whitespace-nowrap px-4 py-2 text-good-text">
+                  {(totals.totalSalaryPayable + totals.totalOvertimeSalary).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </td>
+              </tr>
+            </tfoot>
+          )}
         </table>
         </div>
       </div>
@@ -650,6 +716,15 @@ function Avatar({ name }: { name: string }) {
     <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${avatarTone(name)}`}>
       {initials || '?'}
     </span>
+  );
+}
+
+function PersonIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <circle cx="12" cy="8" r="3.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 20c1.2-3.5 4-5.5 7.5-5.5s6.3 2 7.5 5.5" />
+    </svg>
   );
 }
 

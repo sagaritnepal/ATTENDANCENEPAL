@@ -98,6 +98,29 @@ function PayrollEmployeeDetailView() {
     end,
   ]);
 
+  const dayTotals = useMemo(() => {
+    let hours = 0;
+    let overtime = 0;
+    let lateMinutes = 0;
+    let earlyMinutes = 0;
+    let mySalary = 0;
+    let otSalary = 0;
+    let totalSalary = 0;
+    for (const d of dayRows) {
+      hours += d.hours;
+      overtime += d.overtime;
+      lateMinutes += d.lateMinutes;
+      earlyMinutes += d.earlyMinutes;
+      const earning = dailySalaryEarning(d, employee?.salary ?? null, daysInRange, otHoursPerDay, otMultiplier, otOn);
+      if (earning) {
+        mySalary += earning.base;
+        otSalary += earning.overtime;
+        totalSalary += earning.total;
+      }
+    }
+    return { hours, overtime, lateMinutes, earlyMinutes, mySalary, otSalary, totalSalary };
+  }, [dayRows, employee, daysInRange, otHoursPerDay, otMultiplier, otOn]);
+
 
   const periodQuery = `?start=${start}&end=${end}&otHoursPerDay=${otHoursPerDay}&otMultiplier=${otMultiplier}&otOn=${otOn}`;
 
@@ -182,18 +205,18 @@ function PayrollEmployeeDetailView() {
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                    <th className="whitespace-nowrap px-4 py-3 font-medium">Date</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium">Check-In</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium">Check-Out</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium">Total Hours</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium">Overtime</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium">Late By</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium">Early Out</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium">Status</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium">Salary/Day</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium">My Salary</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium">OT Salary</th>
-                    <th className="whitespace-nowrap px-4 py-3 font-medium">Total Salary</th>
+                    <th className="whitespace-nowrap px-4 py-2 font-medium">Date</th>
+                    <th className="whitespace-nowrap px-4 py-2 font-medium">Check-In</th>
+                    <th className="whitespace-nowrap px-4 py-2 font-medium">Check-Out</th>
+                    <th className="whitespace-nowrap px-4 py-2 font-medium">Total Hours</th>
+                    <th className="whitespace-nowrap px-4 py-2 font-medium">Overtime</th>
+                    <th className="whitespace-nowrap px-4 py-2 font-medium">Late By</th>
+                    <th className="whitespace-nowrap px-4 py-2 font-medium">Early Out</th>
+                    <th className="whitespace-nowrap px-4 py-2 font-medium">Status</th>
+                    <th className="whitespace-nowrap px-4 py-2 font-medium">Salary/Day</th>
+                    <th className="whitespace-nowrap px-4 py-2 font-medium">My Salary</th>
+                    <th className="whitespace-nowrap px-4 py-2 font-medium">OT Salary</th>
+                    <th className="whitespace-nowrap px-4 py-2 font-medium">Total Salary</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -201,36 +224,36 @@ function PayrollEmployeeDetailView() {
                     const earning = dailySalaryEarning(d, employee.salary, daysInRange, otHoursPerDay, otMultiplier, otOn);
                     return (
                       <tr key={d.date} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
-                        <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatAdDate(d.date, system)}</td>
-                        <td className="px-4 py-3 text-slate-600">{d.checkIn ? fmtTime(d.checkIn) : '–:–'}</td>
-                        <td className="px-4 py-3 text-slate-600">{d.checkOut ? fmtTime(d.checkOut) : '–:–'}</td>
-                        <td className="px-4 py-3 text-slate-600">
+                        <td className="whitespace-nowrap px-4 py-2 text-slate-600">{formatAdDate(d.date, system)}</td>
+                        <td className="px-4 py-2 text-slate-600">{d.checkIn ? fmtTime(d.checkIn) : '–:–'}</td>
+                        <td className="px-4 py-2 text-slate-600">{d.checkOut ? fmtTime(d.checkOut) : '–:–'}</td>
+                        <td className="px-4 py-2 text-slate-600">
                           {d.hours.toFixed(1)} hrs{d.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
                         </td>
-                        <td className="px-4 py-3 text-slate-600">{d.overtime.toFixed(1)} hrs</td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-2 text-slate-600">{d.overtime.toFixed(1)} hrs</td>
+                        <td className="px-4 py-2">
                           {d.lateMinutes > 0 ? (
                             <span className="font-medium text-warning-text">{formatMinutes(d.lateMinutes)}</span>
                           ) : (
                             <span className="text-slate-400">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-2">
                           {d.earlyMinutes > 0 ? (
                             <span className="font-medium text-critical-text">{formatMinutes(d.earlyMinutes)}</span>
                           ) : (
                             <span className="text-slate-400">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-2">
                           {d.checkIn ? <Badge tone="good">Present</Badge> : <Badge tone="critical">Absent</Badge>}
                         </td>
-                        <td className="px-4 py-3 text-slate-600">
+                        <td className="px-4 py-2 text-slate-600">
                           {salaryPerDay != null ? Math.round(salaryPerDay).toLocaleString() : '—'}
                         </td>
-                        <td className="px-4 py-3 text-slate-600">{earning ? Math.round(earning.base).toLocaleString() : '—'}</td>
-                        <td className="px-4 py-3 text-slate-600">{earning ? Math.round(earning.overtime).toLocaleString() : '—'}</td>
-                        <td className="px-4 py-3 font-bold text-good-text">{earning ? Math.round(earning.total).toLocaleString() : '—'}</td>
+                        <td className="px-4 py-2 text-slate-600">{earning ? Math.round(earning.base).toLocaleString() : '—'}</td>
+                        <td className="px-4 py-2 text-slate-600">{earning ? Math.round(earning.overtime).toLocaleString() : '—'}</td>
+                        <td className="px-4 py-2 font-bold text-good-text">{earning ? Math.round(earning.total).toLocaleString() : '—'}</td>
                       </tr>
                     );
                   })}
@@ -242,6 +265,28 @@ function PayrollEmployeeDetailView() {
                     </tr>
                   )}
                 </tbody>
+                {dayRows.length > 0 && (
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-200 bg-slate-50 text-sm font-bold text-ink">
+                      <td colSpan={3} className="whitespace-nowrap px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Total
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2">{dayTotals.hours.toFixed(1)} hrs</td>
+                      <td className="whitespace-nowrap px-4 py-2">{dayTotals.overtime.toFixed(1)} hrs</td>
+                      <td className="whitespace-nowrap px-4 py-2">
+                        {dayTotals.lateMinutes > 0 ? formatMinutes(dayTotals.lateMinutes) : '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2">
+                        {dayTotals.earlyMinutes > 0 ? formatMinutes(dayTotals.earlyMinutes) : '—'}
+                      </td>
+                      <td />
+                      <td />
+                      <td className="whitespace-nowrap px-4 py-2">{Math.round(dayTotals.mySalary).toLocaleString()}</td>
+                      <td className="whitespace-nowrap px-4 py-2">{Math.round(dayTotals.otSalary).toLocaleString()}</td>
+                      <td className="whitespace-nowrap px-4 py-2 text-good-text">{Math.round(dayTotals.totalSalary).toLocaleString()}</td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </div>
