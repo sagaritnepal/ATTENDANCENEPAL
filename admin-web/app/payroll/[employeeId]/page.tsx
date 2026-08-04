@@ -216,12 +216,15 @@ function PayrollEmployeeDetailView() {
                     <th className="whitespace-nowrap px-4 py-2 font-medium">Salary/Day</th>
                     <th className="whitespace-nowrap px-4 py-2 font-medium">My Salary</th>
                     <th className="whitespace-nowrap px-4 py-2 font-medium">OT Salary</th>
-                    <th className="whitespace-nowrap px-4 py-2 font-medium">Total Salary</th>
+                    <th className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-4 py-2 font-medium shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)]">
+                      Total Salary
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {dayRows.map((d, i) => {
                     const earning = dailySalaryEarning(d, employee.salary, daysInRange, otHoursPerDay, otMultiplier, otOn);
+                    const rowBg = i % 2 === 1 ? 'bg-slate-50' : 'bg-white';
                     return (
                       <tr key={d.date} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
                         <td className="whitespace-nowrap px-4 py-2 text-slate-600">{formatAdDate(d.date, system)}</td>
@@ -253,7 +256,11 @@ function PayrollEmployeeDetailView() {
                         </td>
                         <td className="px-4 py-2 text-slate-600">{earning ? Math.round(earning.base).toLocaleString() : '—'}</td>
                         <td className="px-4 py-2 text-slate-600">{earning ? Math.round(earning.overtime).toLocaleString() : '—'}</td>
-                        <td className="px-4 py-2 font-bold text-good-text">{earning ? Math.round(earning.total).toLocaleString() : '—'}</td>
+                        <td
+                          className={`sticky right-0 z-[1] whitespace-nowrap px-4 py-2 font-bold text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] ${rowBg}`}
+                        >
+                          {earning ? Math.round(earning.total).toLocaleString() : '—'}
+                        </td>
                       </tr>
                     );
                   })}
@@ -283,7 +290,9 @@ function PayrollEmployeeDetailView() {
                       <td />
                       <td className="whitespace-nowrap px-4 py-2">{Math.round(dayTotals.mySalary).toLocaleString()}</td>
                       <td className="whitespace-nowrap px-4 py-2">{Math.round(dayTotals.otSalary).toLocaleString()}</td>
-                      <td className="whitespace-nowrap px-4 py-2 text-good-text">{Math.round(dayTotals.totalSalary).toLocaleString()}</td>
+                      <td className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-4 py-2 text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)]">
+                        {Math.round(dayTotals.totalSalary).toLocaleString()}
+                      </td>
                     </tr>
                   </tfoot>
                 )}
