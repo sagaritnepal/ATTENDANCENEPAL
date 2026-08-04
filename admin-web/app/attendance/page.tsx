@@ -38,26 +38,6 @@ function isoDaysAgo(n: number) {
   return d.toISOString().slice(0, 10);
 }
 
-function isoWeekStart() {
-  const d = new Date();
-  const day = d.getUTCDay(); // 0 = Sun … 6 = Sat
-  const diff = (day === 0 ? -6 : 1) - day; // shift back to Monday
-  const monday = new Date(d);
-  monday.setUTCDate(d.getUTCDate() + diff);
-  return monday.toISOString().slice(0, 10);
-}
-
-function isoMonthStart() {
-  const d = new Date();
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString().slice(0, 10);
-}
-
-const PRESETS = [
-  { key: 'today', label: 'Today', from: () => isoDaysAgo(0), to: () => isoDaysAgo(0) },
-  { key: 'week', label: 'This Week', from: isoWeekStart, to: () => isoDaysAgo(0) },
-  { key: 'month', label: 'This Month', from: isoMonthStart, to: () => isoDaysAgo(0) },
-] as const;
-
 export default function AttendancePage() {
   return (
     <Suspense fallback={null}>
@@ -72,7 +52,6 @@ function AttendanceView() {
   const initialEmployeeId = searchParams.get('employee');
   const [from, setFrom] = useState(isoDaysAgo(6));
   const [to, setTo] = useState(isoDaysAgo(0));
-  const [activePreset, setActivePreset] = useState<string | null>(null);
   const [status, setStatus] = useState<'All' | 'Present' | 'Late' | 'Early' | 'Absent'>('All');
   const [employeeId, setEmployeeId] = useState<string>(initialEmployeeId ?? 'all');
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -101,12 +80,6 @@ function AttendanceView() {
       .lte('punch_time', `${to}T23:59:59Z`)
       .then(({ data }) => setLogs(data ?? []));
   }, [from, to]);
-
-  function applyPreset(preset: (typeof PRESETS)[number]) {
-    setFrom(preset.from());
-    setTo(preset.to());
-    setActivePreset(preset.key);
-  }
 
   const scopedEmployees = useMemo(
     () => (employeeId === 'all' ? employees : employees.filter(e => e.id === employeeId)),
@@ -299,35 +272,11 @@ function AttendanceView() {
 
           <div>
             <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Date Range</label>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={activePreset ?? ''}
-                onChange={e => {
-                  const preset = PRESETS.find(p => p.key === e.target.value);
-                  if (preset) applyPreset(preset);
-                }}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-              >
-                <option value="" disabled>
-                  Quick range…
-                </option>
-                {PRESETS.map(p => (
-                  <option key={p.key} value={p.key}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-              <div className="w-56">
-                <DateRangePicker
-                  from={from}
-                  to={to}
-                  onChange={(f, t) => {
-                    setFrom(f);
-                    setTo(t);
-                    setActivePreset(null);
-                  }}
-                />
-              </div>
+            <div className="w-56">
+              <DateRangePicker from={from} to={to} onChange={(f, t) => {
+                setFrom(f);
+                setTo(t);
+              }} />
             </div>
           </div>
 
@@ -420,30 +369,10 @@ function AttendanceView() {
               <th className="whitespace-nowrap px-4 py-2 font-medium">Shift</th>
               <th className="whitespace-nowrap px-4 py-2 font-medium">Check-In</th>
               <th className="whitespace-nowrap px-4 py-2 font-medium">Check-Out</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">
-                <div>Late By</div>
-                <div className="mt-0.5 text-sm font-bold normal-case tracking-normal text-ink">
-                  {totals.lateMinutes > 0 ? `${(totals.lateMinutes / 60).toFixed(1)} hrs` : '—'}
-                </div>
-              </th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">
-                <div>Early Out</div>
-                <div className="mt-0.5 text-sm font-bold normal-case tracking-normal text-ink">
-                  {totals.earlyMinutes > 0 ? `${(totals.earlyMinutes / 60).toFixed(1)} hrs` : '—'}
-                </div>
-              </th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">
-                <div>Total Work Hours</div>
-                <div className="mt-0.5 text-sm font-bold normal-case tracking-normal text-ink">
-                  {totals.workHours.toFixed(1)} hrs
-                </div>
-              </th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">
-                <div>Overtime</div>
-                <div className="mt-0.5 text-sm font-bold normal-case tracking-normal text-ink">
-                  {totals.overtimeHours.toFixed(1)} hrs
-                </div>
-              </th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Late By</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Early Out</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Total Work Hours</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Overtime</th>
               <th className="whitespace-nowrap px-4 py-2 font-medium">Status</th>
               <th className="whitespace-nowrap px-4 py-2 font-medium">Device</th>
             </tr>
@@ -497,6 +426,24 @@ function AttendanceView() {
               </tr>
             )}
           </tbody>
+          {rows.length > 0 && (
+            <tfoot>
+              <tr className="sticky bottom-0 border-t-2 border-slate-200 bg-slate-50 text-sm font-bold text-ink">
+                <td colSpan={6} className="whitespace-nowrap px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Total
+                </td>
+                <td className="whitespace-nowrap px-4 py-2 text-warning-text">
+                  {totals.lateMinutes > 0 ? `${(totals.lateMinutes / 60).toFixed(1)} hrs` : '—'}
+                </td>
+                <td className="whitespace-nowrap px-4 py-2 text-warning-text">
+                  {totals.earlyMinutes > 0 ? `${(totals.earlyMinutes / 60).toFixed(1)} hrs` : '—'}
+                </td>
+                <td className="whitespace-nowrap px-4 py-2">{totals.workHours.toFixed(1)} hrs</td>
+                <td className="whitespace-nowrap px-4 py-2">{totals.overtimeHours.toFixed(1)} hrs</td>
+                <td colSpan={2} />
+              </tr>
+            </tfoot>
+          )}
         </table>
         </div>
       </div>
