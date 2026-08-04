@@ -416,82 +416,82 @@ function AttendanceView() {
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <th className="whitespace-nowrap px-5 py-3 font-medium">Date</th>
-              <th className="whitespace-nowrap px-5 py-3 font-medium">ID</th>
-              <th className="whitespace-nowrap px-5 py-3 font-medium">Employee</th>
-              <th className="whitespace-nowrap px-5 py-3 font-medium">Shift</th>
-              <th className="whitespace-nowrap px-5 py-3 font-medium">Check-In</th>
-              <th className="whitespace-nowrap px-5 py-3 font-medium">Check-Out</th>
-              <th className="whitespace-nowrap px-5 py-3 font-medium">
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Date</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">ID</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Employee</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Shift</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Check-In</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Check-Out</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">
                 <div>Late By</div>
                 <div className="mt-0.5 text-sm font-bold normal-case tracking-normal text-ink">
                   {totals.lateMinutes > 0 ? `${(totals.lateMinutes / 60).toFixed(1)} hrs` : '—'}
                 </div>
               </th>
-              <th className="whitespace-nowrap px-5 py-3 font-medium">
+              <th className="whitespace-nowrap px-4 py-2 font-medium">
                 <div>Early Out</div>
                 <div className="mt-0.5 text-sm font-bold normal-case tracking-normal text-ink">
                   {totals.earlyMinutes > 0 ? `${(totals.earlyMinutes / 60).toFixed(1)} hrs` : '—'}
                 </div>
               </th>
-              <th className="whitespace-nowrap px-5 py-3 font-medium">
+              <th className="whitespace-nowrap px-4 py-2 font-medium">
                 <div>Total Work Hours</div>
                 <div className="mt-0.5 text-sm font-bold normal-case tracking-normal text-ink">
                   {totals.workHours.toFixed(1)} hrs
                 </div>
               </th>
-              <th className="whitespace-nowrap px-5 py-3 font-medium">
+              <th className="whitespace-nowrap px-4 py-2 font-medium">
                 <div>Overtime</div>
                 <div className="mt-0.5 text-sm font-bold normal-case tracking-normal text-ink">
                   {totals.overtimeHours.toFixed(1)} hrs
                 </div>
               </th>
-              <th className="whitespace-nowrap px-5 py-3 font-medium">Status</th>
-              <th className="whitespace-nowrap px-5 py-3 font-medium">Device</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Status</th>
+              <th className="whitespace-nowrap px-4 py-2 font-medium">Device</th>
             </tr>
           </thead>
           <tbody>
             {rows.map(r => (
               <tr key={r.key} className="border-b border-slate-100 last:border-0">
-                <td className="px-5 py-3 text-slate-600">{formatAdDate(r.date, system)}</td>
-                <td className="px-5 py-3 text-slate-600">{r.enrollId}</td>
-                <td className="px-5 py-3 font-medium text-ink">{r.employeeName}</td>
-                <td className="px-5 py-3 whitespace-nowrap text-slate-600">{r.shiftLabel}</td>
-                <td className="px-5 py-3 text-slate-600">
+                <td className="whitespace-nowrap px-4 py-2 text-slate-600">{formatAdDate(r.date, system)}</td>
+                <td className="whitespace-nowrap px-4 py-2 text-slate-600">{r.enrollId}</td>
+                <td className="whitespace-nowrap px-4 py-2 font-medium text-ink">{r.employeeName}</td>
+                <td className="px-4 py-2 whitespace-nowrap text-slate-600">{r.shiftLabel}</td>
+                <td className="whitespace-nowrap px-4 py-2 text-slate-600">
                   {r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
                 </td>
-                <td className="px-5 py-3 text-slate-600">
+                <td className="whitespace-nowrap px-4 py-2 text-slate-600">
                   {r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
                 </td>
-                <td className="px-5 py-3">
+                <td className="whitespace-nowrap px-4 py-2">
                   {r.lateMinutes > 0 ? (
                     <span className="font-medium text-warning-text">{formatMinutes(r.lateMinutes)}</span>
                   ) : (
                     <span className="text-slate-400">—</span>
                   )}
                 </td>
-                <td className="px-5 py-3">
+                <td className="whitespace-nowrap px-4 py-2">
                   {r.earlyMinutes > 0 ? (
                     <span className="font-medium text-warning-text">{formatMinutes(r.earlyMinutes)}</span>
                   ) : (
                     <span className="text-slate-400">—</span>
                   )}
                 </td>
-                <td className="px-5 py-3 text-slate-600">
+                <td className="whitespace-nowrap px-4 py-2 text-slate-600">
                   {r.hours.toFixed(1)} hrs
                   {r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
                 </td>
-                <td className="px-5 py-3 text-slate-600">
+                <td className="whitespace-nowrap px-4 py-2 text-slate-600">
                   {r.overtime.toFixed(1)} hr
                   {r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
                 </td>
-                <td className="px-5 py-3">
-                  <div className="flex flex-wrap gap-1.5">
+                <td className="whitespace-nowrap px-4 py-2">
+                  <div className="flex flex-nowrap gap-1.5">
                     <Badge tone={r.status === 'Present' ? 'good' : r.status === 'Late' ? 'warning' : 'critical'}>{r.status}</Badge>
                     {r.status !== 'Present' && r.checkIn && r.checkOut && <Badge tone="good">Present</Badge>}
                   </div>
                 </td>
-                <td className="px-5 py-3 text-slate-600">{r.device}</td>
+                <td className="whitespace-nowrap px-4 py-2 text-slate-600">{r.device}</td>
               </tr>
             ))}
             {rows.length === 0 && (
