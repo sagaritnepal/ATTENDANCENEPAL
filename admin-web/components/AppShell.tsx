@@ -9,17 +9,7 @@ import ConfigWarning from './ConfigWarning';
 
 type Role = 'admin' | 'hr';
 
-type SearchProps = { value: string; onChange: (value: string) => void; placeholder?: string; suggestions?: string[] };
-
-export default function AppShell({
-  title,
-  children,
-  search,
-}: {
-  title: string;
-  children: React.ReactNode;
-  search?: SearchProps;
-}) {
+export default function AppShell({ title, children }: { title: string; children: React.ReactNode }) {
   const router = useRouter();
   const [status, setStatus] = useState<'loading' | 'ready' | 'redirecting'>('loading');
   const [role, setRole] = useState<Role>('admin');
@@ -67,7 +57,7 @@ export default function AppShell({
     <div className="flex h-screen overflow-hidden">
       <Sidebar role={role} drawerOpen={drawerOpen} onCloseDrawer={() => setDrawerOpen(false)} />
       <div className="flex flex-1 flex-col overflow-y-auto">
-        <TopBar title={title} onOpenMenu={() => setDrawerOpen(true)} search={search} adminName={adminName} role={role} />
+        <TopBar title={title} onOpenMenu={() => setDrawerOpen(true)} adminName={adminName} role={role} />
         <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
     </div>

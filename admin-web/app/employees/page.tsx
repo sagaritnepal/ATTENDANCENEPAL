@@ -81,6 +81,8 @@ export default function EmployeesPage() {
   const [departmentOptions, setDepartmentOptions] = useState<Department[]>([]);
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const searchBoxRef = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -562,35 +564,67 @@ export default function EmployeesPage() {
   }
 
   return (
-    <AppShell
-      title="Employee Directory"
-      search={{
-        value: search,
-        onChange: v => {
-          setSearch(v);
-          setPage(1);
-        },
-        placeholder: 'Search employees...',
-        suggestions: searchSuggestions,
-      }}
-    >
+    <AppShell title="Employee Directory">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="relative">
-          <FilterIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-accent" />
-          <select
-            value={filter}
-            onChange={e => {
-              setFilter(e.target.value);
-              setPage(1);
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <FilterIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-accent" />
+            <select
+              value={filter}
+              onChange={e => {
+                setFilter(e.target.value);
+                setPage(1);
+              }}
+              className="min-w-[13rem] rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm font-medium text-ink shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            >
+              {['All', ...departments, 'Unenrolled', 'Resigned'].map(f => (
+                <option key={f} value={f}>
+                  {f === 'All' ? 'All Departments' : f === 'Unenrolled' ? 'Biometric Unenrolled' : f === 'Resigned' ? 'Resigned Employees' : f}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div
+            ref={searchBoxRef}
+            tabIndex={-1}
+            onBlur={e => {
+              if (!searchBoxRef.current?.contains(e.relatedTarget as Node)) setSuggestionsOpen(false);
             }}
-            className="min-w-[13rem] rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm font-medium text-ink shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            className="relative"
           >
-            {['All', ...departments, 'Unenrolled', 'Resigned'].map(f => (
-              <option key={f} value={f}>
-                {f === 'All' ? 'All Departments' : f === 'Unenrolled' ? 'Biometric Unenrolled' : f === 'Resigned' ? 'Resigned Employees' : f}
-              </option>
-            ))}
-          </select>
+            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search employees..."
+              value={search}
+              onChange={e => {
+                setSearch(e.target.value);
+                setPage(1);
+                setSuggestionsOpen(true);
+              }}
+              onFocus={() => setSuggestionsOpen(true)}
+              className="w-56 rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-4 text-sm text-ink shadow-sm placeholder:text-slate-400 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            />
+            {suggestionsOpen && searchSuggestions.length > 0 && (
+              <div className="absolute left-0 top-full z-20 mt-1 w-56 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                {searchSuggestions.map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      setSearch(s);
+                      setPage(1);
+                      setSuggestionsOpen(false);
+                    }}
+                    className="block w-full truncate px-3 py-2 text-left text-sm text-ink hover:bg-slate-50"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex gap-2">
           <input ref={fileInputRef} type="file" accept=".csv" onChange={handleCsvSelected} className="hidden" />
@@ -1515,6 +1549,15 @@ function FilterIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M7 12h10M10 18h4" />
+    </svg>
+  );
+}
+
+function SearchIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <circle cx="11" cy="11" r="7" />
+      <path strokeLinecap="round" d="m21 21-4.3-4.3" />
     </svg>
   );
 }
