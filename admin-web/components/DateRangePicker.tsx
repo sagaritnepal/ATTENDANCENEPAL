@@ -36,6 +36,7 @@ export default function DateRangePicker({
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState(todayAnchor);
   const [pickingStart, setPickingStart] = useState<string | null>(null);
+  const [hoverDate, setHoverDate] = useState<string | null>(null);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -43,6 +44,7 @@ export default function DateRangePicker({
   function openPicker() {
     setAnchor(parseAdKey(from) ?? todayAnchor());
     setPickingStart(null);
+    setHoverDate(null);
     const rect = triggerRef.current?.getBoundingClientRect();
     if (rect) {
       const left = Math.min(rect.left, window.innerWidth - POPOVER_WIDTH - 8);
@@ -80,7 +82,7 @@ export default function DateRangePicker({
   function selectCell(adKey: string) {
     if (!pickingStart) {
       // First click of a fresh range — hold it and wait for the end date,
-      // showing it as a zero-length range in the meantime.
+      // previewing the span live as the pointer moves (see hoverDate below).
       setPickingStart(adKey);
       onChange(adKey, adKey);
       return;
@@ -89,8 +91,17 @@ export default function DateRangePicker({
     const end = pickingStart < adKey ? adKey : pickingStart;
     onChange(start, end);
     setPickingStart(null);
+    setHoverDate(null);
     setOpen(false);
   }
+
+  // While the end date is being picked, preview the full span between the
+  // clicked start and wherever the pointer currently is — otherwise the
+  // calendar only ever shows two disconnected dots and never looks like a
+  // "select a range" control until after the second click.
+  const previewAnchor = pickingStart ? (hoverDate ?? pickingStart) : null;
+  const liveStart = pickingStart ? (pickingStart < previewAnchor! ? pickingStart : previewAnchor!) : from;
+  const liveEnd = pickingStart ? (pickingStart < previewAnchor! ? previewAnchor! : pickingStart) : to;
 
   const today = new Date();
   const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -135,18 +146,17 @@ export default function DateRangePicker({
                 <span key={w}>{w}</span>
               ))}
             </div>
-            <div className="mt-1 grid grid-cols-7 gap-1">
+            <div className="mt-1 grid grid-cols-7 gap-1" onMouseLeave={() => setHoverDate(null)}>
               {month.weeks.flat().map((cell, i) => {
-                const rangeStart = pickingStart ?? from;
-                const rangeEnd = pickingStart ?? to;
-                const isStart = cell.adKey === rangeStart;
-                const isEnd = cell.adKey === rangeEnd;
-                const inRange = cell.adKey > rangeStart && cell.adKey < rangeEnd;
+                const isStart = cell.adKey === liveStart;
+                const isEnd = cell.adKey === liveEnd;
+                const inRange = cell.adKey > liveStart && cell.adKey < liveEnd;
                 return (
                   <button
                     key={`${cell.adKey}-${i}`}
                     type="button"
                     onClick={() => selectCell(cell.adKey)}
+                    onMouseEnter={() => pickingStart && setHoverDate(cell.adKey)}
                     className={`h-7 w-7 rounded-full text-xs ${
                       !cell.inMonth
                         ? 'text-slate-300'
@@ -172,6 +182,7 @@ export default function DateRangePicker({
                 onClick={() => {
                   onChange(todayIso, todayIso);
                   setPickingStart(null);
+                  setHoverDate(null);
                   setOpen(false);
                 }}
                 className="text-[11px] font-medium text-accent hover:underline"
