@@ -529,21 +529,22 @@ export default function EmployeesPage() {
       }}
     >
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
-          {['All', ...departments, 'Unenrolled'].map(f => (
-            <button
-              key={f}
-              onClick={() => {
-                setFilter(f);
-                setPage(1);
-              }}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium ${
-                filter === f ? 'bg-accent text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              {f === 'All' ? 'All Departments' : f === 'Unenrolled' ? 'Biometric Unenrolled' : f}
-            </button>
-          ))}
+        <div className="relative">
+          <FilterIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-accent" />
+          <select
+            value={filter}
+            onChange={e => {
+              setFilter(e.target.value);
+              setPage(1);
+            }}
+            className="min-w-[13rem] rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm font-medium text-ink shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+          >
+            {['All', ...departments, 'Unenrolled'].map(f => (
+              <option key={f} value={f}>
+                {f === 'All' ? 'All Departments' : f === 'Unenrolled' ? 'Biometric Unenrolled' : f}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex gap-2">
           <input ref={fileInputRef} type="file" accept=".csv" onChange={handleCsvSelected} className="hidden" />
@@ -753,24 +754,21 @@ export default function EmployeesPage() {
                   </div>
                 </dl>
 
-                <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
+                <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3">
                   {linkedEmployeeIds.has(emp.id) ? (
-                    <button onClick={() => openResetModal(emp)} className="text-xs font-medium text-accent hover:underline">
-                      Reset password
-                    </button>
+                    <ActionTile icon={<KeyIcon className="h-4 w-4" />} label="Reset password" tone="accent" onClick={() => openResetModal(emp)} />
                   ) : (
-                    <button onClick={() => openLoginModal(emp)} className="text-xs font-medium text-accent hover:underline">
-                      Create login
-                    </button>
+                    <ActionTile icon={<KeyIcon className="h-4 w-4" />} label="Create login" tone="accent" onClick={() => openLoginModal(emp)} />
                   )}
                   {emp.status === 'active' && (
-                    <button onClick={() => handleMarkResigned(emp)} className="text-xs font-medium text-warning-text hover:underline">
-                      Mark Resigned
-                    </button>
+                    <ActionTile
+                      icon={<UserMinusIcon className="h-4 w-4" />}
+                      label="Mark Resigned"
+                      tone="warning"
+                      onClick={() => handleMarkResigned(emp)}
+                    />
                   )}
-                  <button onClick={() => handleDelete(emp.id)} className="text-xs font-medium text-critical hover:underline">
-                    Remove
-                  </button>
+                  <ActionTile icon={<TrashIcon className="h-4 w-4" />} label="Remove" tone="critical" onClick={() => handleDelete(emp.id)} />
                 </div>
               </div>
             );
@@ -920,24 +918,39 @@ export default function EmployeesPage() {
                       </div>
                     </td>
                     <td className="px-3 py-3">
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="grid w-48 grid-cols-3 gap-1.5">
                         {linkedEmployeeIds.has(emp.id) ? (
-                          <button onClick={() => openResetModal(emp)} className="text-xs font-medium text-accent hover:underline">
-                            Reset password
-                          </button>
+                          <ActionTile
+                            icon={<KeyIcon className="h-3.5 w-3.5" />}
+                            label="Reset"
+                            title="Reset password"
+                            tone="accent"
+                            onClick={() => openResetModal(emp)}
+                          />
                         ) : (
-                          <button onClick={() => openLoginModal(emp)} className="text-xs font-medium text-accent hover:underline">
-                            Create login
-                          </button>
+                          <ActionTile
+                            icon={<KeyIcon className="h-3.5 w-3.5" />}
+                            label="Login"
+                            title="Create login"
+                            tone="accent"
+                            onClick={() => openLoginModal(emp)}
+                          />
                         )}
                         {emp.status === 'active' && (
-                          <button onClick={() => handleMarkResigned(emp)} className="text-xs font-medium text-warning-text hover:underline">
-                            Mark Resigned
-                          </button>
+                          <ActionTile
+                            icon={<UserMinusIcon className="h-3.5 w-3.5" />}
+                            label="Resign"
+                            title="Mark Resigned"
+                            tone="warning"
+                            onClick={() => handleMarkResigned(emp)}
+                          />
                         )}
-                        <button onClick={() => handleDelete(emp.id)} className="text-xs font-medium text-critical hover:underline">
-                          Remove
-                        </button>
+                        <ActionTile
+                          icon={<TrashIcon className="h-3.5 w-3.5" />}
+                          label="Remove"
+                          tone="critical"
+                          onClick={() => handleDelete(emp.id)}
+                        />
                       </div>
                     </td>
                   </tr>
@@ -1332,6 +1345,76 @@ function ClockIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <circle cx="12" cy="12" r="9" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
+    </svg>
+  );
+}
+
+const ACTION_TILE_TONES = {
+  accent: 'border-accent/20 bg-accent/5 text-accent hover:bg-accent/10',
+  warning: 'border-warning/30 bg-warning-bg text-warning-text hover:bg-warning-bg/70',
+  critical: 'border-critical/30 bg-critical-bg text-critical-text hover:bg-critical-bg/70',
+} as const;
+
+// A per-row action ("Reset password", "Mark Resigned", "Remove") as a small
+// icon-over-label tile instead of an inline text link — up to three sit
+// side by side in a 3-column grid, easier to scan and tap than a run of
+// underlined links.
+function ActionTile({
+  icon,
+  label,
+  tone,
+  onClick,
+  title,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  tone: keyof typeof ACTION_TILE_TONES;
+  onClick: () => void;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title ?? label}
+      className={`flex flex-col items-center justify-center gap-1 rounded-lg border px-2 py-2 text-center text-[10px] font-semibold leading-tight transition-colors ${ACTION_TILE_TONES[tone]}`}
+    >
+      {icon}
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+function FilterIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M7 12h10M10 18h4" />
+    </svg>
+  );
+}
+
+function KeyIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <circle cx="8" cy="15" r="4" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="m10.8 12.2 8-8M15.5 3.5l2 2M18.5 6.5l2 2" />
+    </svg>
+  );
+}
+
+function UserMinusIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <circle cx="9" cy="8" r="3.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.5 19c1-3.2 3.6-5 6.5-5s5.5 1.8 6.5 5M16.5 9h5" />
+    </svg>
+  );
+}
+
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" />
     </svg>
   );
 }
