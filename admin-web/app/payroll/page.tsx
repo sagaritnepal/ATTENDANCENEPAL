@@ -1,9 +1,9 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
-import Badge from '@/components/Badge';
 import {
   buildPeriodOptions,
   currentSystemYearMonth,
@@ -13,24 +13,8 @@ import {
   type CalendarPeriod,
 } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { computeDayStatus, formatMinutes, resolveShift } from '@/lib/shift';
+import { computeDayStatus, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
-
-function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
-type DayDetail = {
-  date: string;
-  checkIn: string | null;
-  checkOut: string | null;
-  hours: number;
-  overtime: number;
-  lateMinutes: number;
-  earlyMinutes: number;
-  status: 'Present' | 'Late' | 'Absent';
-  pending?: boolean;
-};
 
 export default function PayrollPage() {
   const { system } = useCalendarSystem();
@@ -55,15 +39,23 @@ export default function PayrollPage() {
   // Overtime pay is optional per employee (some employees just aren't paid
   // extra for it) — on by default, toggled off per row.
   const [overtimeEnabled, setOvertimeEnabled] = useState<Record<string, boolean>>({});
-  // Which employee's day-1-to-day-31 breakdown is expanded inline, in
-  // whichever list (salary report or overtime approval) their name was
-  // clicked in.
-  const [detailEmployeeId, setDetailEmployeeId] = useState<string | null>(null);
-  function toggleDetail(employeeId: string) {
-    setDetailEmployeeId(id => (id === employeeId ? null : employeeId));
-  }
 
   const { start, end } = period;
+
+  // The day-1-to-last-day breakdown lives on its own page (not a popup or
+  // an inline dropdown — both fought this page's layout) — carries the
+  // current period and overtime settings along since that page has no
+  // period picker of its own.
+  function detailHref(employeeId: string) {
+    const params = new URLSearchParams({
+      start,
+      end,
+      otHoursPerDay: String(otHoursPerDay),
+      otMultiplier: String(otMultiplier),
+      otOn: String(overtimeEnabled[employeeId] ?? true),
+    });
+    return `/payroll/${employeeId}?${params.toString()}`;
+  }
 
   // The oldest/newest punch on record — bounds the period dropdown to
   // months that actually have data instead of listing years of empty ones.
@@ -209,57 +201,6 @@ export default function PayrollPage() {
     }
     return Array.from(map.values());
   }, [summaries, logs, shifts, employees, start, end]);
-
-  // Day 1 through the period's last day for one employee — the detail
-  // modal's content. Same summary/live-compute-from-punches fallback as
-  // byEmployee above and the Attendance Report page, just per-day instead
-  // of aggregated, and only computed for whichever employee's modal is open.
-  function employeeDayRows(employeeId: string): DayDetail[] {
-    const emp = employees.find(e => e.id === employeeId);
-    if (!emp) return [];
-    const shift = resolveShift(emp, shifts);
-    const days: string[] = [];
-    const cur = new Date(start + 'T00:00:00Z');
-    const endDate = new Date(end + 'T00:00:00Z');
-    while (cur <= endDate) {
-      days.push(cur.toISOString().slice(0, 10));
-      cur.setUTCDate(cur.getUTCDate() + 1);
-    }
-
-    return days.map(day => {
-      const summary = summaries.find(s => s.employee_id === employeeId && s.work_date === day);
-      if (summary) {
-        return {
-          date: day,
-          checkIn: summary.check_in,
-          checkOut: summary.check_out,
-          hours: Number(summary.total_hours),
-          overtime: Number(summary.overtime_hours),
-          lateMinutes: summary.is_late ? summary.late_minutes : 0,
-          earlyMinutes: summary.is_early_departure ? summary.early_departure_minutes : 0,
-          status: summary.is_late ? 'Late' : 'Present',
-        };
-      }
-      const dayLogs = logs
-        .filter(l => l.employee_id === employeeId && l.punch_time.slice(0, 10) === day)
-        .sort((a, b) => a.punch_time.localeCompare(b.punch_time));
-      if (dayLogs.length === 0) {
-        return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status: 'Absent' };
-      }
-      const live = computeDayStatus(dayLogs, shift);
-      return {
-        date: day,
-        checkIn: live.checkIn.punch_time,
-        checkOut: live.checkOut?.punch_time ?? null,
-        hours: live.totalMinutes / 60,
-        overtime: live.overtimeMinutes / 60,
-        lateMinutes: live.lateMinutes,
-        earlyMinutes: live.earlyMinutes,
-        status: live.isLate ? 'Late' : 'Present',
-        pending: true,
-      };
-    });
-  }
 
   const totals = useMemo(() => {
     const totalHours = byEmployee.reduce((s, r) => s + r.hours, 0);
@@ -421,202 +362,6 @@ export default function PayrollPage() {
     reload();
   }
 
-  const detailEmployee = detailEmployeeId ? employees.find(e => e.id === detailEmployeeId) ?? null : null;
-  const detailRow = detailEmployeeId ? byEmployee.find(r => r.id === detailEmployeeId) ?? null : null;
-  const detailRows = detailEmployee ? employeeDayRows(detailEmployee.id) : [];
-  const detailOtOn = detailEmployeeId ? overtimeEnabled[detailEmployeeId] ?? true : true;
-  // Each worked day's slice of the monthly Salary — same proration
-  // calculatedSalary()/overtimeSalary() use for the whole period, just for
-  // one day, so the per-day figures always add up to the row's totals.
-  const detailHourlyRate = detailEmployee?.salary != null ? detailEmployee.salary / (daysInRange * otHoursPerDay) : null;
-  function dailySalaryEarning(d: DayDetail) {
-    if (detailEmployee?.salary == null) return null;
-    const base = d.status === 'Absent' ? 0 : detailEmployee.salary / daysInRange;
-    const overtime = detailOtOn && d.overtime > 0 && detailHourlyRate != null ? detailHourlyRate * otMultiplier * d.overtime : 0;
-    return { base, overtime, total: base + overtime };
-  }
-
-  // Day 1 through the period's last day, expanded inline (not a popup)
-  // right under whichever employee's name was clicked — a card list for
-  // mobile, a real table for desktop, both closing over detailRows/
-  // detailRow/dailySalaryEarning which already point at detailEmployeeId.
-  function dayBreakdownHeader() {
-    return (
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-          Day 1–{daysInRange} breakdown
-        </span>
-        <button onClick={() => setDetailEmployeeId(null)} className="text-xs font-medium text-slate-400 hover:text-slate-600">
-          Hide
-        </button>
-      </div>
-    );
-  }
-
-  function dayBreakdownCards() {
-    return (
-      <div className="mt-3 border-t border-slate-100 pt-3">
-        {dayBreakdownHeader()}
-        {detailRows.map(d => {
-          const earning = dailySalaryEarning(d);
-          return (
-            <div key={d.date} className="border-b border-slate-100 py-2.5 last:border-0">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-ink">{formatAdDate(d.date, system)}</span>
-                <div className="flex flex-wrap justify-end gap-1.5">
-                  <Badge tone={d.status === 'Present' ? 'good' : d.status === 'Late' ? 'warning' : 'critical'}>{d.status}</Badge>
-                  {d.status !== 'Present' && d.checkIn && d.checkOut && <Badge tone="good">Present</Badge>}
-                </div>
-              </div>
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                <span>
-                  {d.checkIn ? fmtTime(d.checkIn) : '–:–'} – {d.checkOut ? fmtTime(d.checkOut) : '–:–'}
-                </span>
-                <span>
-                  {d.hours.toFixed(1)}h{d.pending && ' (live)'}
-                </span>
-                {d.overtime > 0 && <span className="font-medium text-info-text">OT {d.overtime.toFixed(1)}h</span>}
-                {d.lateMinutes > 0 && <span className="font-medium text-warning-text">Late {formatMinutes(d.lateMinutes)}</span>}
-                {d.earlyMinutes > 0 && <span className="font-medium text-warning-text">Early {formatMinutes(d.earlyMinutes)}</span>}
-              </div>
-              {earning && (
-                <div className="mt-1.5 flex items-center justify-between text-xs">
-                  <span className="text-slate-400">
-                    Salary {Math.round(earning.base).toLocaleString()}
-                    {earning.overtime > 0 && ` + OT ${Math.round(earning.overtime).toLocaleString()}`}
-                  </span>
-                  <span className="font-semibold text-ink">{Math.round(earning.total).toLocaleString()}</span>
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {detailRows.length === 0 && <p className="py-4 text-center text-sm text-slate-400">No days in this period.</p>}
-        {detailRow && (
-          <div className="mt-3 grid grid-cols-3 gap-3 rounded-lg bg-slate-50 p-3 text-center">
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-slate-400">Salary</div>
-              <div className="text-xs font-semibold text-ink">
-                {calculatedSalary(detailRow) != null ? calculatedSalary(detailRow)!.toLocaleString() : '—'}
-              </div>
-            </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-slate-400">OT Salary</div>
-              <div className="text-xs font-semibold text-ink">
-                {overtimeSalary(detailRow) != null ? overtimeSalary(detailRow)!.toLocaleString() : '—'}
-              </div>
-            </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-wide text-slate-400">Total</div>
-              <div className="text-sm font-bold text-accent">
-                {totalSalary(detailRow) != null ? totalSalary(detailRow)!.toLocaleString() : '—'}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  function dayBreakdownTable() {
-    return (
-      <div className="border-t border-slate-100 bg-slate-50 p-4">
-        {dayBreakdownHeader()}
-        <div className="max-h-96 overflow-auto rounded-lg border border-slate-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Date</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Check-In</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Check-Out</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Total Hours</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Overtime</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Late By</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Status</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Calculated Salary</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Overtime Salary</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Total Salary</th>
-              </tr>
-            </thead>
-            <tbody>
-              {detailRows.map(d => {
-                const earning = dailySalaryEarning(d);
-                return (
-                  <tr key={d.date} className="border-b border-slate-100 last:border-0">
-                    <td className="whitespace-nowrap px-3 py-2 text-slate-600">{formatAdDate(d.date, system)}</td>
-                    <td className="px-3 py-2 text-slate-600">{d.checkIn ? fmtTime(d.checkIn) : '–:–'}</td>
-                    <td className="px-3 py-2 text-slate-600">{d.checkOut ? fmtTime(d.checkOut) : '–:–'}</td>
-                    <td className="px-3 py-2 text-slate-600">
-                      {d.hours.toFixed(1)} hrs{d.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
-                    </td>
-                    <td className="px-3 py-2 text-slate-600">{d.overtime.toFixed(1)} hrs</td>
-                    <td className="px-3 py-2">
-                      {d.lateMinutes > 0 ? (
-                        <span className="font-medium text-warning-text">{formatMinutes(d.lateMinutes)}</span>
-                      ) : (
-                        <span className="text-slate-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex flex-wrap gap-1.5">
-                        <Badge tone={d.status === 'Present' ? 'good' : d.status === 'Late' ? 'warning' : 'critical'}>{d.status}</Badge>
-                        {d.status !== 'Present' && d.checkIn && d.checkOut && <Badge tone="good">Present</Badge>}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2 text-slate-600">{earning ? Math.round(earning.base).toLocaleString() : '—'}</td>
-                    <td className="px-3 py-2 text-slate-600">{earning ? Math.round(earning.overtime).toLocaleString() : '—'}</td>
-                    <td className="px-3 py-2 font-medium text-ink">{earning ? Math.round(earning.total).toLocaleString() : '—'}</td>
-                  </tr>
-                );
-              })}
-              {detailRows.length === 0 && (
-                <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
-                    No days in this period.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        {detailRow && (
-          <div className="mt-3 grid grid-cols-6 gap-3 rounded-lg border border-slate-200 bg-white p-3 text-center">
-            <div>
-              <div className="text-[11px] uppercase tracking-wide text-slate-400">Days</div>
-              <div className="text-sm font-semibold text-ink">{detailRow.days}</div>
-            </div>
-            <div>
-              <div className="text-[11px] uppercase tracking-wide text-slate-400">Hours</div>
-              <div className="text-sm font-semibold text-ink">{detailRow.hours.toFixed(1)}</div>
-            </div>
-            <div>
-              <div className="text-[11px] uppercase tracking-wide text-slate-400">Overtime</div>
-              <div className="text-sm font-semibold text-ink">{detailRow.overtime.toFixed(1)}</div>
-            </div>
-            <div>
-              <div className="text-[11px] uppercase tracking-wide text-slate-400">Salary</div>
-              <div className="text-sm font-semibold text-ink">
-                {calculatedSalary(detailRow) != null ? calculatedSalary(detailRow)!.toLocaleString() : '—'}
-              </div>
-            </div>
-            <div>
-              <div className="text-[11px] uppercase tracking-wide text-slate-400">OT Salary</div>
-              <div className="text-sm font-semibold text-ink">
-                {overtimeSalary(detailRow) != null ? overtimeSalary(detailRow)!.toLocaleString() : '—'}
-              </div>
-            </div>
-            <div>
-              <div className="text-[11px] uppercase tracking-wide text-slate-400">Total</div>
-              <div className="text-base font-bold text-accent">
-                {totalSalary(detailRow) != null ? totalSalary(detailRow)!.toLocaleString() : '—'}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
     <AppShell title="Attendance-based Payroll Controller">
       <div className="mb-5 flex flex-wrap items-center gap-3">
@@ -711,27 +456,21 @@ export default function PayrollPage() {
           <h2 className="mb-2 text-base font-semibold text-ink sm:mb-4">Overtime awaiting approval</h2>
           <div className="divide-y divide-slate-100 md:hidden">
             {pendingOvertime.map(s => (
-              <div key={s.id} className="py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <button
-                      onClick={() => toggleDetail(s.employee_id)}
-                      className="truncate font-medium text-ink hover:text-accent hover:underline"
-                    >
-                      {employeeName(s.employee_id)}
-                    </button>
-                    <div className="text-xs text-slate-500">
-                      {formatAdDate(s.work_date, system)} · {Number(s.overtime_hours).toFixed(1)} hrs
-                    </div>
+              <div key={s.id} className="flex items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <Link href={detailHref(s.employee_id)} className="truncate font-medium text-ink hover:text-accent hover:underline">
+                    {employeeName(s.employee_id)}
+                  </Link>
+                  <div className="text-xs text-slate-500">
+                    {formatAdDate(s.work_date, system)} · {Number(s.overtime_hours).toFixed(1)} hrs
                   </div>
-                  <button
-                    onClick={() => approveOvertime(s.id)}
-                    className="shrink-0 rounded-md bg-good px-3 py-1.5 text-xs font-semibold text-white hover:bg-good/90"
-                  >
-                    Approve
-                  </button>
                 </div>
-                {detailEmployeeId === s.employee_id && dayBreakdownCards()}
+                <button
+                  onClick={() => approveOvertime(s.id)}
+                  className="shrink-0 rounded-md bg-good px-3 py-1.5 text-xs font-semibold text-white hover:bg-good/90"
+                >
+                  Approve
+                </button>
               </div>
             ))}
           </div>
@@ -747,32 +486,23 @@ export default function PayrollPage() {
               </thead>
               <tbody>
                 {pendingOvertime.map(s => (
-                  <Fragment key={s.id}>
-                    <tr className="border-b border-slate-100 last:border-0">
-                      <td className="py-2.5 font-medium text-ink">
-                        <button onClick={() => toggleDetail(s.employee_id)} className="hover:text-accent hover:underline">
-                          {employeeName(s.employee_id)}
-                        </button>
-                      </td>
-                      <td className="py-2.5 text-slate-600">{formatAdDate(s.work_date, system)}</td>
-                      <td className="py-2.5 text-slate-600">{Number(s.overtime_hours).toFixed(1)} hrs</td>
-                      <td className="py-2.5">
-                        <button
-                          onClick={() => approveOvertime(s.id)}
-                          className="rounded-md bg-good px-3 py-1 text-xs font-semibold text-white hover:bg-good/90"
-                        >
-                          Approve
-                        </button>
-                      </td>
-                    </tr>
-                    {detailEmployeeId === s.employee_id && (
-                      <tr className="border-b border-slate-100">
-                        <td colSpan={4} className="p-0">
-                          {dayBreakdownTable()}
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
+                  <tr key={s.id} className="border-b border-slate-100 last:border-0">
+                    <td className="py-2.5 font-medium text-ink">
+                      <Link href={detailHref(s.employee_id)} className="hover:text-accent hover:underline">
+                        {employeeName(s.employee_id)}
+                      </Link>
+                    </td>
+                    <td className="py-2.5 text-slate-600">{formatAdDate(s.work_date, system)}</td>
+                    <td className="py-2.5 text-slate-600">{Number(s.overtime_hours).toFixed(1)} hrs</td>
+                    <td className="py-2.5">
+                      <button
+                        onClick={() => approveOvertime(s.id)}
+                        className="rounded-md bg-good px-3 py-1 text-xs font-semibold text-white hover:bg-good/90"
+                      >
+                        Approve
+                      </button>
+                    </td>
+                  </tr>
                 ))}
               </tbody>
             </table>
@@ -790,12 +520,9 @@ export default function PayrollPage() {
             <div key={row.id} className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <button
-                    onClick={() => toggleDetail(row.id)}
-                    className="truncate font-medium text-ink hover:text-accent hover:underline"
-                  >
+                  <Link href={detailHref(row.id)} className="truncate font-medium text-ink hover:text-accent hover:underline">
                     {row.name}
-                  </button>
+                  </Link>
                   <div className="text-xs text-slate-500">
                     ID {row.enrollId} · {row.days} days · {row.lateDays} late
                   </div>
@@ -829,7 +556,6 @@ export default function PayrollPage() {
                   <dd className="mt-1">{overtimeCellContent(row)}</dd>
                 </div>
               </dl>
-              {detailEmployeeId === row.id && dayBreakdownCards()}
             </div>
           ))}
           {byEmployee.length === 0 && <p className="p-8 text-center text-sm text-slate-400">No active employees.</p>}
@@ -853,35 +579,26 @@ export default function PayrollPage() {
           </thead>
           <tbody>
             {byEmployee.map(row => (
-              <Fragment key={row.id}>
-                <tr className="border-b border-slate-100 last:border-0">
-                  <td className="px-4 py-3 text-slate-600">{row.enrollId}</td>
-                  <td className="px-4 py-3 font-medium text-ink">
-                    <button onClick={() => toggleDetail(row.id)} className="hover:text-accent hover:underline">
-                      {row.name}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{row.days}</td>
-                  <td className="px-4 py-3 text-slate-600">{row.hours.toFixed(1)} hrs</td>
-                  <td className="px-4 py-3 text-slate-600">{row.overtime.toFixed(1)} hrs</td>
-                  <td className="px-4 py-3 text-slate-600">{row.lateDays}</td>
-                  <td className="px-4 py-3">{salaryCellContent(row)}</td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
-                  </td>
-                  <td className="pl-2 pr-4 py-3 text-slate-600">{overtimeCellContent(row)}</td>
-                  <td className="px-4 py-3 font-medium text-ink">
-                    {totalSalary(row) != null ? totalSalary(row)!.toLocaleString() : '—'}
-                  </td>
-                </tr>
-                {detailEmployeeId === row.id && (
-                  <tr className="border-b border-slate-100">
-                    <td colSpan={10} className="p-0">
-                      {dayBreakdownTable()}
-                    </td>
-                  </tr>
-                )}
-              </Fragment>
+              <tr key={row.id} className="border-b border-slate-100 last:border-0">
+                <td className="px-4 py-3 text-slate-600">{row.enrollId}</td>
+                <td className="px-4 py-3 font-medium text-ink">
+                  <Link href={detailHref(row.id)} className="hover:text-accent hover:underline">
+                    {row.name}
+                  </Link>
+                </td>
+                <td className="px-4 py-3 text-slate-600">{row.days}</td>
+                <td className="px-4 py-3 text-slate-600">{row.hours.toFixed(1)} hrs</td>
+                <td className="px-4 py-3 text-slate-600">{row.overtime.toFixed(1)} hrs</td>
+                <td className="px-4 py-3 text-slate-600">{row.lateDays}</td>
+                <td className="px-4 py-3">{salaryCellContent(row)}</td>
+                <td className="px-4 py-3 text-slate-600">
+                  {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
+                </td>
+                <td className="pl-2 pr-4 py-3 text-slate-600">{overtimeCellContent(row)}</td>
+                <td className="px-4 py-3 font-medium text-ink">
+                  {totalSalary(row) != null ? totalSalary(row)!.toLocaleString() : '—'}
+                </td>
+              </tr>
             ))}
             {byEmployee.length === 0 && (
               <tr>
