@@ -193,19 +193,24 @@ export default function CalendarPage() {
 
   return (
     <AppShell title="Attendance Calendar">
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <label className="text-xs font-medium text-slate-600">Employee</label>
-        <select
-          value={employeeId}
-          onChange={e => setEmployeeId(e.target.value)}
-          className="max-w-xs rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm"
-        >
-          {employees.map(emp => (
-            <option key={emp.id} value={emp.id}>
-              {emp.name}
-            </option>
-          ))}
-        </select>
+      <div className="mb-3 flex w-fit items-center gap-2.5 rounded-xl border border-slate-200 bg-white py-1.5 pl-1.5 pr-3 shadow-sm">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+          <UserIcon className="h-4 w-4" />
+        </span>
+        <div className="flex flex-col">
+          <label className="text-[10px] font-semibold uppercase leading-none tracking-wide text-slate-400">Employee</label>
+          <select
+            value={employeeId}
+            onChange={e => setEmployeeId(e.target.value)}
+            className="max-w-[16rem] bg-transparent text-sm font-semibold text-ink focus:outline-none"
+          >
+            {employees.map(emp => (
+              <option key={emp.id} value={emp.id}>
+                {emp.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="mb-4">
@@ -409,5 +414,14 @@ export default function CalendarPage() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function UserIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <circle cx="12" cy="8" r="3.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 20a7 7 0 0 1 14 0" />
+    </svg>
   );
 }
