@@ -26,7 +26,6 @@ export default function PayrollPage() {
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [recalculating, setRecalculating] = useState(false);
   const [pendingSalary, setPendingSalary] = useState<Record<string, string>>({});
   const [savingRowId, setSavingRowId] = useState<string | null>(null);
   const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
@@ -112,39 +111,6 @@ export default function PayrollPage() {
   }
 
   useEffect(reload, [start, end]);
-
-  async function recalculateMonth() {
-    setRecalculating(true);
-    const days: string[] = [];
-    const cur = new Date(start + 'T00:00:00Z');
-    const endDate = new Date(end + 'T00:00:00Z');
-    const today = new Date().toISOString().slice(0, 10);
-    while (cur.toISOString().slice(0, 10) <= end && cur <= endDate) {
-      const day = cur.toISOString().slice(0, 10);
-      if (day <= today) days.push(day);
-      cur.setUTCDate(cur.getUTCDate() + 1);
-    }
-    if (days.length === 0) {
-      setRecalculating(false);
-      alert('Nothing to recalculate — this period has no days up to today yet.');
-      return;
-    }
-    // rpc() never throws, it resolves { error } — the old version didn't
-    // check that, so a failing call (e.g. not signed in as admin/HR) just
-    // silently did nothing and the button looked broken.
-    const failedDays: string[] = [];
-    for (const day of days) {
-      const { error } = await supabase.rpc('compute_payroll_summaries', { p_work_date: day });
-      if (error) failedDays.push(day);
-    }
-    setRecalculating(false);
-    if (failedDays.length > 0) {
-      alert(`Recalculated ${days.length - failedDays.length}/${days.length} days. Failed: ${failedDays.join(', ')}`);
-    } else {
-      alert(`Recalculated ${days.length} day${days.length === 1 ? '' : 's'}.`);
-    }
-    reload();
-  }
 
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
 
@@ -364,35 +330,26 @@ export default function PayrollPage() {
 
   return (
     <AppShell title="Attendance-based Payroll Controller">
-      <div className="mb-5 flex flex-wrap items-center gap-3">
-        <div className="flex flex-1 flex-wrap items-center gap-3">
-          <select
-            value={period.key}
-            onChange={e => {
-              const found = periodOptions.find(o => o.key === e.target.value);
-              if (found) setPeriod(found);
-            }}
-            className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-600"
-          >
-            {periodOptions.map(o => (
-              <option key={o.key} value={o.key}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-          <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm">
-            <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
-            {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
-            <span className="text-slate-400">({daysInRange}d)</span>
-          </div>
-        </div>
-        <button
-          onClick={recalculateMonth}
-          disabled={recalculating}
-          className="w-full rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60 sm:w-auto"
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <select
+          value={period.key}
+          onChange={e => {
+            const found = periodOptions.find(o => o.key === e.target.value);
+            if (found) setPeriod(found);
+          }}
+          className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-600"
         >
-          {recalculating ? 'Recalculating…' : 'Recalculate month'}
-        </button>
+          {periodOptions.map(o => (
+            <option key={o.key} value={o.key}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-ink shadow-sm">
+          <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
+          {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
+          <span className="font-medium text-slate-400">({daysInRange}d)</span>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
