@@ -6,7 +6,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
-import { buildMonth, formatAdDate, formatDdMmYyyy, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
+import { buildMonth, formatAdDate, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { formatHoursMinutes } from '@/lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning } from '@/lib/payrollDetail';
@@ -161,24 +161,21 @@ function PayrollEmployeeDetailView() {
               </span>
               <div>
                 <h2 className="text-lg font-bold text-ink">{employee.name}</h2>
-                <p className="text-xs text-slate-500">ID {employee.fingerprint_id ?? '—'}</p>
+                <p className="text-xs font-bold text-black">ENROLL ID {employee.fingerprint_id ?? '—'}</p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2.5">
               <div className="rounded-lg border border-accent/30 bg-white px-3 py-2 text-sm font-bold text-ink shadow-sm">{monthLabel}</div>
               <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-400 shadow-sm">
                 <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
-                {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
+                {formatAdDate(start, system)} to {formatAdDate(end, system)}
                 <span className="text-slate-400">({daysInRange}d)</span>
               </div>
             </div>
           </div>
 
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center gap-2.5 bg-gradient-to-r from-accent/10 via-accent/5 to-transparent px-4 py-4 sm:px-6">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-white">
-                <ReportIcon className="h-5 w-5" />
-              </span>
+            <div className="border-b border-slate-100 px-4 py-4 sm:px-6">
               <h3 className="text-lg font-bold text-ink">{monthLabel} Breakdown</h3>
             </div>
 
@@ -338,15 +335,6 @@ function CalendarIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <rect x="3" y="5" width="18" height="16" rx="2" />
       <path strokeLinecap="round" d="M3 10h18M8 3v4M16 3v4" />
-    </svg>
-  );
-}
-
-function ReportIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M14 3v5h5M9 13h6M9 17h6M9 9h2" />
     </svg>
   );
 }
