@@ -52,8 +52,8 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button onClick={() => go(-1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
             ←
@@ -100,7 +100,7 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
                 <button
                   key={`${cell.adKey}-${i}`}
                   onClick={() => onSelectDate(cell.adKey)}
-                  className={`relative flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-lg text-sm sm:min-h-[64px] ${
+                  className={`relative flex min-h-[40px] flex-col items-center justify-center gap-0.5 rounded-lg text-sm sm:min-h-[50px] ${
                     !cell.inMonth ? 'text-slate-300' : cell.isToday ? 'font-bold text-accent' : 'text-ink'
                   } ${selected ? 'bg-accent text-white' : `${attendanceBg} hover:bg-slate-100`}`}
                 >
@@ -121,7 +121,7 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
           </div>
         </>
       ) : (
-        <div className="max-h-[420px] divide-y divide-slate-100 overflow-y-auto">
+        <div className="max-h-[320px] divide-y divide-slate-100 overflow-y-auto">
           {inMonthCells.map(cell => {
             const status = dayStatus.get(cell.adKey);
             const onLeave = leaveDates?.has(cell.adKey) ?? false;
@@ -152,7 +152,7 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
         </div>
       )}
 
-      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+      <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-sm bg-warning-bg" /> Checked in
         </span>

@@ -29,13 +29,13 @@ function datesBetween(start: string, end: string): string[] {
 type CardKey = 'hours' | 'late' | 'early' | 'overtime' | 'present' | 'absent';
 type CardEntry = { date: string; minutes: number };
 
-const CARD_STYLES: Record<CardKey, { label: string; hint: string; numberText: string }> = {
-  hours: { label: 'Total Work Hours', hint: 'This month', numberText: 'text-good-text' },
-  late: { label: 'Late In', hint: 'Days this month', numberText: 'text-warning-text' },
-  early: { label: 'Early Out', hint: 'Days this month', numberText: 'text-critical-text' },
-  overtime: { label: 'Overtime', hint: 'This month', numberText: 'text-info-text' },
-  present: { label: 'Present Days', hint: 'This month', numberText: 'text-good-text' },
-  absent: { label: 'Absent Days', hint: 'No attendance logs', numberText: 'text-critical-text' },
+const CARD_STYLES: Record<CardKey, { label: string; hint: string; bg: string; numberText: string; hintText: string }> = {
+  hours: { label: 'Total Work Hours', hint: 'This month', bg: 'bg-good-bg', numberText: 'text-good-text', hintText: 'text-good-text/70' },
+  late: { label: 'Late In', hint: 'Days this month', bg: 'bg-warning-bg', numberText: 'text-warning-text', hintText: 'text-warning-text/70' },
+  early: { label: 'Early Out', hint: 'Days this month', bg: 'bg-critical-bg', numberText: 'text-critical-text', hintText: 'text-critical-text/70' },
+  overtime: { label: 'Overtime', hint: 'This month', bg: 'bg-info-bg', numberText: 'text-info-text', hintText: 'text-info-text/70' },
+  present: { label: 'Present Days', hint: 'This month', bg: 'bg-accent/10', numberText: 'text-accent', hintText: 'text-accent/70' },
+  absent: { label: 'Absent Days', hint: 'No attendance logs', bg: 'bg-critical-bg', numberText: 'text-critical-text', hintText: 'text-critical-text/70' },
 };
 
 export default function CalendarPage() {
@@ -193,12 +193,12 @@ export default function CalendarPage() {
 
   return (
     <AppShell title="Attendance Calendar">
-      <div className="mb-5 max-w-xs">
-        <label className="mb-1 block text-xs font-medium text-slate-600">Employee</label>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <label className="text-xs font-medium text-slate-600">Employee</label>
         <select
           value={employeeId}
           onChange={e => setEmployeeId(e.target.value)}
-          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+          className="max-w-xs rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm"
         >
           {employees.map(emp => (
             <option key={emp.id} value={emp.id}>
@@ -208,8 +208,8 @@ export default function CalendarPage() {
         </select>
       </div>
 
-      <div className="mb-5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="grid grid-cols-2 divide-x divide-y divide-slate-100 sm:grid-cols-3 sm:divide-y-0">
+      <div className="mb-4">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
           {(Object.keys(CARD_STYLES) as CardKey[]).map(key => {
             const style = CARD_STYLES[key];
             const open = expandedCard === key;
@@ -217,18 +217,20 @@ export default function CalendarPage() {
               <button
                 key={key}
                 onClick={() => setExpandedCard(open ? null : key)}
-                className={`p-4 text-left transition-colors hover:bg-slate-50 ${open ? 'bg-accent/5' : ''}`}
+                className={`rounded-xl p-3 text-left shadow-sm ring-2 transition-shadow ${style.bg} ${
+                  open ? 'ring-accent' : 'ring-transparent hover:ring-slate-200'
+                }`}
               >
-                <div className={`text-xl font-bold sm:text-2xl ${style.numberText}`}>{cardValue(key)}</div>
-                <div className="mt-0.5 text-sm font-medium text-ink">{style.label}</div>
-                <div className="text-xs text-slate-400">{style.hint}</div>
+                <div className={`text-lg font-bold sm:text-xl ${style.numberText}`}>{cardValue(key)}</div>
+                <div className="mt-0.5 text-xs font-semibold text-ink">{style.label}</div>
+                <div className={`text-[11px] ${style.hintText}`}>{style.hint}</div>
               </button>
             );
           })}
         </div>
 
         {expandedCard && (
-          <div className="border-t border-slate-100 p-4">
+          <div className="mt-2.5 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white p-4">
             <h3 className="mb-2 text-sm font-semibold text-ink">{CARD_STYLES[expandedCard].label} this month</h3>
             {monthSummary.entries[expandedCard].length === 0 ? (
               <p className="text-sm text-slate-400">Nothing to show for this month.</p>
@@ -271,7 +273,7 @@ export default function CalendarPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_360px]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_340px]">
         <MonthCalendar
           dayStatus={dayStatus}
           leaveDates={leaveDates}
@@ -310,7 +312,7 @@ export default function CalendarPage() {
         )}
 
         {selectedTab === 'day' && selectedDate && (
-          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="mb-2 text-sm font-semibold text-ink">{formatAdDate(selectedDate, system)}</h2>
             {selectedLeave && (
               <div className="mb-3 rounded-xl bg-purple-100 p-3">
