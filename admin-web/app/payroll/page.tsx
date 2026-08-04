@@ -119,6 +119,16 @@ export default function PayrollPage() {
   useEffect(reload, [start, end]);
 
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
+  // For attendance counting only (possibleDays/absentDays below) — a period
+  // running into the future (this month, viewed mid-month) shouldn't count
+  // days that haven't happened yet as "absent". daysInRange itself stays the
+  // full period length everywhere else (salary is prorated over the whole
+  // month regardless of how much of it has elapsed).
+  const elapsedDaysInRange = useMemo(() => {
+    const today = nepalTodayIso();
+    const elapsedEnd = end < today ? end : today;
+    return start > elapsedEnd ? 0 : (new Date(elapsedEnd).getTime() - new Date(start).getTime()) / 86400000 + 1;
+  }, [start, end]);
 
   const scopedEmployees = useMemo(
     () => (employeeId === 'all' ? employees : employees.filter(e => e.id === employeeId)),
@@ -203,7 +213,7 @@ export default function PayrollPage() {
     const workedDays = byEmployee.reduce((s, r) => s + r.days, 0);
     const lateDays = byEmployee.reduce((s, r) => s + r.lateDays, 0);
     const earlyDays = byEmployee.reduce((s, r) => s + r.earlyDays, 0);
-    const possibleDays = scopedEmployees.length * daysInRange;
+    const possibleDays = scopedEmployees.length * elapsedDaysInRange;
     const absentDays = Math.max(0, possibleDays - workedDays);
     const attendancePct = possibleDays ? Math.round((workedDays / possibleDays) * 1000) / 10 : 0;
     const totalEmployeeSalary = byEmployee.reduce((s, r) => s + (r.salary ?? 0), 0);
@@ -225,7 +235,7 @@ export default function PayrollPage() {
       totalSalaryPayable,
       totalOvertimeSalary,
     };
-  }, [byEmployee, scopedEmployees, daysInRange, otHoursPerDay, otMultiplier, overtimeEnabled]);
+  }, [byEmployee, scopedEmployees, daysInRange, elapsedDaysInRange, otHoursPerDay, otMultiplier, overtimeEnabled]);
 
   // Pay is earned per hour actually worked, not per day shown up — a day
   // where someone left after 2 hours pays 2 hours, not a full day's worth.

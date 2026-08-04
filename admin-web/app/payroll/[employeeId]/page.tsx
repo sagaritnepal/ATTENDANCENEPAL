@@ -9,7 +9,7 @@ import Badge from '@/components/Badge';
 import { buildMonth, formatAdDate, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { formatHoursMinutes } from '@/lib/shift';
-import { buildEmployeeDayRows, dailySalaryEarning } from '@/lib/payrollDetail';
+import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '@/lib/payrollDetail';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
 
 function fmtTime(iso: string) {
@@ -23,6 +23,12 @@ function todayIso() {
 /** Decimal hours (e.g. d.hours, d.overtime) -> "Xh Ym". */
 function fmtHrs(hours: number) {
   return formatHoursMinutes(Math.round(hours * 60));
+}
+
+function statusBadge(d: DayDetail) {
+  if (d.checkIn) return <Badge tone="good">Present</Badge>;
+  if (d.status === 'Upcoming') return <Badge tone="neutral">Upcoming</Badge>;
+  return <Badge tone="critical">Absent</Badge>;
 }
 
 function parseAdKey(value: string): CalendarAnchor | null {
@@ -119,7 +125,7 @@ function PayrollEmployeeDetailView() {
       lateMinutes += d.lateMinutes;
       earlyMinutes += d.earlyMinutes;
       if (d.checkIn) presentDays += 1;
-      else absentDays += 1;
+      else if (d.status !== 'Upcoming') absentDays += 1;
       const earning = dailySalaryEarning(d, employee?.salary ?? null, daysInRange, otHoursPerDay, otMultiplier, otOn);
       if (earning) {
         mySalary += earning.base;
@@ -187,7 +193,7 @@ function PayrollEmployeeDetailView() {
                   <div key={d.date} className="py-2.5 first:pt-0 last:pb-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-medium text-ink">{formatAdDate(d.date, system)}</span>
-                      {d.checkIn ? <Badge tone="good">Present</Badge> : <Badge tone="critical">Absent</Badge>}
+                      {statusBadge(d)}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                       <span>
@@ -269,9 +275,7 @@ function PayrollEmployeeDetailView() {
                             <span className="text-slate-400">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-2">
-                          {d.checkIn ? <Badge tone="good">Present</Badge> : <Badge tone="critical">Absent</Badge>}
-                        </td>
+                        <td className="px-4 py-2">{statusBadge(d)}</td>
                         <td className="px-4 py-2 text-slate-600">
                           {salaryPerDay != null ? Math.round(salaryPerDay).toLocaleString() : '—'}
                         </td>

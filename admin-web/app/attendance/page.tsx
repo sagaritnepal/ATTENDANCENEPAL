@@ -21,7 +21,7 @@ type Row = {
   checkIn: string | null;
   checkOut: string | null;
   hours: number;
-  status: 'Present' | 'Late' | 'Absent';
+  status: 'Present' | 'Late' | 'Absent' | 'Upcoming';
   lateMinutes: number;
   earlyMinutes: number;
   overtime: number;
@@ -41,6 +41,12 @@ function isoDaysAgo(n: number) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - n);
   return d.toISOString().slice(0, 10);
+}
+
+function statusBadge(r: Row) {
+  if (r.checkIn) return <Badge tone="good">Present</Badge>;
+  if (r.status === 'Upcoming') return <Badge tone="neutral">Upcoming</Badge>;
+  return <Badge tone="critical">Absent</Badge>;
 }
 
 export default function AttendancePage() {
@@ -168,7 +174,10 @@ function AttendanceView() {
             checkIn: null,
             checkOut: null,
             hours: 0,
-            status: 'Absent',
+            // A day that hasn't happened yet isn't "Absent" — it just
+            // hasn't occurred (only relevant if the picked range runs past
+            // today).
+            status: day > today ? 'Upcoming' : 'Absent',
             lateMinutes: 0,
             earlyMinutes: 0,
             overtime: 0,
@@ -194,7 +203,7 @@ function AttendanceView() {
     const lateMinutes = rows.reduce((sum, r) => sum + r.lateMinutes, 0);
     const earlyMinutes = rows.reduce((sum, r) => sum + r.earlyMinutes, 0);
     const presentDays = rows.filter(r => r.checkIn).length;
-    const absentDays = rows.filter(r => !r.checkIn).length;
+    const absentDays = rows.filter(r => !r.checkIn && r.status !== 'Upcoming').length;
     return { workHours, overtimeHours, lateMinutes, earlyMinutes, presentDays, absentDays };
   }, [rows]);
 
@@ -324,7 +333,7 @@ function AttendanceView() {
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
-                  {r.checkIn ? <Badge tone="good">Present</Badge> : <Badge tone="critical">Absent</Badge>}
+                  {statusBadge(r)}
                 </div>
               </div>
               <div className="mt-1.5 text-xs text-slate-500">{r.shiftLabel}</div>
@@ -441,7 +450,7 @@ function AttendanceView() {
                   {r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2">
-                  {r.checkIn ? <Badge tone="good">Present</Badge> : <Badge tone="critical">Absent</Badge>}
+                  {statusBadge(r)}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2 text-slate-600">{r.device}</td>
               </tr>

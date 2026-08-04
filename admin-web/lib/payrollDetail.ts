@@ -9,7 +9,7 @@ export type DayDetail = {
   overtime: number;
   lateMinutes: number;
   earlyMinutes: number;
-  status: 'Present' | 'Late' | 'Absent';
+  status: 'Present' | 'Late' | 'Absent' | 'Upcoming';
   /** No payroll_summaries row yet (only computed by the nightly job or
    * "Recalculate month" on the Payroll page) — computed live client-side
    * from the raw punches instead of left blank until that job runs. */
@@ -59,7 +59,10 @@ export function buildEmployeeDayRows(
       .filter(l => l.employee_id === employee.id && l.punch_time.slice(0, 10) === day)
       .sort((a, b) => a.punch_time.localeCompare(b.punch_time));
     if (dayLogs.length === 0) {
-      return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status: 'Absent' as const };
+      // A day that hasn't happened yet isn't "Absent" — it just hasn't
+      // occurred. Only mark days up to and including today that way.
+      const status = day > today ? ('Upcoming' as const) : ('Absent' as const);
+      return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status };
     }
     const live = computeDayStatus(dayLogs, shift);
     return {
