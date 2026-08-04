@@ -126,27 +126,39 @@ export default function AccountMenu({ adminName, role }: { adminName: string; ro
 
         {open && (
           <div className="absolute right-0 top-full z-30 mt-2 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
-            <div className="flex items-center gap-3 bg-slate-50 p-4">
-              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-accent/10 text-lg font-semibold text-accent ring-2 ring-white">
-                {adminName.slice(0, 1).toUpperCase()}
-              </span>
-              <div className="min-w-0">
+            <div className="flex items-start justify-between gap-3 bg-gradient-to-br from-accent/15 via-accent/5 to-transparent p-4">
+              <div className="min-w-0 pt-1">
                 <div className="truncate text-sm font-semibold text-ink">{adminName}</div>
                 <div className="text-xs text-slate-500">{role === 'admin' ? 'System Administrator' : 'HR'}</div>
               </div>
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-accent text-lg font-semibold text-white shadow-sm ring-2 ring-white">
+                {adminName.slice(0, 1).toUpperCase()}
+              </span>
             </div>
 
-            <div className="space-y-2 border-t border-slate-100 px-4 py-3 text-xs text-slate-600">
-              <div className="flex items-center gap-2">
-                <MailIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            <div className="space-y-2.5 border-t border-slate-100 px-4 py-3 text-xs text-slate-600">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-500">
+                  <MailIcon className="h-3.5 w-3.5" />
+                </span>
                 <span className="truncate">{profile?.email || '—'}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <BuildingIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-purple-50 text-purple-500">
+                  <BuildingIcon className="h-3.5 w-3.5" />
+                </span>
                 <span className="truncate">{profile?.company_name || 'No company set'}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <CalendarDotIcon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-orange-50 text-orange-500">
+                  <PinIcon className="h-3.5 w-3.5" />
+                </span>
+                <span className="truncate">{profile?.location || 'No address set'}</span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-good-bg text-good-text">
+                  <CalendarDotIcon className="h-3.5 w-3.5" />
+                </span>
                 <span className="truncate">
                   Member since{' '}
                   {profile?.created_at
@@ -156,19 +168,19 @@ export default function AccountMenu({ adminName, role }: { adminName: string; ro
               </div>
             </div>
 
-            <div className="border-t border-slate-100 py-1">
+            <div className="grid grid-cols-2 gap-2 border-t border-slate-100 p-3">
               <button
                 onClick={openEditProfile}
-                className="flex w-full items-center gap-2.5 px-4 py-2 text-left text-sm text-ink hover:bg-slate-50"
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-accent/90"
               >
-                <EditIcon className="h-4 w-4 text-slate-400" />
+                <EditIcon className="h-3.5 w-3.5" />
                 Edit Profile
               </button>
               <button
                 onClick={handleSignOut}
-                className="flex w-full items-center gap-2.5 px-4 py-2 text-left text-sm text-critical hover:bg-slate-50"
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-critical-bg px-3 py-2 text-xs font-semibold text-critical-text transition-colors hover:bg-critical/20"
               >
-                <SignOutIcon className="h-4 w-4" />
+                <SignOutIcon className="h-3.5 w-3.5" />
                 Sign out
               </button>
             </div>
@@ -293,6 +305,15 @@ function BuildingIcon({ className }: { className?: string }) {
       <rect x="4" y="3" width="16" height="18" rx="1" />
       <path strokeLinecap="round" d="M8 7h1M12 7h1M16 7h1M8 11h1M12 11h1M16 11h1M8 15h1M12 15h1M16 15h1" />
       <path d="M10 21v-4h4v4" />
+    </svg>
+  );
+}
+
+function PinIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-7-6.1-7-11a7 7 0 1 1 14 0c0 4.9-7 11-7 11Z" />
+      <circle cx="12" cy="10" r="2.5" />
     </svg>
   );
 }
