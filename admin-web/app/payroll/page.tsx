@@ -365,32 +365,6 @@ export default function PayrollPage() {
 
   return (
     <AppShell title="Attendance-based Payroll Controller">
-      <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Employee</label>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <PersonIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-accent" />
-            <select
-              value={employeeId}
-              onChange={e => setEmployeeId(e.target.value)}
-              className="min-w-[13rem] rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-            >
-              <option value="all">All Employees</option>
-              {employees.map(e => (
-                <option key={e.id} value={e.id}>
-                  {e.name} (ID {e.fingerprint_id ?? '—'})
-                </option>
-              ))}
-            </select>
-          </div>
-          {employeeId !== 'all' && (
-            <button onClick={() => setEmployeeId('all')} className="text-xs font-medium text-accent hover:underline">
-              Clear
-            </button>
-          )}
-        </div>
-      </div>
-
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <div className="rounded-xl bg-warning-bg p-3 shadow-sm ring-1 ring-inset ring-warning/10">
           <span className="text-xs font-medium text-warning-text/80">Overtime Salary</span>
@@ -538,8 +512,25 @@ export default function PayrollPage() {
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-white">
               <ReportIcon className="h-5 w-5" />
             </span>
-            <h2 className="text-lg font-bold text-ink">This Month Salary Report</h2>
+            <h2 className="text-lg font-bold text-ink">{period.label} Salary Report</h2>
           </div>
+
+          <div className="relative">
+            <PersonIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-accent" />
+            <select
+              value={employeeId}
+              onChange={e => setEmployeeId(e.target.value)}
+              className="min-w-[13rem] rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            >
+              <option value="all">All Employees</option>
+              {employees.map(e => (
+                <option key={e.id} value={e.id}>
+                  {e.name} (ID {e.fingerprint_id ?? '—'})
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex flex-wrap items-center gap-2.5">
             <select
               value={period.key}
