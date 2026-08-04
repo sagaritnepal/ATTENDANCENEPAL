@@ -571,17 +571,16 @@ export default function PayrollPage() {
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="sticky top-0 z-10 border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <th className="whitespace-nowrap px-4 py-2 font-medium">ID</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Employee</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Worked Days</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Total Hours</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Overtime</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Late Days</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Early Days</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Salary</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Calculated Salary</th>
-              <th className="whitespace-nowrap pl-2 pr-4 py-2 font-medium">Overtime Salary</th>
-              <th className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-4 py-2 font-medium shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)]">
+              <th className="whitespace-nowrap px-3 py-2 font-medium">ID</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Employee</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Worked Days</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Total Hours</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Overtime</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Late / Early Days</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Salary</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Calculated Salary</th>
+              <th className="whitespace-nowrap pl-2 pr-3 py-2 font-medium">Overtime Salary</th>
+              <th className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-3 py-2 font-medium shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)]">
                 Total Salary
               </th>
             </tr>
@@ -591,28 +590,31 @@ export default function PayrollPage() {
               const rowBg = i % 2 === 1 ? 'bg-slate-50' : 'bg-white';
               return (
                 <tr key={row.id} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
-                  <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.enrollId}</td>
-                  <td className="whitespace-nowrap px-4 py-2 font-medium text-ink">
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">{row.enrollId}</td>
+                  <td className="whitespace-nowrap px-3 py-2 font-medium text-ink">
                     <Link href={detailHref(row.id)} className="flex items-center gap-2.5 hover:text-accent hover:underline">
                       <Avatar name={row.name} />
                       {row.name}
                     </Link>
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.days}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-slate-600">{fmtHrs(row.hours)}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-slate-600">
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">{row.days}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">{fmtHrs(row.hours)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">
                     {fmtHrs(row.overtime)}
                     {overtimeSalary(row) != null && <span className="text-slate-400"> ({overtimeSalary(row)!.toLocaleString()})</span>}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.lateDays}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.earlyDays}</td>
-                  <td className="whitespace-nowrap px-4 py-2">{salaryCellContent(row)}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-slate-600">
+                  <td className="whitespace-nowrap px-3 py-2 text-xs">
+                    <span className="text-warning-text">{row.lateDays}L</span>
+                    {' / '}
+                    <span className="text-critical-text">{row.earlyDays}E</span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">{salaryCellContent(row)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">
                     {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
                   </td>
-                  <td className="whitespace-nowrap pl-2 pr-4 py-2 text-slate-600">{overtimeCellContent(row)}</td>
+                  <td className="whitespace-nowrap pl-2 pr-3 py-2 text-slate-600">{overtimeCellContent(row)}</td>
                   <td
-                    className={`sticky right-0 z-[1] whitespace-nowrap px-4 py-2 font-bold text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] ${rowBg}`}
+                    className={`sticky right-0 z-[1] whitespace-nowrap px-3 py-2 font-bold text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] ${rowBg}`}
                   >
                     {totalSalary(row) != null ? totalSalary(row)!.toLocaleString() : '—'}
                   </td>
@@ -621,33 +623,36 @@ export default function PayrollPage() {
             })}
             {byEmployee.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-4 py-8 text-center text-slate-400">No active employees.</td>
+                <td colSpan={10} className="px-4 py-8 text-center text-slate-400">No active employees.</td>
               </tr>
             )}
           </tbody>
           {byEmployee.length > 0 && (
             <tfoot>
               <tr className="sticky bottom-0 border-t-2 border-slate-200 bg-slate-50 text-sm font-bold text-ink">
-                <td colSpan={2} className="whitespace-nowrap px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <td colSpan={2} className="whitespace-nowrap px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Total
                 </td>
-                <td className="whitespace-nowrap px-4 py-2 text-xs">
+                <td className="whitespace-nowrap px-3 py-2 text-xs">
                   <span className="text-good-text">{totals.workedDays}P</span>
                   {' / '}
                   <span className="text-critical-text">{totals.absentDays}A</span>
                 </td>
-                <td className="whitespace-nowrap px-4 py-2">{fmtHrs(totals.totalHours)}</td>
-                <td className="whitespace-nowrap px-4 py-2">
+                <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.totalHours)}</td>
+                <td className="whitespace-nowrap px-3 py-2">
                   {fmtHrs(totals.overtimeHours)} ({totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })})
                 </td>
-                <td className="whitespace-nowrap px-4 py-2">{totals.lateDays}</td>
-                <td className="whitespace-nowrap px-4 py-2">{totals.earlyDays}</td>
-                <td className="whitespace-nowrap px-4 py-2">{totals.totalEmployeeSalary.toLocaleString()}</td>
-                <td className="whitespace-nowrap px-4 py-2">{totals.totalSalaryPayable.toLocaleString()}</td>
-                <td className="whitespace-nowrap pl-2 pr-4 py-2">
+                <td className="whitespace-nowrap px-3 py-2 text-xs">
+                  <span className="text-warning-text">{totals.lateDays}L</span>
+                  {' / '}
+                  <span className="text-critical-text">{totals.earlyDays}E</span>
+                </td>
+                <td className="whitespace-nowrap px-3 py-2">{totals.totalEmployeeSalary.toLocaleString()}</td>
+                <td className="whitespace-nowrap px-3 py-2">{totals.totalSalaryPayable.toLocaleString()}</td>
+                <td className="whitespace-nowrap pl-2 pr-3 py-2">
                   {totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </td>
-                <td className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-4 py-2 text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)]">
+                <td className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-3 py-2 text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)]">
                   {(totals.totalSalaryPayable + totals.totalOvertimeSalary).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </td>
               </tr>

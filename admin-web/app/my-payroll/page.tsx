@@ -13,7 +13,8 @@ import {
   type CalendarPeriod,
 } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { computeDayStatus, formatHoursMinutes, nepalTodayIso, resolveShift } from '@/lib/shift';
+import { formatHoursMinutes } from '@/lib/shift';
+import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '@/lib/payrollDetail';
 
 /** Decimal hours -> "Xh Ym". */
 function fmtHrs(hours: number) {
@@ -21,23 +22,18 @@ function fmtHrs(hours: number) {
 }
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
 
-/** Days in the *current* real calendar month — salary is a monthly figure,
- * so Received/Remaining prorate against this regardless of which month is
- * currently being viewed above. Matches Attendance Report/Payroll's own
- * proration on the admin side. */
-function daysInCurrentMonth() {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-}
+// No otHoursPerDay/otMultiplier/otOn controls on this page (those are an
+// admin-only setting on the Payroll page) — same defaults the admin side
+// starts with, so an employee's own "Received" figure matches what they'd
+// see on their detail page unless an admin has changed those.
+const OT_HOURS_PER_DAY = 8;
+const OT_MULTIPLIER = 1.5;
 
-type DayRow = {
-  date: string;
-  hours: number;
-  overtime: number;
-  isLate: boolean;
-  isEarly: boolean;
-  pending?: boolean;
-};
+function statusBadge(d: DayDetail) {
+  if (d.checkIn) return null;
+  if (d.status === 'Upcoming') return <Badge tone="neutral">Upcoming</Badge>;
+  return <Badge tone="critical">Absent</Badge>;
+}
 
 export default function MyPayrollPage() {
   const { system } = useCalendarSystem();
@@ -126,72 +122,29 @@ export default function MyPayrollPage() {
       .then(({ data }) => setLogs(data ?? []));
   }, [employeeId, start, end]);
 
-  const dayRows: DayRow[] = useMemo(() => {
-    if (!employee) return [];
-    const shift = resolveShift(employee, shifts);
-    const days: string[] = [];
-    const cur = new Date(start + 'T00:00:00Z');
-    const endDate = new Date(end + 'T00:00:00Z');
-    while (cur <= endDate) {
-      days.push(cur.toISOString().slice(0, 10));
-      cur.setUTCDate(cur.getUTCDate() + 1);
-    }
-
-    const today = nepalTodayIso();
-    const out: DayRow[] = [];
-    for (const day of days) {
-      // Today can still gain punches (e.g. a checkout) after its
-      // payroll_summaries row was computed — that row isn't re-run until
-      // tomorrow's nightly job, so always compute today live instead of
-      // trusting a possibly-stale summary.
-      const summary = day === today ? undefined : summaries.find(s => s.work_date === day);
-      if (summary) {
-        out.push({
-          date: day,
-          hours: Number(summary.total_hours),
-          overtime: Number(summary.overtime_hours),
-          isLate: summary.is_late,
-          isEarly: summary.is_early_departure,
-        });
-        continue;
-      }
-      const dayLogs = logs.filter(l => l.punch_time.slice(0, 10) === day).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
-      if (dayLogs.length === 0) continue;
-      const live = computeDayStatus(dayLogs, shift);
-      out.push({
-        date: day,
-        hours: live.totalMinutes / 60,
-        overtime: live.overtimeMinutes / 60,
-        isLate: live.isLate,
-        isEarly: live.isEarly,
-        pending: true,
-      });
-    }
-    return out.sort((a, b) => b.date.localeCompare(a.date));
-  }, [summaries, logs, employee, shifts, start, end]);
+  // Same shared day-by-day builder the admin Payroll employee detail page
+  // uses, so this page's figures are never a second, independently-computed
+  // version of the same numbers — both read through lib/payrollDetail.ts.
+  const dayRows: DayDetail[] = useMemo(
+    () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end) : []),
+    [employee, shifts, summaries, logs, start, end]
+  );
+  const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
 
   const totals = useMemo(() => {
     const totalHours = dayRows.reduce((s, r) => s + r.hours, 0);
     const overtimeHours = dayRows.reduce((s, r) => s + r.overtime, 0);
-    const lateDays = dayRows.filter(r => r.isLate).length;
-    const presentDays = dayRows.length;
-    // Only days that have actually happened count toward "absent" — a
-    // period running into the future (this month, viewed on the 4th)
-    // shouldn't mark the 27th "absent" before it's even arrived.
-    const today = nepalTodayIso();
-    const elapsedEnd = end < today ? end : today;
-    const elapsedDays =
-      start > elapsedEnd ? 0 : (new Date(elapsedEnd + 'T00:00:00Z').getTime() - new Date(start + 'T00:00:00Z').getTime()) / 86400000 + 1;
-    const absentDays = Math.max(0, Math.round(elapsedDays) - presentDays);
-    return { totalHours, overtimeHours, presentDays, lateDays, absentDays };
-  }, [dayRows, start, end]);
+    const lateDays = dayRows.filter(r => r.status === 'Late').length;
+    const presentDays = dayRows.filter(r => r.checkIn).length;
+    const absentDays = dayRows.filter(r => r.status === 'Absent').length;
+    const totalSalary = dayRows.reduce(
+      (s, r) => s + (dailySalaryEarning(r, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true)?.total ?? 0),
+      0
+    );
+    return { totalHours, overtimeHours, presentDays, lateDays, absentDays, totalSalary };
+  }, [dayRows, employee, daysInRange]);
 
-  const daysInMonth = daysInCurrentMonth();
-  // Pay is earned per hour actually worked, not per day shown up — matches
-  // the admin Payroll page's calculatedSalary(), assuming the same 8-hour
-  // standard day it defaults to (this page has no otHoursPerDay control).
-  const hourlyRate = employee?.salary != null ? employee.salary / (daysInMonth * 8) : null;
-  const received = hourlyRate != null ? Math.round(hourlyRate * totals.totalHours) : null;
+  const received = employee?.salary != null ? Math.round(totals.totalSalary) : null;
   const remaining = employee?.salary != null && received != null ? Math.max(0, employee.salary - received) : null;
 
   return (
@@ -268,23 +221,43 @@ export default function MyPayrollPage() {
             <p className="mt-2 text-center text-sm text-slate-400">No attendance records for this month yet.</p>
           ) : (
             <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
-              {dayRows.map(row => (
-                <div key={row.date} className="px-4 py-3">
-                  <div className="mb-1 flex items-center justify-between">
-                    <span className="text-sm font-medium text-ink">
-                      {formatAdDate(row.date, system)}
-                      {row.pending && <span className="ml-1 text-[10px] font-normal text-slate-400">(live)</span>}
-                    </span>
-                    <span className="text-sm font-semibold text-ink">{fmtHrs(row.hours)}</span>
+              {dayRows.map(row => {
+                const earning = row.checkIn
+                  ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true)
+                  : null;
+                return (
+                  <div key={row.date} className="px-4 py-3">
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className="text-sm font-medium text-ink">
+                        {formatAdDate(row.date, system)}
+                        {row.pending && <span className="ml-1 text-[10px] font-normal text-slate-400">(live)</span>}
+                      </span>
+                      {row.checkIn ? (
+                        <span className="text-sm font-semibold text-ink">{fmtHrs(row.hours)}</span>
+                      ) : (
+                        statusBadge(row)
+                      )}
+                    </div>
+                    {row.checkIn && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {row.lateMinutes > 0 && <Badge tone="warning">Late {formatHoursMinutes(row.lateMinutes)}</Badge>}
+                        {row.earlyMinutes > 0 && <Badge tone="critical">Early {formatHoursMinutes(row.earlyMinutes)}</Badge>}
+                        {row.overtime > 0 && <Badge tone="info">OT {fmtHrs(row.overtime)}</Badge>}
+                        {row.lateMinutes === 0 && row.earlyMinutes === 0 && row.overtime === 0 && <Badge tone="good">On Time</Badge>}
+                      </div>
+                    )}
+                    {earning && (
+                      <div className="mt-1.5 flex items-center justify-between text-xs">
+                        <span className="text-slate-400">
+                          Salary {Math.round(earning.base).toLocaleString()}
+                          {earning.overtime > 0 && ` + OT ${Math.round(earning.overtime).toLocaleString()}`}
+                        </span>
+                        <span className="font-semibold text-good-text">{Math.round(earning.total).toLocaleString()}</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {row.isLate && <Badge tone="warning">Late</Badge>}
-                    {row.isEarly && <Badge tone="critical">Early Out</Badge>}
-                    {row.overtime > 0 && <Badge tone="info">OT {fmtHrs(row.overtime)}</Badge>}
-                    {!row.isLate && !row.isEarly && row.overtime === 0 && <Badge tone="good">On Time</Badge>}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>

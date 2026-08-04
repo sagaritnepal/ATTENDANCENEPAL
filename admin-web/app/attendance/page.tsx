@@ -400,64 +400,57 @@ function AttendanceView() {
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Date</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">ID</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Employee</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Shift</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Check-In</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Check-Out</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Late By</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Early Out</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Total Work Hours</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Overtime</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Status</th>
-              <th className="whitespace-nowrap px-4 py-2 font-medium">Device</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Date</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">ID</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Employee</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Shift</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">In / Out</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Late / Early</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Work Hours</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Overtime</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Status</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Device</th>
             </tr>
           </thead>
           <tbody>
             {rows.map(r => (
               <tr key={r.key} className="border-b border-slate-100 last:border-0">
-                <td className="whitespace-nowrap px-4 py-2 text-slate-600">{formatAdDate(r.date, system)}</td>
-                <td className="whitespace-nowrap px-4 py-2 text-slate-600">{r.enrollId}</td>
-                <td className="whitespace-nowrap px-4 py-2 font-medium text-ink">{r.employeeName}</td>
-                <td className="px-4 py-2 whitespace-nowrap text-slate-600">{r.shiftLabel}</td>
-                <td className="whitespace-nowrap px-4 py-2 text-slate-600">
+                <td className="whitespace-nowrap px-3 py-2 text-slate-600">{formatAdDate(r.date, system)}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-slate-600">{r.enrollId}</td>
+                <td className="whitespace-nowrap px-3 py-2 font-medium text-ink">{r.employeeName}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-slate-600">{r.shiftLabel}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-slate-600">
                   {r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2 text-slate-600">
+                  {' – '}
                   {r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
                 </td>
-                <td className="whitespace-nowrap px-4 py-2">
-                  {r.lateMinutes > 0 ? (
-                    <span className="font-medium text-warning-text">{formatHoursMinutes(r.lateMinutes)}</span>
-                  ) : (
-                    <span className="text-slate-400">—</span>
+                <td className="whitespace-nowrap px-3 py-2">
+                  {r.lateMinutes === 0 && r.earlyMinutes === 0 && <span className="text-slate-400">—</span>}
+                  {r.lateMinutes > 0 && (
+                    <span className="font-medium text-warning-text">L {formatHoursMinutes(r.lateMinutes)}</span>
+                  )}
+                  {r.lateMinutes > 0 && r.earlyMinutes > 0 && ' · '}
+                  {r.earlyMinutes > 0 && (
+                    <span className="font-medium text-critical-text">E {formatHoursMinutes(r.earlyMinutes)}</span>
                   )}
                 </td>
-                <td className="whitespace-nowrap px-4 py-2">
-                  {r.earlyMinutes > 0 ? (
-                    <span className="font-medium text-warning-text">{formatHoursMinutes(r.earlyMinutes)}</span>
-                  ) : (
-                    <span className="text-slate-400">—</span>
-                  )}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2 text-slate-600">
+                <td className="whitespace-nowrap px-3 py-2 text-slate-600">
                   {fmtHrs(r.hours)}
                   {r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
                 </td>
-                <td className="whitespace-nowrap px-4 py-2 text-slate-600">
+                <td className="whitespace-nowrap px-3 py-2 text-slate-600">
                   {fmtHrs(r.overtime)}
                   {r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
                 </td>
-                <td className="whitespace-nowrap px-4 py-2">
+                <td className="whitespace-nowrap px-3 py-2">
                   {statusBadge(r)}
                 </td>
-                <td className="whitespace-nowrap px-4 py-2 text-slate-600">{r.device}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-slate-600">{r.device}</td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={12} className="px-5 py-8 text-center text-slate-400">
+                <td colSpan={10} className="px-5 py-8 text-center text-slate-400">
                   No records in this range.
                 </td>
               </tr>
@@ -466,18 +459,19 @@ function AttendanceView() {
           {rows.length > 0 && (
             <tfoot>
               <tr className="sticky bottom-0 border-t-2 border-slate-200 bg-slate-50 text-sm font-bold text-ink">
-                <td colSpan={6} className="whitespace-nowrap px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <td colSpan={4} className="whitespace-nowrap px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Total
                 </td>
-                <td className="whitespace-nowrap px-4 py-2 text-warning-text">
-                  {totals.lateMinutes > 0 ? formatHoursMinutes(totals.lateMinutes) : '—'}
+                <td />
+                <td className="whitespace-nowrap px-3 py-2 text-xs">
+                  {totals.lateMinutes > 0 && <span className="text-warning-text">L {formatHoursMinutes(totals.lateMinutes)}</span>}
+                  {totals.lateMinutes > 0 && totals.earlyMinutes > 0 && ' · '}
+                  {totals.earlyMinutes > 0 && <span className="text-critical-text">E {formatHoursMinutes(totals.earlyMinutes)}</span>}
+                  {totals.lateMinutes === 0 && totals.earlyMinutes === 0 && '—'}
                 </td>
-                <td className="whitespace-nowrap px-4 py-2 text-warning-text">
-                  {totals.earlyMinutes > 0 ? formatHoursMinutes(totals.earlyMinutes) : '—'}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2">{fmtHrs(totals.workHours)}</td>
-                <td className="whitespace-nowrap px-4 py-2">{fmtHrs(totals.overtimeHours)}</td>
-                <td className="whitespace-nowrap px-4 py-2 text-xs font-semibold">
+                <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.workHours)}</td>
+                <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.overtimeHours)}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-xs font-semibold">
                   <span className="text-good-text">{totals.presentDays} present</span>
                   {' · '}
                   <span className="text-critical-text">{totals.absentDays} absent</span>
