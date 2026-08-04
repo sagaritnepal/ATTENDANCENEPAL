@@ -451,7 +451,7 @@ export default function PayrollPage() {
 
       <div className="mt-6 rounded-xl border border-slate-200 bg-white pb-2 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-4 sm:px-6 sm:pt-6">
-          <h2 className="text-base font-semibold text-ink">This Month Salary Report</h2>
+          <h2 className="text-base font-bold text-ink">This Month Salary Report</h2>
           <div className="flex flex-wrap items-center gap-3">
             <select
               value={period.key}
@@ -459,7 +459,7 @@ export default function PayrollPage() {
                 const found = periodOptions.find(o => o.key === e.target.value);
                 if (found) setPeriod(found);
               }}
-              className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-600"
+              className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm font-bold text-ink"
             >
               {periodOptions.map(o => (
                 <option key={o.key} value={o.key}>
@@ -467,10 +467,10 @@ export default function PayrollPage() {
                 </option>
               ))}
             </select>
-            <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-ink shadow-sm">
+            <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-400 shadow-sm">
               <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
               {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
-              <span className="font-medium text-slate-400">({daysInRange}d)</span>
+              <span className="text-slate-400">({daysInRange}d)</span>
             </div>
           </div>
         </div>
