@@ -9,13 +9,13 @@ type NavItem = { href: string; label: string; icon: (props: IconProps) => JSX.El
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: HomeIcon, adminOnly: false },
+  { href: '/employees', label: 'Employees', icon: UsersIcon, adminOnly: false },
   {
-    href: '/employees',
-    label: 'Employees',
-    icon: UsersIcon,
+    href: '/attendance',
+    label: 'Attendance',
+    icon: ClockIcon,
     adminOnly: false,
     children: [
-      { href: '/attendance', label: 'Attendance', icon: ClockIcon, adminOnly: false },
       { href: '/leave', label: 'Leave', icon: LeaveIcon, adminOnly: false },
       { href: '/corrections', label: 'Corrections', icon: CorrectionIcon, adminOnly: false },
       { href: '/calendar', label: 'Calendar', icon: CalendarViewIcon, adminOnly: false },
