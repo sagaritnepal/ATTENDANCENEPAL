@@ -20,6 +20,11 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Decimal hours (e.g. d.hours, d.overtime) -> "Xh Ym". */
+function fmtHrs(hours: number) {
+  return formatHoursMinutes(Math.round(hours * 60));
+}
+
 function parseAdKey(value: string): CalendarAnchor | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!m) return null;
@@ -155,10 +160,13 @@ function PayrollEmployeeDetailView() {
                 <p className="text-xs text-slate-500">ID {employee.fingerprint_id ?? '—'}</p>
               </div>
             </div>
-            <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-400 shadow-sm">
-              <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
-              {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
-              <span className="text-slate-400">({daysInRange}d)</span>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="rounded-lg border border-accent/30 bg-white px-3 py-2 text-sm font-bold text-ink shadow-sm">{monthLabel}</div>
+              <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-400 shadow-sm">
+                <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
+                {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
+                <span className="text-slate-400">({daysInRange}d)</span>
+              </div>
             </div>
           </div>
 
@@ -185,9 +193,9 @@ function PayrollEmployeeDetailView() {
                         {d.checkIn ? fmtTime(d.checkIn) : '–:–'} – {d.checkOut ? fmtTime(d.checkOut) : '–:–'}
                       </span>
                       <span>
-                        {d.hours.toFixed(1)}h{d.pending && ' (live)'}
+                        {fmtHrs(d.hours)}{d.pending && ' (live)'}
                       </span>
-                      {d.overtime > 0 && <span className="font-medium text-info-text">OT {d.overtime.toFixed(1)}h</span>}
+                      {d.overtime > 0 && <span className="font-medium text-info-text">OT {fmtHrs(d.overtime)}</span>}
                       {d.lateMinutes > 0 && <span className="font-medium text-warning-text">Late {formatHoursMinutes(d.lateMinutes)}</span>}
                       {d.earlyMinutes > 0 && <span className="font-medium text-critical-text">Early {formatHoursMinutes(d.earlyMinutes)}</span>}
                     </div>
@@ -236,9 +244,9 @@ function PayrollEmployeeDetailView() {
                         <td className="px-4 py-2 text-slate-600">{d.checkIn ? fmtTime(d.checkIn) : '–:–'}</td>
                         <td className="px-4 py-2 text-slate-600">{d.checkOut ? fmtTime(d.checkOut) : '–:–'}</td>
                         <td className="px-4 py-2 text-slate-600">
-                          {d.hours.toFixed(1)} hrs{d.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
+                          {fmtHrs(d.hours)}{d.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
                         </td>
-                        <td className="px-4 py-2 text-slate-600">{d.overtime.toFixed(1)} hrs</td>
+                        <td className="px-4 py-2 text-slate-600">{fmtHrs(d.overtime)}</td>
                         <td className="px-4 py-2">
                           {d.lateMinutes > 0 ? (
                             <span className="font-medium text-warning-text">{formatHoursMinutes(d.lateMinutes)}</span>
@@ -283,8 +291,8 @@ function PayrollEmployeeDetailView() {
                       <td colSpan={3} className="whitespace-nowrap px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
                         Total
                       </td>
-                      <td className="whitespace-nowrap px-4 py-2">{dayTotals.hours.toFixed(1)} hrs</td>
-                      <td className="whitespace-nowrap px-4 py-2">{dayTotals.overtime.toFixed(1)} hrs</td>
+                      <td className="whitespace-nowrap px-4 py-2">{fmtHrs(dayTotals.hours)}</td>
+                      <td className="whitespace-nowrap px-4 py-2">{fmtHrs(dayTotals.overtime)}</td>
                       <td className="whitespace-nowrap px-4 py-2">
                         {dayTotals.lateMinutes > 0 ? formatHoursMinutes(dayTotals.lateMinutes) : '—'}
                       </td>

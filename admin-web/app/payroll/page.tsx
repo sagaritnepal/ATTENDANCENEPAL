@@ -13,8 +13,13 @@ import {
   type CalendarPeriod,
 } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { computeDayStatus, resolveShift } from '@/lib/shift';
+import { computeDayStatus, formatHoursMinutes, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
+
+/** Decimal hours (e.g. row.hours, row.overtime) -> "Xh Ym". */
+function fmtHrs(hours: number) {
+  return formatHoursMinutes(Math.round(hours * 60));
+}
 
 export default function PayrollPage() {
   const { system } = useCalendarSystem();
@@ -406,12 +411,12 @@ export default function PayrollPage() {
         </div>
         <div className="rounded-xl bg-purple-50 p-3 shadow-sm ring-1 ring-inset ring-purple-200">
           <span className="text-xs font-medium text-purple-700/80">Overtime Tracked</span>
-          <div className="mt-1 text-base font-bold text-purple-700">{totals.overtimeHours.toFixed(1)} hrs</div>
+          <div className="mt-1 text-base font-bold text-purple-700">{fmtHrs(totals.overtimeHours)}</div>
           <div className="mt-0.5 text-[11px] text-purple-700/70">This period</div>
         </div>
         <div className="rounded-xl bg-accent/10 p-3 shadow-sm ring-1 ring-inset ring-accent/10">
           <span className="text-xs font-medium text-accent/80">Total Payable Hours</span>
-          <div className="mt-1 text-base font-bold text-accent">{totals.totalHours.toFixed(1)} hrs</div>
+          <div className="mt-1 text-base font-bold text-accent">{fmtHrs(totals.totalHours)}</div>
           <div className="mt-0.5 text-[11px] text-accent/70">Across {scopedEmployees.length} staff</div>
         </div>
         <div
@@ -458,7 +463,7 @@ export default function PayrollPage() {
                     {employeeName(s.employee_id)}
                   </Link>
                   <div className="text-xs text-slate-500">
-                    {formatAdDate(s.work_date, system)} · {Number(s.overtime_hours).toFixed(1)} hrs
+                    {formatAdDate(s.work_date, system)} · {fmtHrs(Number(s.overtime_hours))}
                   </div>
                 </div>
                 <button
@@ -489,7 +494,7 @@ export default function PayrollPage() {
                       </Link>
                     </td>
                     <td className="py-2.5 text-slate-600">{formatAdDate(s.work_date, system)}</td>
-                    <td className="py-2.5 text-slate-600">{Number(s.overtime_hours).toFixed(1)} hrs</td>
+                    <td className="py-2.5 text-slate-600">{fmtHrs(Number(s.overtime_hours))}</td>
                     <td className="py-2.5">
                       <button
                         onClick={() => approveOvertime(s.id)}
@@ -581,12 +586,12 @@ export default function PayrollPage() {
               <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 text-sm">
                 <div>
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Total Hours</dt>
-                  <dd className="text-ink">{row.hours.toFixed(1)} hrs</dd>
+                  <dd className="text-ink">{fmtHrs(row.hours)}</dd>
                 </div>
                 <div>
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Overtime</dt>
                   <dd className="text-ink">
-                    {row.overtime.toFixed(1)} hrs
+                    {fmtHrs(row.overtime)}
                     {overtimeSalary(row) != null && <span className="text-slate-400"> ({overtimeSalary(row)!.toLocaleString()})</span>}
                   </dd>
                 </div>
@@ -640,9 +645,9 @@ export default function PayrollPage() {
                     </Link>
                   </td>
                   <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.days}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.hours.toFixed(1)} hrs</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-slate-600">{fmtHrs(row.hours)}</td>
                   <td className="whitespace-nowrap px-4 py-2 text-slate-600">
-                    {row.overtime.toFixed(1)} hrs
+                    {fmtHrs(row.overtime)}
                     {overtimeSalary(row) != null && <span className="text-slate-400"> ({overtimeSalary(row)!.toLocaleString()})</span>}
                   </td>
                   <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.lateDays}</td>
@@ -673,9 +678,9 @@ export default function PayrollPage() {
                   Total
                 </td>
                 <td className="whitespace-nowrap px-4 py-2">{totals.workedDays}</td>
-                <td className="whitespace-nowrap px-4 py-2">{totals.totalHours.toFixed(1)} hrs</td>
+                <td className="whitespace-nowrap px-4 py-2">{fmtHrs(totals.totalHours)}</td>
                 <td className="whitespace-nowrap px-4 py-2">
-                  {totals.overtimeHours.toFixed(1)} hrs ({totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })})
+                  {fmtHrs(totals.overtimeHours)} ({totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })})
                 </td>
                 <td className="whitespace-nowrap px-4 py-2">{totals.lateDays}</td>
                 <td className="whitespace-nowrap px-4 py-2">{totals.earlyDays}</td>
