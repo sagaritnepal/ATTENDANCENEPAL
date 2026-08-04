@@ -585,7 +585,10 @@ export default function PayrollPage() {
                 </div>
                 <div>
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Overtime</dt>
-                  <dd className="text-ink">{row.overtime.toFixed(1)} hrs</dd>
+                  <dd className="text-ink">
+                    {row.overtime.toFixed(1)} hrs
+                    {overtimeSalary(row) != null && <span className="text-slate-400"> ({overtimeSalary(row)!.toLocaleString()})</span>}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Salary</dt>
@@ -638,7 +641,10 @@ export default function PayrollPage() {
                   </td>
                   <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.days}</td>
                   <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.hours.toFixed(1)} hrs</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.overtime.toFixed(1)} hrs</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-slate-600">
+                    {row.overtime.toFixed(1)} hrs
+                    {overtimeSalary(row) != null && <span className="text-slate-400"> ({overtimeSalary(row)!.toLocaleString()})</span>}
+                  </td>
                   <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.lateDays}</td>
                   <td className="whitespace-nowrap px-4 py-2 text-slate-600">{row.earlyDays}</td>
                   <td className="whitespace-nowrap px-4 py-2">{salaryCellContent(row)}</td>
@@ -668,7 +674,9 @@ export default function PayrollPage() {
                 </td>
                 <td className="whitespace-nowrap px-4 py-2">{totals.workedDays}</td>
                 <td className="whitespace-nowrap px-4 py-2">{totals.totalHours.toFixed(1)} hrs</td>
-                <td className="whitespace-nowrap px-4 py-2">{totals.overtimeHours.toFixed(1)} hrs</td>
+                <td className="whitespace-nowrap px-4 py-2">
+                  {totals.overtimeHours.toFixed(1)} hrs ({totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })})
+                </td>
                 <td className="whitespace-nowrap px-4 py-2">{totals.lateDays}</td>
                 <td className="whitespace-nowrap px-4 py-2">{totals.earlyDays}</td>
                 <td className="whitespace-nowrap px-4 py-2">{totals.totalEmployeeSalary.toLocaleString()}</td>
