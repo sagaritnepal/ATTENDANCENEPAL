@@ -204,6 +204,7 @@ export default function PayrollPage() {
     const lateDays = byEmployee.reduce((s, r) => s + r.lateDays, 0);
     const earlyDays = byEmployee.reduce((s, r) => s + r.earlyDays, 0);
     const possibleDays = scopedEmployees.length * daysInRange;
+    const absentDays = Math.max(0, possibleDays - workedDays);
     const attendancePct = possibleDays ? Math.round((workedDays / possibleDays) * 1000) / 10 : 0;
     const totalEmployeeSalary = byEmployee.reduce((s, r) => s + (r.salary ?? 0), 0);
     const totalSalaryPayable = byEmployee.reduce((s, r) => s + (calculatedSalary(r) ?? 0), 0);
@@ -216,6 +217,7 @@ export default function PayrollPage() {
       totalHours,
       overtimeHours,
       workedDays,
+      absentDays,
       lateDays,
       earlyDays,
       attendancePct,
@@ -616,6 +618,13 @@ export default function PayrollPage() {
             </div>
           ))}
           {byEmployee.length === 0 && <p className="p-8 text-center text-sm text-slate-400">No active employees.</p>}
+          {byEmployee.length > 0 && (
+            <div className="flex items-center justify-center gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold">
+              <span className="text-good-text">{totals.workedDays} present days</span>
+              <span className="text-slate-300">·</span>
+              <span className="text-critical-text">{totals.absentDays} absent days</span>
+            </div>
+          )}
         </div>
 
         <div className="mt-4 hidden max-h-[65vh] overflow-auto md:block">
@@ -682,7 +691,11 @@ export default function PayrollPage() {
                 <td colSpan={2} className="whitespace-nowrap px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Total
                 </td>
-                <td className="whitespace-nowrap px-4 py-2">{totals.workedDays}</td>
+                <td className="whitespace-nowrap px-4 py-2 text-xs">
+                  <span className="text-good-text">{totals.workedDays}P</span>
+                  {' / '}
+                  <span className="text-critical-text">{totals.absentDays}A</span>
+                </td>
                 <td className="whitespace-nowrap px-4 py-2">{fmtHrs(totals.totalHours)}</td>
                 <td className="whitespace-nowrap px-4 py-2">
                   {fmtHrs(totals.overtimeHours)} ({totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })})

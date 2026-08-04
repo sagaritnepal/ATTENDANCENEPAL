@@ -193,7 +193,9 @@ function AttendanceView() {
     const overtimeHours = rows.reduce((sum, r) => sum + r.overtime, 0);
     const lateMinutes = rows.reduce((sum, r) => sum + r.lateMinutes, 0);
     const earlyMinutes = rows.reduce((sum, r) => sum + r.earlyMinutes, 0);
-    return { workHours, overtimeHours, lateMinutes, earlyMinutes };
+    const presentDays = rows.filter(r => r.checkIn).length;
+    const absentDays = rows.filter(r => !r.checkIn).length;
+    return { workHours, overtimeHours, lateMinutes, earlyMinutes, presentDays, absentDays };
   }, [rows]);
 
   function exportCsv() {
@@ -376,6 +378,13 @@ function AttendanceView() {
             </div>
           ))}
           {rows.length === 0 && <p className="p-8 text-center text-sm text-slate-400">No records in this range.</p>}
+          {rows.length > 0 && (
+            <div className="flex items-center justify-center gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold">
+              <span className="text-good-text">{totals.presentDays} present</span>
+              <span className="text-slate-300">·</span>
+              <span className="text-critical-text">{totals.absentDays} absent</span>
+            </div>
+          )}
         </div>
 
         <div className="hidden max-h-[65vh] overflow-auto rounded-xl md:block">
@@ -459,7 +468,12 @@ function AttendanceView() {
                 </td>
                 <td className="whitespace-nowrap px-4 py-2">{fmtHrs(totals.workHours)}</td>
                 <td className="whitespace-nowrap px-4 py-2">{fmtHrs(totals.overtimeHours)}</td>
-                <td colSpan={2} />
+                <td className="whitespace-nowrap px-4 py-2 text-xs font-semibold">
+                  <span className="text-good-text">{totals.presentDays} present</span>
+                  {' · '}
+                  <span className="text-critical-text">{totals.absentDays} absent</span>
+                </td>
+                <td />
               </tr>
             </tfoot>
           )}

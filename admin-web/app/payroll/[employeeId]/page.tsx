@@ -111,11 +111,15 @@ function PayrollEmployeeDetailView() {
     let mySalary = 0;
     let otSalary = 0;
     let totalSalary = 0;
+    let presentDays = 0;
+    let absentDays = 0;
     for (const d of dayRows) {
       hours += d.hours;
       overtime += d.overtime;
       lateMinutes += d.lateMinutes;
       earlyMinutes += d.earlyMinutes;
+      if (d.checkIn) presentDays += 1;
+      else absentDays += 1;
       const earning = dailySalaryEarning(d, employee?.salary ?? null, daysInRange, otHoursPerDay, otMultiplier, otOn);
       if (earning) {
         mySalary += earning.base;
@@ -123,7 +127,7 @@ function PayrollEmployeeDetailView() {
         totalSalary += earning.total;
       }
     }
-    return { hours, overtime, lateMinutes, earlyMinutes, mySalary, otSalary, totalSalary };
+    return { hours, overtime, lateMinutes, earlyMinutes, mySalary, otSalary, totalSalary, presentDays, absentDays };
   }, [dayRows, employee, daysInRange, otHoursPerDay, otMultiplier, otOn]);
 
 
@@ -212,6 +216,13 @@ function PayrollEmployeeDetailView() {
                 );
               })}
               {dayRows.length === 0 && <p className="py-8 text-center text-sm text-slate-400">No days in this period.</p>}
+              {dayRows.length > 0 && (
+                <div className="-mx-4 mt-1 flex items-center justify-center gap-3 border-t border-slate-100 bg-slate-50 px-4 py-3 text-xs font-semibold">
+                  <span className="text-good-text">{dayTotals.presentDays} present</span>
+                  <span className="text-slate-300">·</span>
+                  <span className="text-critical-text">{dayTotals.absentDays} absent</span>
+                </div>
+              )}
             </div>
 
             <div className="mt-4 hidden overflow-x-auto pb-2 md:block">
@@ -299,7 +310,11 @@ function PayrollEmployeeDetailView() {
                       <td className="whitespace-nowrap px-4 py-2">
                         {dayTotals.earlyMinutes > 0 ? formatHoursMinutes(dayTotals.earlyMinutes) : '—'}
                       </td>
-                      <td />
+                      <td className="whitespace-nowrap px-4 py-2 text-xs font-semibold">
+                        <span className="text-good-text">{dayTotals.presentDays}P</span>
+                        {' / '}
+                        <span className="text-critical-text">{dayTotals.absentDays}A</span>
+                      </td>
                       <td />
                       <td className="whitespace-nowrap px-4 py-2">{Math.round(dayTotals.mySalary).toLocaleString()}</td>
                       <td className="whitespace-nowrap px-4 py-2">{Math.round(dayTotals.otSalary).toLocaleString()}</td>

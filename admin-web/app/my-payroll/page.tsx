@@ -174,8 +174,17 @@ export default function MyPayrollPage() {
     const totalHours = dayRows.reduce((s, r) => s + r.hours, 0);
     const overtimeHours = dayRows.reduce((s, r) => s + r.overtime, 0);
     const lateDays = dayRows.filter(r => r.isLate).length;
-    return { totalHours, overtimeHours, presentDays: dayRows.length, lateDays };
-  }, [dayRows]);
+    const presentDays = dayRows.length;
+    // Only days that have actually happened count toward "absent" — a
+    // period running into the future (this month, viewed on the 4th)
+    // shouldn't mark the 27th "absent" before it's even arrived.
+    const today = nepalTodayIso();
+    const elapsedEnd = end < today ? end : today;
+    const elapsedDays =
+      start > elapsedEnd ? 0 : (new Date(elapsedEnd + 'T00:00:00Z').getTime() - new Date(start + 'T00:00:00Z').getTime()) / 86400000 + 1;
+    const absentDays = Math.max(0, Math.round(elapsedDays) - presentDays);
+    return { totalHours, overtimeHours, presentDays, lateDays, absentDays };
+  }, [dayRows, start, end]);
 
   const daysInMonth = daysInCurrentMonth();
   // Pay is earned per hour actually worked, not per day shown up — matches
@@ -243,6 +252,10 @@ export default function MyPayrollPage() {
             <div className="rounded-xl bg-good-bg p-4">
               <div className="text-xs font-medium text-good-text">Present Days</div>
               <div className="mt-1 text-xl font-bold text-ink">{totals.presentDays}</div>
+            </div>
+            <div className="rounded-xl bg-critical-bg p-4">
+              <div className="text-xs font-medium text-critical-text">Absent Days</div>
+              <div className="mt-1 text-xl font-bold text-ink">{totals.absentDays}</div>
             </div>
             <div className="rounded-xl bg-warning-bg p-4">
               <div className="text-xs font-medium text-warning-text">Late Days</div>
