@@ -126,6 +126,15 @@ export default function EmployeesPage() {
 
   const [loginEmailByEmployee, setLoginEmailByEmployee] = useState<Record<string, string>>({});
 
+  // Permanently deleting an employee (not just the normal "Remove", which
+  // is deliberately blocked once real history exists) needs its own,
+  // heavier confirmation — typing the name back, not a single OK click —
+  // since it erases attendance/payroll/task/leave history with no undo.
+  const [forceDeleteEmployee, setForceDeleteEmployee] = useState<Employee | null>(null);
+  const [forceDeleteConfirmText, setForceDeleteConfirmText] = useState('');
+  const [forceDeleting, setForceDeleting] = useState(false);
+  const [forceDeleteError, setForceDeleteError] = useState<string | null>(null);
+
   function reload() {
     supabase.from('employees').select('*').order('created_at', { ascending: false }).then(({ data }) => setEmployees(data ?? []));
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
@@ -321,7 +330,8 @@ export default function EmployeesPage() {
         alert(
           'Could not remove: this employee already has attendance, tasks, shifts, leave, or other records tied to them, ' +
             'so deleting would break that history. Use "Mark Resigned" instead — it keeps their history but removes them ' +
-            'from active views.'
+            'from active views. If you specifically want their history erased too, mark them resigned first, then use ' +
+            '"Permanently Delete" under the Resigned Employees filter.'
         );
       } else {
         alert(`Could not remove: ${error.message}`);
@@ -338,6 +348,26 @@ export default function EmployeesPage() {
       .update({ status: 'inactive', resigned_at: new Date().toISOString().slice(0, 10) })
       .eq('id', emp.id);
     if (error) alert(`Could not update: ${error.message}`);
+    reload();
+  }
+
+  function openForceDelete(emp: Employee) {
+    setForceDeleteEmployee(emp);
+    setForceDeleteConfirmText('');
+    setForceDeleteError(null);
+  }
+
+  async function handleForceDelete() {
+    if (!forceDeleteEmployee) return;
+    setForceDeleting(true);
+    setForceDeleteError(null);
+    const { error } = await supabase.rpc('admin_force_delete_employee', { p_employee_id: forceDeleteEmployee.id });
+    setForceDeleting(false);
+    if (error) {
+      setForceDeleteError(error.message);
+      return;
+    }
+    setForceDeleteEmployee(null);
     reload();
   }
 
@@ -778,6 +808,14 @@ export default function EmployeesPage() {
                     />
                   )}
                   <ActionTile icon={<TrashIcon className="h-4 w-4" />} label="Remove" tone="critical" onClick={() => handleDelete(emp.id)} />
+                  {emp.status !== 'active' && (
+                    <ActionTile
+                      icon={<TrashIcon className="h-4 w-4" />}
+                      label="Permanently Delete"
+                      tone="critical"
+                      onClick={() => openForceDelete(emp)}
+                    />
+                  )}
                 </div>
               </div>
             );
@@ -960,6 +998,15 @@ export default function EmployeesPage() {
                           tone="critical"
                           onClick={() => handleDelete(emp.id)}
                         />
+                        {emp.status !== 'active' && (
+                          <ActionTile
+                            icon={<TrashIcon className="h-3.5 w-3.5" />}
+                            label="Delete forever"
+                            title="Permanently delete this employee and all their history"
+                            tone="critical"
+                            onClick={() => openForceDelete(emp)}
+                          />
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1255,6 +1302,52 @@ export default function EmployeesPage() {
           </div>
         </div>
       )}
+
+      {forceDeleteEmployee && (
+        <div
+          className="fixed inset-0 z-10 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setForceDeleteEmployee(null)}
+        >
+          <div className="w-full max-w-md rounded-xl border-2 border-critical/30 bg-white p-6 shadow-lg" onClick={e => e.stopPropagation()}>
+            <div className="mb-3 flex items-center gap-2">
+              <AlertIcon className="h-5 w-5 shrink-0 text-critical" />
+              <h3 className="text-lg font-semibold text-ink">Permanently delete {forceDeleteEmployee.name}?</h3>
+            </div>
+            <p className="mb-4 text-sm text-slate-600">
+              This erases their attendance logs, payroll history, tasks, leave requests, corrections, and CV entries —
+              everything, not just their profile. <span className="font-semibold text-critical">There is no undo.</span>{' '}
+              Their sign-in account (if any) is kept but unlinked, not deleted.
+            </p>
+            <label className="mb-1 block text-xs font-medium text-slate-600">
+              Type <span className="font-mono font-semibold text-ink">{forceDeleteEmployee.name}</span> to confirm
+            </label>
+            <input
+              autoFocus
+              value={forceDeleteConfirmText}
+              onChange={e => setForceDeleteConfirmText(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-critical/30"
+            />
+            {forceDeleteError && <p className="mt-3 text-sm text-critical">{forceDeleteError}</p>}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setForceDeleteEmployee(null)}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleForceDelete}
+                disabled={forceDeleting || forceDeleteConfirmText !== forceDeleteEmployee.name}
+                className="rounded-lg bg-critical px-4 py-2 text-sm font-semibold text-white hover:bg-critical/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {forceDeleting ? 'Deleting…' : 'Permanently delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }
@@ -1424,6 +1517,14 @@ function TrashIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" />
+    </svg>
+  );
+}
+
+function AlertIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
     </svg>
   );
 }
