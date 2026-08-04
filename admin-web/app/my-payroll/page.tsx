@@ -13,7 +13,12 @@ import {
   type CalendarPeriod,
 } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { computeDayStatus, resolveShift } from '@/lib/shift';
+import { computeDayStatus, formatHoursMinutes, resolveShift } from '@/lib/shift';
+
+/** Decimal hours -> "Xh Ym". */
+function fmtHrs(hours: number) {
+  return formatHoursMinutes(Math.round(hours * 60));
+}
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
 
 /** Days in the *current* real calendar month — salary is a monthly figure,
@@ -224,11 +229,11 @@ export default function MyPayrollPage() {
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-xl bg-good-bg p-4">
               <div className="text-xs font-medium text-good-text">Total Hours</div>
-              <div className="mt-1 text-xl font-bold text-ink">{totals.totalHours.toFixed(1)} hrs</div>
+              <div className="mt-1 text-xl font-bold text-ink">{fmtHrs(totals.totalHours)}</div>
             </div>
             <div className="rounded-xl bg-info-bg p-4">
               <div className="text-xs font-medium text-info-text">Overtime</div>
-              <div className="mt-1 text-xl font-bold text-ink">{totals.overtimeHours.toFixed(1)} hrs</div>
+              <div className="mt-1 text-xl font-bold text-ink">{fmtHrs(totals.overtimeHours)}</div>
             </div>
             <div className="rounded-xl bg-good-bg p-4">
               <div className="text-xs font-medium text-good-text">Present Days</div>
@@ -252,12 +257,12 @@ export default function MyPayrollPage() {
                       {formatAdDate(row.date, system)}
                       {row.pending && <span className="ml-1 text-[10px] font-normal text-slate-400">(live)</span>}
                     </span>
-                    <span className="text-sm font-semibold text-ink">{row.hours.toFixed(1)} hrs</span>
+                    <span className="text-sm font-semibold text-ink">{fmtHrs(row.hours)}</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {row.isLate && <Badge tone="warning">Late</Badge>}
                     {row.isEarly && <Badge tone="critical">Early Out</Badge>}
-                    {row.overtime > 0 && <Badge tone="info">OT {row.overtime.toFixed(1)}h</Badge>}
+                    {row.overtime > 0 && <Badge tone="info">OT {fmtHrs(row.overtime)}</Badge>}
                     {!row.isLate && !row.isEarly && row.overtime === 0 && <Badge tone="good">On Time</Badge>}
                   </div>
                 </div>

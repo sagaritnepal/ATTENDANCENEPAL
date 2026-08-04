@@ -32,6 +32,11 @@ type Row = {
   pending?: boolean;
 };
 
+/** Decimal hours -> "Xh Ym". */
+function fmtHrs(hours: number) {
+  return formatHoursMinutes(Math.round(hours * 60));
+}
+
 function isoDaysAgo(n: number) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - n);
@@ -350,13 +355,13 @@ function AttendanceView() {
                 <div>
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Work Hours</dt>
                   <dd className="text-ink">
-                    {r.hours.toFixed(1)} hrs{r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
+                    {fmtHrs(r.hours)}{r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
                   </dd>
                 </div>
                 <div>
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Overtime</dt>
                   <dd className="text-ink">
-                    {r.overtime.toFixed(1)} hr{r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
+                    {fmtHrs(r.overtime)}{r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
                   </dd>
                 </div>
               </dl>
@@ -412,11 +417,11 @@ function AttendanceView() {
                   )}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2 text-slate-600">
-                  {r.hours.toFixed(1)} hrs
+                  {fmtHrs(r.hours)}
                   {r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2 text-slate-600">
-                  {r.overtime.toFixed(1)} hr
+                  {fmtHrs(r.overtime)}
                   {r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2">
@@ -445,8 +450,8 @@ function AttendanceView() {
                 <td className="whitespace-nowrap px-4 py-2 text-warning-text">
                   {totals.earlyMinutes > 0 ? formatHoursMinutes(totals.earlyMinutes) : '—'}
                 </td>
-                <td className="whitespace-nowrap px-4 py-2">{totals.workHours.toFixed(1)} hrs</td>
-                <td className="whitespace-nowrap px-4 py-2">{totals.overtimeHours.toFixed(1)} hrs</td>
+                <td className="whitespace-nowrap px-4 py-2">{fmtHrs(totals.workHours)}</td>
+                <td className="whitespace-nowrap px-4 py-2">{fmtHrs(totals.overtimeHours)}</td>
                 <td colSpan={2} />
               </tr>
             </tfoot>
