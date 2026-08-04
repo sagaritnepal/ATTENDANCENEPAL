@@ -8,7 +8,7 @@ import Badge from '@/components/Badge';
 import DateRangePicker from '@/components/DateRangePicker';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { computeDayStatus, formatHoursMinutes, resolveShift } from '@/lib/shift';
+import { computeDayStatus, formatHoursMinutes, nepalTodayIso, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Device, Employee, PayrollSummary, Shift } from '@/lib/types';
 
 type Row = {
@@ -101,10 +101,17 @@ function AttendanceView() {
       cur.setUTCDate(cur.getUTCDate() + 1);
     }
 
+    const today = nepalTodayIso();
     const out: Row[] = [];
     for (const day of days) {
       for (const emp of scopedEmployees) {
-        const summary = summaries.find(s => s.employee_id === emp.id && s.work_date === day);
+        // Today's own row can still gain punches (e.g. a checkout) after a
+        // payroll_summaries row for it was already computed — that row is
+        // never re-run until tomorrow's nightly job, so trusting it here
+        // would freeze today's attendance at whatever it looked like the
+        // moment it was last computed. Always compute today live instead;
+        // past days' summaries are final and safe to trust.
+        const summary = day === today ? undefined : summaries.find(s => s.employee_id === emp.id && s.work_date === day);
         const dayLogs = logs
           .filter(l => l.employee_id === emp.id && l.punch_time.slice(0, 10) === day)
           .sort((a, b) => a.punch_time.localeCompare(b.punch_time));

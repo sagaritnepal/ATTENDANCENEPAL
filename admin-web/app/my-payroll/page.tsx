@@ -13,7 +13,7 @@ import {
   type CalendarPeriod,
 } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { computeDayStatus, formatHoursMinutes, resolveShift } from '@/lib/shift';
+import { computeDayStatus, formatHoursMinutes, nepalTodayIso, resolveShift } from '@/lib/shift';
 
 /** Decimal hours -> "Xh Ym". */
 function fmtHrs(hours: number) {
@@ -137,9 +137,14 @@ export default function MyPayrollPage() {
       cur.setUTCDate(cur.getUTCDate() + 1);
     }
 
+    const today = nepalTodayIso();
     const out: DayRow[] = [];
     for (const day of days) {
-      const summary = summaries.find(s => s.work_date === day);
+      // Today can still gain punches (e.g. a checkout) after its
+      // payroll_summaries row was computed — that row isn't re-run until
+      // tomorrow's nightly job, so always compute today live instead of
+      // trusting a possibly-stale summary.
+      const summary = day === today ? undefined : summaries.find(s => s.work_date === day);
       if (summary) {
         out.push({
           date: day,

@@ -1,5 +1,5 @@
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from './types';
-import { computeDayStatus, resolveShift } from './shift';
+import { computeDayStatus, nepalTodayIso, resolveShift } from './shift';
 
 export type DayDetail = {
   date: string;
@@ -37,8 +37,12 @@ export function buildEmployeeDayRows(
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
 
+  const today = nepalTodayIso();
   return days.map(day => {
-    const summary = summaries.find(s => s.employee_id === employee.id && s.work_date === day);
+    // Today can still gain punches after its payroll_summaries row was
+    // computed (not re-run until tomorrow's nightly job), so always compute
+    // today live instead of trusting a possibly-stale summary.
+    const summary = day === today ? undefined : summaries.find(s => s.employee_id === employee.id && s.work_date === day);
     if (summary) {
       return {
         date: day,

@@ -13,7 +13,7 @@ import {
   type CalendarPeriod,
 } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { computeDayStatus, formatHoursMinutes, resolveShift } from '@/lib/shift';
+import { computeDayStatus, formatHoursMinutes, nepalTodayIso, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
 
 /** Decimal hours (e.g. row.hours, row.overtime) -> "Xh Ym". */
@@ -162,11 +162,16 @@ export default function PayrollPage() {
       });
     }
 
+    const today = nepalTodayIso();
     for (const day of days) {
       for (const emp of scopedEmployees) {
         const row = map.get(emp.id);
         if (!row) continue;
-        const summary = summaries.find(s => s.employee_id === emp.id && s.work_date === day);
+        // Today can still gain punches after its payroll_summaries row was
+        // computed (that row isn't re-run until tomorrow's nightly job), so
+        // always compute today live rather than trusting a possibly-stale
+        // summary. Past days' summaries are already final.
+        const summary = day === today ? undefined : summaries.find(s => s.employee_id === emp.id && s.work_date === day);
         if (summary) {
           row.days += 1;
           row.hours += Number(summary.total_hours);

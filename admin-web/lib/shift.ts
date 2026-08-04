@@ -56,6 +56,16 @@ function toMinutes(hhmm: string) {
  * `at time zone 'Asia/Kathmandu'`. */
 const NEPAL_OFFSET_MINUTES = 5 * 60 + 45;
 
+/** Today's date, in Nepal local time, as "YYYY-MM-DD" — computed from the
+ * viewer's real UTC instant plus the fixed Nepal offset, not the viewer's own
+ * system clock/timezone. Used to tell whether a payroll_summaries row for a
+ * given work_date can still change (the day isn't over yet in Nepal, so more
+ * punches — like a checkout — can still land after that row was computed). */
+export function nepalTodayIso() {
+  const d = new Date(Date.now() + NEPAL_OFFSET_MINUTES * 60000);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Minute-of-day for a punch, in Nepal local time — computed from the punch's
  * real UTC instant plus the fixed Nepal offset, NOT the viewer's own system
  * clock. This used to read the browser's local time (via Date#getHours()),
