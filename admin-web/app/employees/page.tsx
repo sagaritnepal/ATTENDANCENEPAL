@@ -351,6 +351,13 @@ export default function EmployeesPage() {
     reload();
   }
 
+  async function handleRestore(emp: Employee) {
+    if (!confirm(`Restore ${emp.name} to active? They'll show up in active views again.`)) return;
+    const { error } = await supabase.from('employees').update({ status: 'active', resigned_at: null }).eq('id', emp.id);
+    if (error) alert(`Could not update: ${error.message}`);
+    reload();
+  }
+
   function openForceDelete(emp: Employee) {
     setForceDeleteEmployee(emp);
     setForceDeleteConfirmText('');
@@ -809,12 +816,20 @@ export default function EmployeesPage() {
                   )}
                   <ActionTile icon={<TrashIcon className="h-4 w-4" />} label="Remove" tone="critical" onClick={() => handleDelete(emp.id)} />
                   {emp.status !== 'active' && (
-                    <ActionTile
-                      icon={<TrashIcon className="h-4 w-4" />}
-                      label="Permanently Delete"
-                      tone="critical"
-                      onClick={() => openForceDelete(emp)}
-                    />
+                    <>
+                      <ActionTile
+                        icon={<RestoreIcon className="h-4 w-4" />}
+                        label="Restore"
+                        tone="accent"
+                        onClick={() => handleRestore(emp)}
+                      />
+                      <ActionTile
+                        icon={<TrashIcon className="h-4 w-4" />}
+                        label="Permanently Delete"
+                        tone="critical"
+                        onClick={() => openForceDelete(emp)}
+                      />
+                    </>
                   )}
                 </div>
               </div>
@@ -999,13 +1014,22 @@ export default function EmployeesPage() {
                           onClick={() => handleDelete(emp.id)}
                         />
                         {emp.status !== 'active' && (
-                          <ActionTile
-                            icon={<TrashIcon className="h-3.5 w-3.5" />}
-                            label="Delete forever"
-                            title="Permanently delete this employee and all their history"
-                            tone="critical"
-                            onClick={() => openForceDelete(emp)}
-                          />
+                          <>
+                            <ActionTile
+                              icon={<RestoreIcon className="h-3.5 w-3.5" />}
+                              label="Restore"
+                              title="Restore to active"
+                              tone="accent"
+                              onClick={() => handleRestore(emp)}
+                            />
+                            <ActionTile
+                              icon={<TrashIcon className="h-3.5 w-3.5" />}
+                              label="Delete forever"
+                              title="Permanently delete this employee and all their history"
+                              tone="critical"
+                              onClick={() => openForceDelete(emp)}
+                            />
+                          </>
                         )}
                       </div>
                     </td>
@@ -1509,6 +1533,14 @@ function UserMinusIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <circle cx="9" cy="8" r="3.5" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M2.5 19c1-3.2 3.6-5 6.5-5s5.5 1.8 6.5 5M16.5 9h5" />
+    </svg>
+  );
+}
+
+function RestoreIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 1 0 3-6.7M3 3v5h5" />
     </svg>
   );
 }
