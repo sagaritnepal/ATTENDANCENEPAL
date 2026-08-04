@@ -14,6 +14,7 @@ import {
 } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { computeDayStatus, resolveShift } from '@/lib/shift';
+import SortMenu, { type SortKey } from '@/components/SortMenu';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
 
 export default function PayrollPage() {
@@ -39,6 +40,7 @@ export default function PayrollPage() {
   // extra for it) — on by default, toggled off per row.
   const [overtimeEnabled, setOvertimeEnabled] = useState<Record<string, boolean>>({});
   const [employeeId, setEmployeeId] = useState('all');
+  const [sortKey, setSortKey] = useState<SortKey>('enrollId');
 
   const { start, end } = period;
 
@@ -141,6 +143,8 @@ export default function PayrollPage() {
         overtime: number;
         lateDays: number;
         earlyDays: number;
+        dateOfJoining: string;
+        createdAt: string;
       }
     >();
     for (const emp of scopedEmployees) {
@@ -154,6 +158,8 @@ export default function PayrollPage() {
         overtime: 0,
         lateDays: 0,
         earlyDays: 0,
+        dateOfJoining: emp.date_of_joining ?? '',
+        createdAt: emp.created_at,
       });
     }
 
@@ -184,8 +190,13 @@ export default function PayrollPage() {
         if (live.isEarly) row.earlyDays += 1;
       }
     }
-    return Array.from(map.values());
-  }, [summaries, logs, shifts, scopedEmployees, start, end]);
+    return Array.from(map.values()).sort((a, b) => {
+      if (sortKey === 'name') return a.name.localeCompare(b.name);
+      if (sortKey === 'date') return a.dateOfJoining.localeCompare(b.dateOfJoining);
+      if (sortKey === 'modified') return a.createdAt.localeCompare(b.createdAt);
+      return a.enrollId.localeCompare(b.enrollId, undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }, [summaries, logs, shifts, scopedEmployees, start, end, sortKey]);
 
   const totals = useMemo(() => {
     const totalHours = byEmployee.reduce((s, r) => s + r.hours, 0);
@@ -551,6 +562,7 @@ export default function PayrollPage() {
               {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
               <span className="text-slate-400">({daysInRange}d)</span>
             </div>
+            <SortMenu value={sortKey} onChange={setSortKey} />
           </div>
         </div>
 
