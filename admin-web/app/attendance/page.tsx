@@ -8,7 +8,7 @@ import Badge from '@/components/Badge';
 import DateRangePicker from '@/components/DateRangePicker';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { computeDayStatus, formatMinutes, resolveShift } from '@/lib/shift';
+import { computeDayStatus, formatHoursMinutes, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Device, Employee, PayrollSummary, Shift } from '@/lib/types';
 
 type Row = {
@@ -331,7 +331,7 @@ function AttendanceView() {
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Late By</dt>
                   <dd>
                     {r.lateMinutes > 0 ? (
-                      <span className="font-medium text-warning-text">{formatMinutes(r.lateMinutes)}</span>
+                      <span className="font-medium text-warning-text">{formatHoursMinutes(r.lateMinutes)}</span>
                     ) : (
                       <span className="text-slate-400">—</span>
                     )}
@@ -341,7 +341,7 @@ function AttendanceView() {
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Early Out</dt>
                   <dd>
                     {r.earlyMinutes > 0 ? (
-                      <span className="font-medium text-warning-text">{formatMinutes(r.earlyMinutes)}</span>
+                      <span className="font-medium text-warning-text">{formatHoursMinutes(r.earlyMinutes)}</span>
                     ) : (
                       <span className="text-slate-400">—</span>
                     )}
@@ -399,14 +399,14 @@ function AttendanceView() {
                 </td>
                 <td className="whitespace-nowrap px-4 py-2">
                   {r.lateMinutes > 0 ? (
-                    <span className="font-medium text-warning-text">{formatMinutes(r.lateMinutes)}</span>
+                    <span className="font-medium text-warning-text">{formatHoursMinutes(r.lateMinutes)}</span>
                   ) : (
                     <span className="text-slate-400">—</span>
                   )}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2">
                   {r.earlyMinutes > 0 ? (
-                    <span className="font-medium text-warning-text">{formatMinutes(r.earlyMinutes)}</span>
+                    <span className="font-medium text-warning-text">{formatHoursMinutes(r.earlyMinutes)}</span>
                   ) : (
                     <span className="text-slate-400">—</span>
                   )}
@@ -440,10 +440,10 @@ function AttendanceView() {
                   Total
                 </td>
                 <td className="whitespace-nowrap px-4 py-2 text-warning-text">
-                  {totals.lateMinutes > 0 ? `${(totals.lateMinutes / 60).toFixed(1)} hrs` : '—'}
+                  {totals.lateMinutes > 0 ? formatHoursMinutes(totals.lateMinutes) : '—'}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2 text-warning-text">
-                  {totals.earlyMinutes > 0 ? `${(totals.earlyMinutes / 60).toFixed(1)} hrs` : '—'}
+                  {totals.earlyMinutes > 0 ? formatHoursMinutes(totals.earlyMinutes) : '—'}
                 </td>
                 <td className="whitespace-nowrap px-4 py-2">{totals.workHours.toFixed(1)} hrs</td>
                 <td className="whitespace-nowrap px-4 py-2">{totals.overtimeHours.toFixed(1)} hrs</td>

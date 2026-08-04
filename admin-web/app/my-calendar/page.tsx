@@ -7,7 +7,7 @@ import MonthCalendar from '@/components/MonthCalendar';
 import Badge from '@/components/Badge';
 import { formatAdDate, localDateKey } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { computeDayStatus, formatHoursMinutes, formatMinutes, resolveShift } from '@/lib/shift';
+import { computeDayStatus, formatHoursMinutes, resolveShift } from '@/lib/shift';
 import type { AttendanceLog, Employee, LeaveRequest, Shift } from '@/lib/types';
 
 const WINDOW_DAYS = 400;
@@ -230,7 +230,7 @@ export default function MyCalendarPage() {
                           <div className="text-xs capitalize text-slate-500">{selectedDaySummary.checkIn.method}</div>
                         </div>
                         {selectedDaySummary.isLate && (
-                          <Badge tone="warning">Late by {formatMinutes(selectedDaySummary.lateMinutes)}</Badge>
+                          <Badge tone="warning">Late by {formatHoursMinutes(selectedDaySummary.lateMinutes)}</Badge>
                         )}
                       </div>
                     </div>
@@ -248,7 +248,7 @@ export default function MyCalendarPage() {
                             <div className="text-xs capitalize text-slate-500">{selectedDaySummary.checkOut.method}</div>
                           </div>
                           {selectedDaySummary.isEarly && (
-                            <Badge tone="critical">Early by {formatMinutes(selectedDaySummary.earlyMinutes)}</Badge>
+                            <Badge tone="critical">Early by {formatHoursMinutes(selectedDaySummary.earlyMinutes)}</Badge>
                           )}
                         </div>
                       ) : (
@@ -319,8 +319,8 @@ export default function MyCalendarPage() {
                                 ? new Date(day.checkOut.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                                 : '–:–'}
                             </span>
-                            {day.isLate && <span className="text-warning-text">Late {formatMinutes(day.lateMinutes)}</span>}
-                            {day.isEarly && <span className="text-critical-text">Early {formatMinutes(day.earlyMinutes)}</span>}
+                            {day.isLate && <span className="text-warning-text">Late {formatHoursMinutes(day.lateMinutes)}</span>}
+                            {day.isEarly && <span className="text-critical-text">Early {formatHoursMinutes(day.earlyMinutes)}</span>}
                             <span>{formatHoursMinutes(day.totalMinutes)}</span>
                             {day.overtimeMinutes > 0 && (
                               <span className="text-info-text">OT {formatHoursMinutes(day.overtimeMinutes)}</span>

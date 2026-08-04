@@ -8,7 +8,7 @@ import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import { buildMonth, formatAdDate, formatDdMmYyyy, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { formatMinutes } from '@/lib/shift';
+import { formatHoursMinutes } from '@/lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning } from '@/lib/payrollDetail';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
 
@@ -188,8 +188,8 @@ function PayrollEmployeeDetailView() {
                         {d.hours.toFixed(1)}h{d.pending && ' (live)'}
                       </span>
                       {d.overtime > 0 && <span className="font-medium text-info-text">OT {d.overtime.toFixed(1)}h</span>}
-                      {d.lateMinutes > 0 && <span className="font-medium text-warning-text">Late {formatMinutes(d.lateMinutes)}</span>}
-                      {d.earlyMinutes > 0 && <span className="font-medium text-critical-text">Early {formatMinutes(d.earlyMinutes)}</span>}
+                      {d.lateMinutes > 0 && <span className="font-medium text-warning-text">Late {formatHoursMinutes(d.lateMinutes)}</span>}
+                      {d.earlyMinutes > 0 && <span className="font-medium text-critical-text">Early {formatHoursMinutes(d.earlyMinutes)}</span>}
                     </div>
                     {earning && (
                       <div className="mt-1.5 flex items-center justify-between text-xs">
@@ -241,14 +241,14 @@ function PayrollEmployeeDetailView() {
                         <td className="px-4 py-2 text-slate-600">{d.overtime.toFixed(1)} hrs</td>
                         <td className="px-4 py-2">
                           {d.lateMinutes > 0 ? (
-                            <span className="font-medium text-warning-text">{formatMinutes(d.lateMinutes)}</span>
+                            <span className="font-medium text-warning-text">{formatHoursMinutes(d.lateMinutes)}</span>
                           ) : (
                             <span className="text-slate-400">—</span>
                           )}
                         </td>
                         <td className="px-4 py-2">
                           {d.earlyMinutes > 0 ? (
-                            <span className="font-medium text-critical-text">{formatMinutes(d.earlyMinutes)}</span>
+                            <span className="font-medium text-critical-text">{formatHoursMinutes(d.earlyMinutes)}</span>
                           ) : (
                             <span className="text-slate-400">—</span>
                           )}
@@ -286,10 +286,10 @@ function PayrollEmployeeDetailView() {
                       <td className="whitespace-nowrap px-4 py-2">{dayTotals.hours.toFixed(1)} hrs</td>
                       <td className="whitespace-nowrap px-4 py-2">{dayTotals.overtime.toFixed(1)} hrs</td>
                       <td className="whitespace-nowrap px-4 py-2">
-                        {dayTotals.lateMinutes > 0 ? formatMinutes(dayTotals.lateMinutes) : '—'}
+                        {dayTotals.lateMinutes > 0 ? formatHoursMinutes(dayTotals.lateMinutes) : '—'}
                       </td>
                       <td className="whitespace-nowrap px-4 py-2">
-                        {dayTotals.earlyMinutes > 0 ? formatMinutes(dayTotals.earlyMinutes) : '—'}
+                        {dayTotals.earlyMinutes > 0 ? formatHoursMinutes(dayTotals.earlyMinutes) : '—'}
                       </td>
                       <td />
                       <td />

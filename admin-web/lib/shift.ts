@@ -38,15 +38,8 @@ export type DayStatus = {
   overtimeMinutes: number;
 };
 
-/** Minutes -> "H:MM", for late-by / early-by durations. */
-export function formatMinutes(minutes: number) {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return `${h}:${String(m).padStart(2, '0')}`;
-}
-
-/** Minutes -> "Xh Ym", for larger sums (total hours, overtime) where a
- * clock-style H:MM reads oddly once it crosses 24. */
+/** Minutes -> "Xh Ym" — used everywhere a duration (late-by, early-by, total
+ * hours, overtime) is shown, so every table reads the same way. */
 export function formatHoursMinutes(minutes: number) {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
