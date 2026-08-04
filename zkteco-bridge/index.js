@@ -17,6 +17,13 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 // Tracks consecutive failures per device_id for exponential backoff.
 const failureCounts = new Map();
 
+// Devices keep old attendance records in their log memory even after the
+// user is deleted from the device's user list, so getAttendances() keeps
+// returning the same orphaned punches on every single poll forever. Warn
+// once per (device, fingerprint) instead of re-warning every 15s for
+// records that were never going to map to an employee.
+const warnedUnmappedFingerprints = new Set();
+
 async function fetchActiveDevices() {
   const { data, error } = await supabase.from('devices').select('*');
   if (error) throw error;
@@ -62,7 +69,11 @@ async function upsertLogs(device, rawLogs) {
   for (const log of rawLogs) {
     const employee = await fetchEmployeeByFingerprint(log.deviceUserId);
     if (!employee) {
-      console.warn(`[${device.name}] no employee mapped to fingerprint_id ${log.deviceUserId}, skipping`);
+      const key = `${device.id}:${log.deviceUserId}`;
+      if (!warnedUnmappedFingerprints.has(key)) {
+        warnedUnmappedFingerprints.add(key);
+        console.warn(`[${device.name}] no employee mapped to fingerprint_id ${log.deviceUserId}, skipping (will not repeat this warning)`);
+      }
       continue;
     }
     rows.push({
