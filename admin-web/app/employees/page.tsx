@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
+import PhotoCropModal from '@/components/PhotoCropModal';
 import type { Employee, Shift, Profile, Branch, Department } from '@/lib/types';
 import { resolveShift, formatShiftHours } from '@/lib/shift';
 
@@ -102,6 +103,7 @@ export default function EmployeesPage() {
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [photoTargetId, setPhotoTargetId] = useState<string | null>(null);
   const [uploadingPhotoId, setUploadingPhotoId] = useState<string | null>(null);
+  const [pendingPhotoFile, setPendingPhotoFile] = useState<File | null>(null);
 
   // Branch/Shift edits are staged here rather than saved immediately on
   // change — a Save/Cancel bar appears above the table once anything's
@@ -429,17 +431,21 @@ export default function EmployeesPage() {
     photoInputRef.current?.click();
   }
 
-  async function handlePhotoSelected(e: React.ChangeEvent<HTMLInputElement>) {
+  function handlePhotoSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    const employeeId = photoTargetId;
     e.target.value = '';
-    if (!file || !employeeId) return;
+    if (!file) return;
+    setPendingPhotoFile(file);
+  }
+
+  async function handlePhotoCropped(blob: Blob) {
+    const employeeId = photoTargetId;
+    if (!employeeId) return;
 
     setUploadingPhotoId(employeeId);
-    const ext = file.name.split('.').pop() || 'jpg';
-    const path = `employee-photos/${employeeId}-${Date.now()}.${ext}`;
-    const { error: uploadError } = await supabase.storage.from('attendance-selfies').upload(path, file, {
-      contentType: file.type || 'image/jpeg',
+    const path = `employee-photos/${employeeId}-${Date.now()}.jpg`;
+    const { error: uploadError } = await supabase.storage.from('attendance-selfies').upload(path, blob, {
+      contentType: 'image/jpeg',
     });
     if (uploadError) {
       setUploadingPhotoId(null);
@@ -449,6 +455,7 @@ export default function EmployeesPage() {
     const { data: publicUrl } = supabase.storage.from('attendance-selfies').getPublicUrl(path);
     await supabase.from('employees').update({ profile_photo_url: publicUrl.publicUrl }).eq('id', employeeId);
     setUploadingPhotoId(null);
+    setPendingPhotoFile(null);
     reload();
   }
 
@@ -1414,6 +1421,15 @@ export default function EmployeesPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {pendingPhotoFile && (
+        <PhotoCropModal
+          file={pendingPhotoFile}
+          saving={uploadingPhotoId != null}
+          onCancel={() => setPendingPhotoFile(null)}
+          onSave={handlePhotoCropped}
+        />
       )}
     </AppShell>
   );

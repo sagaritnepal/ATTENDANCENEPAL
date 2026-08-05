@@ -41,9 +41,19 @@ function clamp(v: number, min: number, max: number) {
 }
 
 /**
- * Pick-a-file -> pan/zoom-to-crop -> explicit Save modal. Shared by any page
- * that lets someone set a profile photo, so cropping/compression behavior
- * (and the "don't upload until Save" step) only lives in one place.
+ * Pick-a-file -> pan/zoom-to-crop -> explicit Save modal. Shared by every
+ * page that lets someone set a profile photo (admin Employees pages and
+ * the employee-facing My Profile page), so cropping/compression behavior
+ * is identical everywhere instead of each place rolling its own.
+ *
+ * Pan+zoom model: `focus` is the natural-image pixel currently centered in
+ * the viewport — NOT a screen-space pixel offset. That's what keeps zoom
+ * anchored on whatever the user panned to (e.g. a face): a screen-space
+ * offset means the same absolute offset represents a shrinking fraction of
+ * the image as it grows, so the framing silently drifts back toward the
+ * image's own center every time zoom changes. A natural-image-space focus
+ * point has no such drift — it stays exactly where it was regardless of
+ * zoom.
  */
 export default function PhotoCropModal({
   file,
@@ -58,15 +68,19 @@ export default function PhotoCropModal({
 }) {
   const [imgEl, setImgEl] = useState<HTMLImageElement | null>(null);
   const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [focus, setFocus] = useState({ x: 0, y: 0 }); // natural-image px, set once the image loads
   const [dragging, setDragging] = useState(false);
-  const dragStartRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
+  const dragStartRef = useRef<{ startX: number; startY: number; focusX: number; focusY: number } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const url = URL.createObjectURL(file);
     const img = new Image();
-    img.onload = () => setImgEl(img);
+    img.onload = () => {
+      setImgEl(img);
+      setFocus({ x: img.naturalWidth / 2, y: img.naturalHeight / 2 });
+      setZoom(1);
+    };
     img.src = url;
     return () => URL.revokeObjectURL(url);
   }, [file]);
@@ -75,20 +89,28 @@ export default function PhotoCropModal({
   // zoom=1 (same idea as CSS object-fit: cover), then zoom multiplies on
   // top of that.
   const baseScale = imgEl ? VIEWPORT / Math.min(imgEl.naturalWidth, imgEl.naturalHeight) : 1;
-  const dispScale = baseScale * zoom;
-  const dispW = imgEl ? imgEl.naturalWidth * dispScale : 0;
-  const dispH = imgEl ? imgEl.naturalHeight * dispScale : 0;
-  const maxPanX = Math.max(0, (dispW - VIEWPORT) / 2);
-  const maxPanY = Math.max(0, (dispH - VIEWPORT) / 2);
+  const scale = baseScale * zoom;
 
-  const clampedPan = useMemo(
-    () => ({ x: clamp(pan.x, -maxPanX, maxPanX), y: clamp(pan.y, -maxPanY, maxPanY) }),
-    [pan, maxPanX, maxPanY]
-  );
+  // The valid range for the focus point, so the image always fully covers
+  // the viewport (no blank edges) at the current zoom — see the module
+  // comment for the derivation.
+  const clampedFocus = useMemo(() => {
+    if (!imgEl) return focus;
+    const halfViewportImg = VIEWPORT / 2 / scale;
+    return {
+      x: clamp(focus.x, halfViewportImg, Math.max(halfViewportImg, imgEl.naturalWidth - halfViewportImg)),
+      y: clamp(focus.y, halfViewportImg, Math.max(halfViewportImg, imgEl.naturalHeight - halfViewportImg)),
+    };
+  }, [focus, scale, imgEl]);
+
+  const dispW = imgEl ? imgEl.naturalWidth * scale : 0;
+  const dispH = imgEl ? imgEl.naturalHeight * scale : 0;
+  const imgLeft = VIEWPORT / 2 - clampedFocus.x * scale;
+  const imgTop = VIEWPORT / 2 - clampedFocus.y * scale;
 
   function onPointerDown(e: React.PointerEvent) {
     e.preventDefault();
-    dragStartRef.current = { startX: e.clientX, startY: e.clientY, panX: clampedPan.x, panY: clampedPan.y };
+    dragStartRef.current = { startX: e.clientX, startY: e.clientY, focusX: clampedFocus.x, focusY: clampedFocus.y };
     setDragging(true);
   }
 
@@ -101,12 +123,12 @@ export default function PhotoCropModal({
     const handleMove = (e: PointerEvent) => {
       const start = dragStartRef.current;
       if (!start) return;
-      const dx = e.clientX - start.startX;
-      const dy = e.clientY - start.startY;
-      setPan({
-        x: clamp(start.panX + dx, -maxPanX, maxPanX),
-        y: clamp(start.panY + dy, -maxPanY, maxPanY),
-      });
+      // Screen-space drag delta -> natural-image-space delta (divide by
+      // scale), and dragging the photo right means the focus point moves
+      // left (you're revealing what was off to the left), hence the minus.
+      const dx = (e.clientX - start.startX) / scale;
+      const dy = (e.clientY - start.startY) / scale;
+      setFocus({ x: start.focusX - dx, y: start.focusY - dy });
     };
     const handleUp = () => {
       dragStartRef.current = null;
@@ -120,7 +142,7 @@ export default function PhotoCropModal({
       window.removeEventListener('pointerup', handleUp);
       window.removeEventListener('pointercancel', handleUp);
     };
-  }, [dragging, maxPanX, maxPanY]);
+  }, [dragging, scale]);
 
   async function handleSave() {
     if (!imgEl) return;
@@ -131,11 +153,11 @@ export default function PhotoCropModal({
     if (!ctx) return;
 
     const outputScale = OUTPUT_SIZE / VIEWPORT;
-    const drawScale = dispScale * outputScale;
+    const drawScale = scale * outputScale;
     const drawW = imgEl.naturalWidth * drawScale;
     const drawH = imgEl.naturalHeight * drawScale;
-    const drawX = (OUTPUT_SIZE - drawW) / 2 + clampedPan.x * outputScale;
-    const drawY = (OUTPUT_SIZE - drawH) / 2 + clampedPan.y * outputScale;
+    const drawX = OUTPUT_SIZE / 2 - clampedFocus.x * drawScale;
+    const drawY = OUTPUT_SIZE / 2 - clampedFocus.y * drawScale;
 
     ctx.clearRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
     ctx.drawImage(imgEl, drawX, drawY, drawW, drawH);
@@ -161,12 +183,7 @@ export default function PhotoCropModal({
               alt="Crop preview"
               draggable={false}
               className="pointer-events-none absolute select-none"
-              style={{
-                width: dispW,
-                height: dispH,
-                left: (VIEWPORT - dispW) / 2 + clampedPan.x,
-                top: (VIEWPORT - dispH) / 2 + clampedPan.y,
-              }}
+              style={{ width: dispW, height: dispH, left: imgLeft, top: imgTop }}
             />
           )}
         </div>

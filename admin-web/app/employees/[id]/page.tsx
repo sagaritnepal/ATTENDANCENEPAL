@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import DatePicker from '@/components/DatePicker';
+import PhotoCropModal from '@/components/PhotoCropModal';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { Branch, Department, Employee, EmployeeEducation, EmployeeWorkExperience } from '@/lib/types';
@@ -69,6 +70,7 @@ export default function EmployeeCvPage() {
 
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [pendingPhotoFile, setPendingPhotoFile] = useState<File | null>(null);
 
   const [skillInput, setSkillInput] = useState('');
 
@@ -184,16 +186,20 @@ export default function EmployeeCvPage() {
     photoInputRef.current?.click();
   }
 
-  async function handlePhotoSelected(e: React.ChangeEvent<HTMLInputElement>) {
+  function handlePhotoSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file || !employee) return;
+    if (!file) return;
+    setPendingPhotoFile(file);
+  }
+
+  async function handlePhotoCropped(blob: Blob) {
+    if (!employee) return;
 
     setUploadingPhoto(true);
-    const ext = file.name.split('.').pop() || 'jpg';
-    const path = `employee-photos/${employee.id}-${Date.now()}.${ext}`;
-    const { error: uploadError } = await supabase.storage.from('attendance-selfies').upload(path, file, {
-      contentType: file.type || 'image/jpeg',
+    const path = `employee-photos/${employee.id}-${Date.now()}.jpg`;
+    const { error: uploadError } = await supabase.storage.from('attendance-selfies').upload(path, blob, {
+      contentType: 'image/jpeg',
     });
     if (uploadError) {
       setUploadingPhoto(false);
@@ -210,6 +216,7 @@ export default function EmployeeCvPage() {
       alert(`Could not save photo: ${error.message}`);
       return;
     }
+    setPendingPhotoFile(null);
     reload();
   }
 
@@ -914,6 +921,15 @@ export default function EmployeeCvPage() {
             </div>
           </form>
         </div>
+      )}
+
+      {pendingPhotoFile && (
+        <PhotoCropModal
+          file={pendingPhotoFile}
+          saving={uploadingPhoto}
+          onCancel={() => setPendingPhotoFile(null)}
+          onSave={handlePhotoCropped}
+        />
       )}
     </AppShell>
   );
