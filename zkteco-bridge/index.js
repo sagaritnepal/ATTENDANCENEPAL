@@ -24,8 +24,19 @@ const failureCounts = new Map();
 // records that were never going to map to an employee.
 const warnedUnmappedFingerprints = new Set();
 
+// One bridge deployment = one company's LAN = one company_id. Every table
+// is now multi-tenant scoped (fingerprint_id in particular is only unique
+// per-company, since device fingerprint IDs are small sequential integers
+// very likely to collide across two companies' devices), so every query
+// here must filter by it explicitly — this runs on the service-role key,
+// which bypasses RLS entirely.
+const COMPANY_ID = process.env.COMPANY_ID;
+if (!COMPANY_ID) {
+  throw new Error('COMPANY_ID is required — set it in .env to the companies.id this bridge belongs to.');
+}
+
 async function fetchActiveDevices() {
-  const { data, error } = await supabase.from('devices').select('*');
+  const { data, error } = await supabase.from('devices').select('*').eq('company_id', COMPANY_ID);
   if (error) throw error;
   return data;
 }
@@ -35,6 +46,7 @@ async function fetchEmployeeByFingerprint(fingerprintId) {
     .from('employees')
     .select('id')
     .eq('fingerprint_id', String(fingerprintId))
+    .eq('company_id', COMPANY_ID)
     .maybeSingle();
   if (error) throw error;
   return data;
@@ -111,6 +123,7 @@ async function upsertUsers(device, rawUsers) {
       name: u.name || `Device user ${fingerprintId}`,
       fingerprint_id: fingerprintId,
       status: 'active',
+      company_id: COMPANY_ID,
     });
     if (error) throw error;
     added++;
@@ -150,6 +163,7 @@ async function fetchPendingSyncEvents() {
     .from('device_sync_events')
     .select('*, device:devices(*)')
     .eq('status', 'pending')
+    .eq('company_id', COMPANY_ID)
     .order('requested_at', { ascending: true });
   if (error) throw error;
   return data;

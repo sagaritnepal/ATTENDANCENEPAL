@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   }
   const { data: callerProfile } = await admin
     .from('profiles')
-    .select('role')
+    .select('role, company_id')
     .eq('id', callerData.user.id)
     .single();
   if (callerProfile?.role !== 'admin' && callerProfile?.role !== 'hr') {
@@ -38,6 +38,11 @@ export async function POST(req: NextRequest) {
   const password = typeof body?.password === 'string' ? body.password : '';
   if (!employeeId || password.length < 8) {
     return NextResponse.json({ error: 'employeeId and a password of at least 8 characters are required.' }, { status: 400 });
+  }
+
+  const { data: employee } = await admin.from('employees').select('id, company_id').eq('id', employeeId).single();
+  if (!employee || employee.company_id !== callerProfile.company_id) {
+    return NextResponse.json({ error: 'This employee has no login to reset.' }, { status: 404 });
   }
 
   const { data: link, error: linkError } = await admin

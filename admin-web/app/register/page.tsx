@@ -114,7 +114,9 @@ export default function RegisterPage() {
           {submitting ? 'Creating account…' : 'Create account'}
         </button>
         <p className="mt-4 text-center text-xs text-slate-500">
-          New accounts start with employee-level access. An existing admin can upgrade your role.
+          Creating an account here sets up a brand-new company workspace, and you become its admin — you&apos;ll add
+          branches, devices, and employees next. If your company already uses this system, ask your admin to
+          create your employee login instead of registering here.
         </p>
         <p className="mt-3 text-center text-sm text-slate-600">
           Already have an account?{' '}

@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   }
   const { data: callerProfile } = await admin
     .from('profiles')
-    .select('role')
+    .select('role, company_id')
     .eq('id', callerData.user.id)
     .single();
   if (callerProfile?.role !== 'admin') {
@@ -46,10 +46,11 @@ export async function POST(req: NextRequest) {
 
   const { data: employee, error: employeeError } = await admin
     .from('employees')
-    .select('id, name')
+    .select('id, name, company_id')
     .eq('id', employeeId)
     .single();
-  if (employeeError || !employee) {
+  if (employeeError || !employee || employee.company_id !== callerProfile.company_id) {
+    // 404, not 403 — don't confirm that a different company's employee exists.
     return NextResponse.json({ error: 'Employee not found.' }, { status: 404 });
   }
 
@@ -66,6 +67,7 @@ export async function POST(req: NextRequest) {
     email,
     password,
     email_confirm: true,
+    user_metadata: { company_id: callerProfile.company_id },
   });
   if (createError || !created.user) {
     return NextResponse.json({ error: createError?.message ?? 'Could not create the account.' }, { status: 400 });

@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   if (callerError || !callerData.user) {
     return NextResponse.json({ error: 'Invalid or expired session.' }, { status: 401 });
   }
-  const { data: callerProfile } = await admin.from('profiles').select('role').eq('id', callerData.user.id).single();
+  const { data: callerProfile } = await admin.from('profiles').select('role, company_id').eq('id', callerData.user.id).single();
   if (callerProfile?.role !== 'admin' && callerProfile?.role !== 'hr') {
     return NextResponse.json({ error: 'Only admin/HR can view employee logins.' }, { status: 403 });
   }
@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
     .from('profiles')
     .select('id, role, employee_id, employees(name)')
     .eq('role', 'employee')
+    .eq('company_id', callerProfile.company_id)
     .not('employee_id', 'is', null);
   if (profilesError) {
     return NextResponse.json({ error: profilesError.message }, { status: 500 });
