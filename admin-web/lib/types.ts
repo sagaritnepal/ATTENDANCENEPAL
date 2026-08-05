@@ -57,6 +57,7 @@ export type EmployeeWorkExperience = {
   employee_id: string;
   employer: string;
   role: string | null;
+  description: string | null;
   start_date: string | null;
   end_date: string | null;
 };

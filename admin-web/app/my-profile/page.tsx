@@ -15,7 +15,7 @@ import type { Branch, Employee, EmployeeEducation, EmployeeWorkExperience, Leade
 const EMPTY_PROFILE_FORM = { name: '', email: '', phone: '', address: '', department: '', designation: '' };
 const EMPTY_EMERGENCY_FORM = { emergency_contact_name: '', emergency_contact_relationship: '', emergency_contact_phone: '' };
 const EMPTY_EDUCATION_FORM = { degree: '', institution: '', year: '' };
-const EMPTY_EXPERIENCE_FORM = { employer: '', role: '', start_date: '', end_date: '' };
+const EMPTY_EXPERIENCE_FORM = { employer: '', role: '', description: '', start_date: '', end_date: '' };
 
 function tenureDays(dateOfJoining: string | null, resignedAt: string | null) {
   if (!dateOfJoining) return null;
@@ -276,6 +276,7 @@ export default function MyProfilePage() {
       employee_id: employee.id,
       employer: experienceForm.employer,
       role: experienceForm.role || null,
+      description: experienceForm.description || null,
       start_date: experienceForm.start_date || null,
       end_date: experienceForm.end_date || null,
     });
@@ -693,19 +694,27 @@ export default function MyProfilePage() {
         {experience.length === 0 && <p className="text-xs text-slate-400">No work experience entries yet.</p>}
         <ul className="divide-y divide-slate-100">
           {experience.map(exp => (
-            <li key={exp.id} className="flex items-center justify-between py-2 text-sm">
-              <div>
-                <span className="font-medium text-ink">{exp.employer}</span>
-                {exp.role && <span className="text-slate-500"> — {exp.role}</span>}
-                {(exp.start_date || exp.end_date) && (
-                  <span className="block text-xs text-slate-400">
+            <li key={exp.id} className="py-2 text-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="font-medium text-ink">{exp.employer}</span>
+                  {exp.role && <span className="text-slate-500"> — {exp.role}</span>}
+                </div>
+                <button onClick={() => handleDeleteExperience(exp.id)} className="text-xs font-medium text-critical hover:underline">
+                  Remove
+                </button>
+              </div>
+              {exp.description && <p className="mt-1 text-xs text-slate-500">{exp.description}</p>}
+              {(exp.start_date || exp.end_date) && (
+                <div className="mt-1 flex items-center justify-between text-xs text-slate-400">
+                  <span>
                     {formatAdDate(exp.start_date, system)} – {exp.end_date ? formatAdDate(exp.end_date, system) : 'Present'}
                   </span>
-                )}
-              </div>
-              <button onClick={() => handleDeleteExperience(exp.id)} className="text-xs font-medium text-critical hover:underline">
-                Remove
-              </button>
+                  {tenureDays(exp.start_date, exp.end_date) !== null && (
+                    <span>{tenureDays(exp.start_date, exp.end_date)} days</span>
+                  )}
+                </div>
+              )}
             </li>
           ))}
         </ul>
@@ -828,6 +837,13 @@ export default function MyProfilePage() {
             <input
               value={experienceForm.role}
               onChange={e => setExperienceForm(f => ({ ...f, role: e.target.value }))}
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <label className="mb-1 block text-xs font-medium text-slate-600">Description</label>
+            <textarea
+              value={experienceForm.description}
+              onChange={e => setExperienceForm(f => ({ ...f, description: e.target.value }))}
+              rows={2}
               className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
             />
             <div className="mb-3 grid grid-cols-2 gap-3">
