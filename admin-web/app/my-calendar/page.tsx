@@ -5,12 +5,24 @@ import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import MonthCalendar from '@/components/MonthCalendar';
 import Badge from '@/components/Badge';
-import { formatAdDate, localDateKey } from '@/lib/calendar';
+import { formatAdDate, formatDdMmYyyy, localDateKey } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { computeDayStatus, formatHoursMinutes, resolveShift } from '@/lib/shift';
+import { buildEmployeeDayRows, dailySalaryEarning } from '@/lib/payrollDetail';
 import type { AttendanceLog, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
 
 const WINDOW_DAYS = 400;
+
+// Same defaults the admin Payroll page starts with (no per-employee OT
+// controls on the employee side) — matches my-payroll's own constants so
+// this page's earning figures agree with what the employee sees there.
+const OT_HOURS_PER_DAY = 8;
+const OT_MULTIPLIER = 1.5;
+
+/** Decimal hours -> "Xh Ym". */
+function fmtHrs(hours: number) {
+  return formatHoursMinutes(Math.round(hours * 60));
+}
 
 /** Every AD date key (YYYY-MM-DD) from start to end, inclusive. Both are
  * already plain dates (Postgres `date` columns), so this stays in local
@@ -154,8 +166,12 @@ export default function MyCalendarPage() {
           hours.push({ date, minutes: dayTotalMinutes });
           totalWorkMinutes += dayTotalMinutes;
         }
-        if (status.isLate) late.push({ date, minutes: status.lateMinutes });
-        if (status.isEarly) early.push({ date, minutes: status.earlyMinutes });
+        const isLate = summary ? summary.is_late : status.isLate;
+        const lateMinutes = summary ? summary.late_minutes : status.lateMinutes;
+        const isEarly = summary ? summary.is_early_departure : status.isEarly;
+        const earlyMinutes = summary ? summary.early_departure_minutes : status.earlyMinutes;
+        if (isLate) late.push({ date, minutes: lateMinutes });
+        if (isEarly) early.push({ date, minutes: earlyMinutes });
         if (dayOvertimeMinutes > 0) {
           overtime.push({ date, minutes: dayOvertimeMinutes });
           overtimeMinutes += dayOvertimeMinutes;
@@ -178,6 +194,17 @@ export default function MyCalendarPage() {
       } satisfies Record<CardKey, CardEntry[]>,
     };
   }, [visibleDates, dayStatus, leaveDates, summaryByDate]);
+
+  // Same shared day-by-day builder My Payroll uses, so this table's Hours/OT/
+  // Salary figures are never a second, independently-computed version of
+  // those numbers — both read through lib/payrollDetail.ts.
+  const calendarDayRows = useMemo(
+    () =>
+      employee && visibleDates.length > 0
+        ? buildEmployeeDayRows(employee, shifts, summaries, logs, visibleDates[0], visibleDates[visibleDates.length - 1])
+        : [],
+    [employee, shifts, summaries, logs, visibleDates]
+  );
 
   const selectedLeave = selectedDate ? leaveByDate.get(selectedDate) ?? null : null;
 
@@ -320,6 +347,111 @@ export default function MyCalendarPage() {
               );
             })}
           </div>
+
+          {calendarDayRows.length > 0 && (
+            <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <table className="w-full table-fixed text-center text-[11px]">
+                <colgroup>
+                  <col className="w-[17%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[26%]" />
+                  <col className="w-[20%]" />
+                </colgroup>
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500">
+                    <th className="truncate px-1 py-1 font-medium">Date</th>
+                    <th className="truncate px-0.5 py-1 font-medium">Hrs</th>
+                    <th className="truncate px-0.5 py-1 font-medium">OT</th>
+                    <th className="truncate px-0.5 py-1 font-medium">Status</th>
+                    <th className="truncate px-0.5 py-1 font-medium">My Salary(OT)</th>
+                    <th className="truncate px-1 py-1 font-medium">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {calendarDayRows.map((row, i) => {
+                    const onLeave = leaveDates.has(row.date);
+                    const earning =
+                      row.checkIn && !onLeave
+                        ? dailySalaryEarning(row, employee?.salary ?? null, visibleDates.length, OT_HOURS_PER_DAY, OT_MULTIPLIER, true)
+                        : null;
+                    return (
+                      <tr key={row.date} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
+                        <td className="truncate px-1 py-0.5 text-ink">{formatDdMmYyyy(row.date, system).slice(0, 5)}</td>
+                        <td className="truncate px-0.5 py-0.5 text-slate-600">{row.checkIn && !onLeave ? fmtHrs(row.hours) : '—'}</td>
+                        <td className="truncate px-0.5 py-0.5 text-info-text">{row.checkIn && !onLeave ? fmtHrs(row.overtime) : '—'}</td>
+                        <td className="truncate px-0.5 py-0.5 font-medium">
+                          {onLeave ? (
+                            <span className="text-slate-300">—</span>
+                          ) : row.checkIn ? (
+                            <span className="text-good-text">Present</span>
+                          ) : row.status === 'Absent' ? (
+                            <span className="text-critical-text">Absent</span>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </td>
+                        <td className="truncate px-0.5 py-0.5 text-slate-600">
+                          {earning ? (
+                            <>
+                              {Math.round(earning.base).toLocaleString()}
+                              <span className="text-info-text">({Math.round(earning.overtime).toLocaleString()})</span>
+                            </>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td className="truncate px-1 py-0.5 font-semibold text-good-text">
+                          {earning ? Math.round(earning.total).toLocaleString() : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  {(() => {
+                    let sumHours = 0;
+                    let sumOvertime = 0;
+                    let sumBase = 0;
+                    let sumOvertimeEarning = 0;
+                    for (const row of calendarDayRows) {
+                      if (leaveDates.has(row.date) || !row.checkIn) continue;
+                      sumHours += row.hours;
+                      sumOvertime += row.overtime;
+                      const earning = dailySalaryEarning(
+                        row,
+                        employee?.salary ?? null,
+                        visibleDates.length,
+                        OT_HOURS_PER_DAY,
+                        OT_MULTIPLIER,
+                        true
+                      );
+                      if (earning) {
+                        sumBase += earning.base;
+                        sumOvertimeEarning += earning.overtime;
+                      }
+                    }
+                    return (
+                      <tr className="border-t-2 border-slate-200 bg-slate-50 text-ink">
+                        <td className="truncate px-1 py-1 font-semibold">Total</td>
+                        <td className="truncate px-0.5 py-1 font-semibold">{fmtHrs(sumHours)}</td>
+                        <td className="truncate px-0.5 py-1 font-semibold text-info-text">{fmtHrs(sumOvertime)}</td>
+                        <td className="px-0.5 py-1" />
+                        <td className="truncate px-0.5 py-1 font-semibold">
+                          {Math.round(sumBase).toLocaleString()}
+                          <span className="text-info-text">({Math.round(sumOvertimeEarning).toLocaleString()})</span>
+                        </td>
+                        <td className="truncate px-1 py-1 font-bold text-good-text">
+                          {Math.round(sumBase + sumOvertimeEarning).toLocaleString()}
+                        </td>
+                      </tr>
+                    );
+                  })()}
+                </tfoot>
+              </table>
+            </div>
+          )}
 
           {expandedCard && (
             <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4">
