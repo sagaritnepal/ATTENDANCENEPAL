@@ -56,7 +56,6 @@ export default function MyProfilePage() {
   const [redeemError, setRedeemError] = useState<string | null>(null);
 
   const [emergencyForm, setEmergencyForm] = useState(EMPTY_EMERGENCY_FORM);
-  const [savingEmergency, setSavingEmergency] = useState(false);
 
   const [skillCategory, setSkillCategory] = useState<(typeof SKILL_CATEGORIES)[number]>(SKILL_CATEGORIES[0]);
   const [skillInput, setSkillInput] = useState('');
@@ -186,9 +185,18 @@ export default function MyProfilePage() {
     };
   }
 
+  function emergencyFromEmployee(emp: Employee) {
+    return {
+      emergency_contact_name: emp.emergency_contact_name ?? '',
+      emergency_contact_relationship: emp.emergency_contact_relationship ?? '',
+      emergency_contact_phone: emp.emergency_contact_phone ?? '',
+    };
+  }
+
   function startEditDetails() {
     if (!employee) return;
     setProfileForm(detailsFromEmployee(employee));
+    setEmergencyForm(emergencyFromEmployee(employee));
     setProfileError(null);
     setProfileSaved(false);
     setEditingDetails(true);
@@ -197,21 +205,9 @@ export default function MyProfilePage() {
   function cancelEditDetails() {
     if (!employee) return;
     setProfileForm(detailsFromEmployee(employee));
+    setEmergencyForm(emergencyFromEmployee(employee));
     setProfileError(null);
     setEditingDetails(false);
-  }
-
-  async function handleSaveEmergency(e: React.FormEvent) {
-    e.preventDefault();
-    if (!employee) return;
-    setSavingEmergency(true);
-    const error = await saveProfile();
-    setSavingEmergency(false);
-    if (error) {
-      alert(`Could not save: ${error.message}`);
-      return;
-    }
-    reload(employee.id);
   }
 
   async function addSkill() {
@@ -524,38 +520,127 @@ export default function MyProfilePage() {
               <span className="shrink-0 text-slate-400">Address</span>
               <span className="text-right text-ink">{employee.address || '—'}</span>
             </div>
+
+            <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Employment details</p>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Username</span>
+                <span className="text-ink">{employee.username || '—'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Department</span>
+                <span className="text-ink">{employee.department || '—'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Designation</span>
+                <span className="text-ink">{employee.designation || '—'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Branch</span>
+                <span className="text-ink">{branches.find(b => b.id === employee.branch_id)?.name || '—'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">PAN No.</span>
+                <span className="text-ink">{employee.pan_no || '—'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">SSF No.</span>
+                <span className="text-ink">{employee.ssf_no || '—'}</span>
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Emergency contact</p>
+              {employee.emergency_contact_name || employee.emergency_contact_phone ? (
+                <div className="flex justify-between gap-4">
+                  <span className="text-right text-ink">
+                    {[employee.emergency_contact_name, employee.emergency_contact_relationship, employee.emergency_contact_phone]
+                      .filter(Boolean)
+                      .join(' — ')}
+                  </span>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">Not set — click Edit to add one.</p>
+              )}
+            </div>
           </div>
         ) : (
           <form onSubmit={handleSaveProfile}>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
-            <input
-              required
-              value={profileForm.name}
-              onChange={e => updateField('name', e.target.value)}
-              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-            <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
-            <input
-              type="email"
-              value={profileForm.email}
-              onChange={e => updateField('email', e.target.value)}
-              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-            <label className="mb-1 block text-xs font-medium text-slate-600">Phone</label>
-            <input
-              value={profileForm.phone}
-              onChange={e => updateField('phone', e.target.value)}
-              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-            <label className="mb-1 block text-xs font-medium text-slate-600">Address</label>
-            <textarea
-              value={profileForm.address}
-              onChange={e => updateField('address', e.target.value)}
-              rows={2}
-              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-            {profileError && <p className="mb-3 text-sm text-critical">{profileError}</p>}
-            <div className="flex gap-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
+                <input
+                  required
+                  value={profileForm.name}
+                  onChange={e => updateField('name', e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Email</label>
+                <input
+                  type="email"
+                  value={profileForm.email}
+                  onChange={e => updateField('email', e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Phone</label>
+                <input
+                  value={profileForm.phone}
+                  onChange={e => updateField('phone', e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-xs font-medium text-slate-600">Address</label>
+                <textarea
+                  value={profileForm.address}
+                  onChange={e => updateField('address', e.target.value)}
+                  rows={2}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            <h3 className="mb-3 mt-5 border-t border-slate-100 pt-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Emergency Contact
+            </h3>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
+                <input
+                  value={emergencyForm.emergency_contact_name}
+                  onChange={e => setEmergencyForm(f => ({ ...f, emergency_contact_name: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Relationship</label>
+                <input
+                  value={emergencyForm.emergency_contact_relationship}
+                  onChange={e => setEmergencyForm(f => ({ ...f, emergency_contact_relationship: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">Phone</label>
+                <input
+                  value={emergencyForm.emergency_contact_phone}
+                  onChange={e => setEmergencyForm(f => ({ ...f, emergency_contact_phone: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            <p className="mt-4 text-xs text-slate-400">
+              Username, department, designation, branch, PAN and SSF are set by your employer — contact your admin to change
+              them.
+            </p>
+
+            {profileError && <p className="mt-3 text-sm text-critical">{profileError}</p>}
+            <div className="mt-4 flex gap-2">
               <button
                 type="button"
                 onClick={cancelEditDetails}
@@ -574,35 +659,6 @@ export default function MyProfilePage() {
           </form>
         )}
       </div>
-
-      <form onSubmit={handleSaveEmergency} className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-ink">Emergency Contact</h2>
-        <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
-        <input
-          value={emergencyForm.emergency_contact_name}
-          onChange={e => setEmergencyForm(f => ({ ...f, emergency_contact_name: e.target.value }))}
-          className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-        />
-        <label className="mb-1 block text-xs font-medium text-slate-600">Relationship</label>
-        <input
-          value={emergencyForm.emergency_contact_relationship}
-          onChange={e => setEmergencyForm(f => ({ ...f, emergency_contact_relationship: e.target.value }))}
-          className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-        />
-        <label className="mb-1 block text-xs font-medium text-slate-600">Phone</label>
-        <input
-          value={emergencyForm.emergency_contact_phone}
-          onChange={e => setEmergencyForm(f => ({ ...f, emergency_contact_phone: e.target.value }))}
-          className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-        />
-        <button
-          type="submit"
-          disabled={savingEmergency}
-          className="w-full rounded-lg bg-accent py-2 text-sm font-semibold text-white disabled:opacity-60"
-        >
-          {savingEmergency ? 'Saving…' : 'Save'}
-        </button>
-      </form>
 
       <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-ink">Skills</h2>
