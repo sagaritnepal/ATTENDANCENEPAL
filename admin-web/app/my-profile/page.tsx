@@ -457,15 +457,15 @@ export default function MyProfilePage() {
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-slate-400">Name</span>
-              <span className="text-ink">{employee.name || '—'}</span>
+              <span className="min-w-0 break-words text-right text-ink">{employee.name || '—'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Email</span>
-              <span className="text-ink">{employee.email || '—'}</span>
+              <span className="min-w-0 break-words text-right text-ink">{employee.email || '—'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Phone</span>
-              <span className="text-ink">{employee.phone || '—'}</span>
+              <span className="min-w-0 break-words text-right text-ink">{employee.phone || '—'}</span>
             </div>
             <div className="flex justify-between gap-4">
               <span className="shrink-0 text-slate-400">Address</span>
@@ -476,48 +476,48 @@ export default function MyProfilePage() {
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Filled by employer</p>
               <div className="flex justify-between">
                 <span className="text-slate-400">Username</span>
-                <span className="text-ink">{employee.username || '—'}</span>
+                <span className="min-w-0 break-words text-right text-ink">{employee.username || '—'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Enroll ID</span>
-                <span className="text-ink">{employee.fingerprint_id || '—'}</span>
+                <span className="min-w-0 break-words text-right text-ink">{employee.fingerprint_id || '—'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Branch</span>
-                <span className="text-ink">{branches.find(b => b.id === employee.branch_id)?.name ?? '—'}</span>
+                <span className="min-w-0 break-words text-right text-ink">{branches.find(b => b.id === employee.branch_id)?.name ?? '—'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Department</span>
-                <span className="text-ink">{employee.department || '—'}</span>
+                <span className="min-w-0 break-words text-right text-ink">{employee.department || '—'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Designation</span>
-                <span className="text-ink">{employee.designation || '—'}</span>
+                <span className="min-w-0 break-words text-right text-ink">{employee.designation || '—'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Current Salary</span>
-                <span className="text-ink">{employee.salary != null ? employee.salary.toLocaleString() : '—'}</span>
+                <span className="min-w-0 break-words text-right text-ink">{employee.salary != null ? employee.salary.toLocaleString() : '—'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">PAN No.</span>
-                <span className="text-ink">{employee.pan_no || '—'}</span>
+                <span className="min-w-0 break-words text-right text-ink">{employee.pan_no || '—'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">SSF No.</span>
-                <span className="text-ink">{employee.ssf_no || '—'}</span>
+                <span className="min-w-0 break-words text-right text-ink">{employee.ssf_no || '—'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Date of joining</span>
-                <span className="text-ink">{formatAdDate(employee.date_of_joining, system)}</span>
+                <span className="min-w-0 break-words text-right text-ink">{formatAdDate(employee.date_of_joining, system)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">{employee.resigned_at ? 'Days worked' : 'Days with company'}</span>
-                <span className="text-ink">{days !== null ? `${days} days` : '—'}</span>
+                <span className="min-w-0 break-words text-right text-ink">{days !== null ? `${days} days` : '—'}</span>
               </div>
               {employee.resigned_at && (
                 <div className="flex justify-between">
                   <span className="text-slate-400">Resigned</span>
-                  <span className="text-ink">{formatAdDate(employee.resigned_at, system)}</span>
+                  <span className="min-w-0 break-words text-right text-ink">{formatAdDate(employee.resigned_at, system)}</span>
                 </div>
               )}
               <p className="pt-1 text-xs text-slate-400">Set by HR/Admin — not editable here.</p>
