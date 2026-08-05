@@ -57,6 +57,7 @@ export default function MyProfilePage() {
 
   const [emergencyForm, setEmergencyForm] = useState(EMPTY_EMERGENCY_FORM);
 
+  const [showSkillForm, setShowSkillForm] = useState(false);
   const [skillCategory, setSkillCategory] = useState<(typeof SKILL_CATEGORIES)[number]>(SKILL_CATEGORIES[0]);
   const [skillInput, setSkillInput] = useState('');
 
@@ -210,12 +211,14 @@ export default function MyProfilePage() {
     setEditingDetails(false);
   }
 
-  async function addSkill() {
+  async function addSkill(e?: React.FormEvent) {
+    e?.preventDefault();
     const value = skillInput.trim();
     if (!value || !employee) return;
     const skill = `${skillCategory}: ${value}`;
     if (employee.skills.includes(skill)) {
       setSkillInput('');
+      setShowSkillForm(false);
       return;
     }
     const error = await saveProfile({ skills: [...employee.skills, skill] });
@@ -224,6 +227,7 @@ export default function MyProfilePage() {
       return;
     }
     setSkillInput('');
+    setShowSkillForm(false);
     reload(employee.id);
   }
 
@@ -635,48 +639,22 @@ export default function MyProfilePage() {
       </div>
 
       <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-ink">Skills</h2>
-        <div className="mb-3 flex flex-wrap gap-2">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-ink">Skills</h2>
+          <button onClick={() => setShowSkillForm(true)} className="text-xs font-medium text-accent hover:underline">
+            + Add
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
           {employee.skills.map(skill => (
-            <span key={skill} className="flex items-center gap-1 rounded-full bg-accent/10 px-3 py-1 text-xs font-medium text-accent">
+            <span key={skill} className="flex items-center gap-1 rounded-full bg-good-bg px-3 py-1 text-xs font-medium text-good-text">
               {skill}
-              <button onClick={() => removeSkill(skill)} className="text-accent/60 hover:text-accent">
+              <button onClick={() => removeSkill(skill)} className="text-good-text/60 hover:text-good-text">
                 ×
               </button>
             </span>
           ))}
           {employee.skills.length === 0 && <p className="text-xs text-slate-400">No skills added yet.</p>}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <select
-            value={skillCategory}
-            onChange={e => setSkillCategory(e.target.value as (typeof SKILL_CATEGORIES)[number])}
-            className="shrink-0 rounded-lg border border-slate-200 px-2 py-2 text-sm"
-          >
-            {SKILL_CATEGORIES.map(c => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          <input
-            value={skillInput}
-            onChange={e => setSkillInput(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                addSkill();
-              }
-            }}
-            placeholder="e.g. English, Forklift license…"
-            className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
-          />
-          <button
-            onClick={addSkill}
-            className="shrink-0 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Add
-          </button>
         </div>
       </div>
 
@@ -876,6 +854,50 @@ export default function MyProfilePage() {
                 className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
               >
                 {savingExperience ? 'Saving…' : 'Add'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showSkillForm && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
+          <form onSubmit={addSkill} className="w-full max-w-sm rounded-xl bg-white p-6 shadow-lg">
+            <h3 className="mb-4 text-lg font-semibold text-ink">Add Skill</h3>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Category</label>
+            <select
+              value={skillCategory}
+              onChange={e => setSkillCategory(e.target.value as (typeof SKILL_CATEGORIES)[number])}
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            >
+              {SKILL_CATEGORIES.map(c => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Value</label>
+            <input
+              autoFocus
+              required
+              value={skillInput}
+              onChange={e => setSkillInput(e.target.value)}
+              placeholder="e.g. English, Forklift license…"
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowSkillForm(false)}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
+              >
+                Add
               </button>
             </div>
           </form>
