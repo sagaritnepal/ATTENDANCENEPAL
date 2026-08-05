@@ -1,18 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
-import Badge from '@/components/Badge';
-import {
-  buildPeriodOptions,
-  currentSystemYearMonth,
-  formatAdDate,
-  formatDdMmYyyy,
-  systemPeriod,
-  type CalendarPeriod,
-} from '@/lib/calendar';
+import { buildPeriodOptions, currentSystemYearMonth, formatDdMmYyyy, systemPeriod, type CalendarPeriod } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { formatHoursMinutes, nepalTodayIso } from '@/lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '@/lib/payrollDetail';
@@ -29,12 +21,6 @@ import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types
 // see on their detail page unless an admin has changed those.
 const OT_HOURS_PER_DAY = 8;
 const OT_MULTIPLIER = 1.5;
-
-function statusBadge(d: DayDetail) {
-  if (d.checkIn) return null;
-  if (d.status === 'Upcoming') return <Badge tone="neutral">Upcoming</Badge>;
-  return <Badge tone="critical">Absent</Badge>;
-}
 
 export default function MyPayrollPage() {
   const { system } = useCalendarSystem();
@@ -214,12 +200,17 @@ export default function MyPayrollPage() {
 
   const chartData = useMemo(
     () =>
-      dayRows.map(r => ({
-        label: formatDdMmYyyy(r.date, system).slice(0, 2),
-        base: r.checkIn ? Math.max(0, r.hours - r.overtime) : 0,
-        overtime: r.checkIn ? r.overtime : 0,
-      })),
-    [dayRows, system]
+      dayRows.map(r => {
+        const earning = r.checkIn
+          ? dailySalaryEarning(r, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true)
+          : null;
+        return {
+          label: formatDdMmYyyy(r.date, system).slice(0, 2),
+          hours: r.checkIn ? r.hours : 0,
+          earning: earning ? Math.round(earning.total) : 0,
+        };
+      }),
+    [dayRows, system, employee, daysInRange]
   );
   const avgHoursPerDay = totals.presentDays > 0 ? totals.totalHours / totals.presentDays : 0;
 
@@ -303,14 +294,24 @@ export default function MyPayrollPage() {
           {dayRows.length === 0 ? (
             <p className="mt-2 text-center text-sm text-slate-400">No attendance records for this month yet.</p>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-              <table className="w-full min-w-[420px] text-left text-sm">
+            <div className="rounded-xl border border-slate-200 bg-white">
+              <table className="w-full table-fixed text-left text-[11px]">
+                <colgroup>
+                  <col className="w-[20%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[19%]" />
+                </colgroup>
                 <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">Date</th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">Hours</th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">Status</th>
-                    <th className="whitespace-nowrap px-3 py-2 text-right font-medium">Salary</th>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500">
+                    <th className="truncate px-1.5 py-1.5 font-medium">Date</th>
+                    <th className="truncate px-1 py-1.5 font-medium">Hrs</th>
+                    <th className="truncate px-1 py-1.5 font-medium">OT</th>
+                    <th className="truncate px-1 py-1.5 font-medium">Status</th>
+                    <th className="truncate px-1 py-1.5 text-right font-medium">My Salary</th>
+                    <th className="truncate px-1.5 py-1.5 text-right font-medium">Total</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -320,50 +321,66 @@ export default function MyPayrollPage() {
                       : null;
                     return (
                       <tr key={row.date} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
-                        <td className="whitespace-nowrap px-3 py-2 text-ink">
-                          {formatAdDate(row.date, system)}
-                          {row.pending && <span className="ml-1 text-[10px] font-normal text-slate-400">(live)</span>}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2 text-slate-600">{row.checkIn ? fmtHrs(row.hours) : '—'}</td>
-                        <td className="px-3 py-2">
+                        <td className="truncate px-1.5 py-1 text-ink">{formatDdMmYyyy(row.date, system).slice(0, 5)}</td>
+                        <td className="truncate px-1 py-1 text-slate-600">{row.checkIn ? fmtHrs(row.hours) : '—'}</td>
+                        <td className="truncate px-1 py-1 text-info-text">{row.checkIn && row.overtime > 0 ? fmtHrs(row.overtime) : '—'}</td>
+                        <td className="truncate px-1 py-1">
                           {row.checkIn ? (
-                            <div className="flex flex-wrap gap-1">
-                              {row.lateMinutes > 0 && <Badge tone="warning">Late</Badge>}
-                              {row.earlyMinutes > 0 && <Badge tone="critical">Early</Badge>}
-                              {row.overtime > 0 && <Badge tone="info">OT</Badge>}
-                              {row.lateMinutes === 0 && row.earlyMinutes === 0 && row.overtime === 0 && (
-                                <Badge tone="good">On Time</Badge>
-                              )}
-                            </div>
-                          ) : (
-                            statusBadge(row)
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-2 text-right">
-                          {earning ? (
-                            <span className="font-semibold text-good-text">{Math.round(earning.total).toLocaleString()}</span>
+                            <span
+                              className={`rounded px-1 py-0.5 text-[9px] font-semibold ${
+                                row.lateMinutes > 0
+                                  ? 'bg-warning-bg text-warning-text'
+                                  : row.earlyMinutes > 0
+                                    ? 'bg-critical-bg text-critical-text'
+                                    : 'bg-good-bg text-good-text'
+                              }`}
+                            >
+                              {row.lateMinutes > 0 ? 'Late' : row.earlyMinutes > 0 ? 'Early' : 'OK'}
+                            </span>
+                          ) : row.status === 'Absent' ? (
+                            <span className="rounded bg-critical-bg px-1 py-0.5 text-[9px] font-semibold text-critical-text">Absent</span>
                           ) : (
                             <span className="text-slate-300">—</span>
                           )}
+                        </td>
+                        <td className="truncate px-1 py-1 text-right text-slate-600">
+                          {earning ? Math.round(earning.base).toLocaleString() : '—'}
+                        </td>
+                        <td className="truncate px-1.5 py-1 text-right font-semibold text-good-text">
+                          {earning ? Math.round(earning.total).toLocaleString() : '—'}
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-slate-200 bg-slate-50 text-ink">
+                    <td className="truncate px-1.5 py-1.5 font-semibold">Total</td>
+                    <td className="truncate px-1 py-1.5 font-semibold">{fmtHrs(totals.totalHours)}</td>
+                    <td className="truncate px-1 py-1.5 font-semibold text-info-text">{fmtHrs(totals.overtimeHours)}</td>
+                    <td className="px-1 py-1.5" />
+                    <td className="truncate px-1 py-1.5 text-right font-semibold">
+                      {Math.round(totals.totalSalary - totals.overtimeEarning).toLocaleString()}
+                    </td>
+                    <td className="truncate px-1.5 py-1.5 text-right font-bold text-good-text">
+                      {Math.round(totals.totalSalary).toLocaleString()}
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
 
           <div className="mb-2 mt-6 flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold text-ink">Hours Trend</h2>
+            <h2 className="text-sm font-semibold text-ink">Hours &amp; Earning Trend</h2>
             {totals.presentDays > 0 && <span className="text-xs text-slate-400">Avg {fmtHrs(avgHoursPerDay)}/day</span>}
           </div>
           <div className="rounded-xl border border-slate-200 bg-white p-4">
             {chartData.length === 0 ? (
               <p className="py-8 text-center text-sm text-slate-400">No data to chart yet.</p>
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                   <CartesianGrid vertical={false} stroke="#e2e8f0" />
                   <XAxis
                     dataKey="label"
@@ -372,18 +389,50 @@ export default function MyPayrollPage() {
                     tickLine={false}
                     interval={chartData.length > 15 ? Math.ceil(chartData.length / 12) : 0}
                   />
-                  <YAxis tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <YAxis
+                    yAxisId="hours"
+                    tick={{ fontSize: 11, fill: '#0d9488' }}
+                    axisLine={false}
+                    tickLine={false}
+                    allowDecimals={false}
+                    width={28}
+                  />
+                  <YAxis
+                    yAxisId="earning"
+                    orientation="right"
+                    tick={{ fontSize: 11, fill: '#7c3aed' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={36}
+                  />
                   <Tooltip
                     contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
-                    formatter={(v: number, name: string) => [`${v.toFixed(1)} hrs`, name === 'base' ? 'Hours' : 'Overtime']}
+                    formatter={(v: number, name: string) =>
+                      name === 'hours' ? [`${v.toFixed(1)} hrs`, 'Hours'] : [v.toLocaleString(), 'Earning']
+                    }
                   />
-                  <Legend
-                    wrapperStyle={{ fontSize: 11 }}
-                    formatter={(value: string) => (value === 'base' ? 'Hours' : 'Overtime')}
+                  <Legend wrapperStyle={{ fontSize: 11 }} formatter={(value: string) => (value === 'hours' ? 'Hours' : 'Earning')} />
+                  <Line
+                    yAxisId="hours"
+                    type="monotone"
+                    dataKey="hours"
+                    name="hours"
+                    stroke="#0d9488"
+                    strokeWidth={2}
+                    dot={{ r: 2.5, fill: '#0d9488' }}
+                    activeDot={{ r: 5 }}
                   />
-                  <Bar dataKey="base" stackId="hours" name="base" fill="#0d9488" maxBarSize={16} />
-                  <Bar dataKey="overtime" stackId="hours" name="overtime" fill="#2563eb" radius={[3, 3, 0, 0]} maxBarSize={16} />
-                </BarChart>
+                  <Line
+                    yAxisId="earning"
+                    type="monotone"
+                    dataKey="earning"
+                    name="earning"
+                    stroke="#7c3aed"
+                    strokeWidth={2}
+                    dot={{ r: 2.5, fill: '#7c3aed' }}
+                    activeDot={{ r: 5 }}
+                  />
+                </LineChart>
               </ResponsiveContainer>
             )}
           </div>
