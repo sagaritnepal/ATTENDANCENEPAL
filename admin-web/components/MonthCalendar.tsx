@@ -109,9 +109,9 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
             : flags.present || flags.late
               ? 'bg-good-bg'
               : flags.checkedInOnly
-                ? 'bg-warning-bg'
+                ? 'bg-info-bg'
                 : flags.absent
-                  ? 'bg-critical-bg/40'
+                  ? 'bg-slate-100'
                   : '';
           return (
             <button
@@ -143,11 +143,11 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
               ) : flags.leave ? (
                 <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-purple-500'}`} />
               ) : flags.absent ? (
-                <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-critical'}`} />
+                <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-slate-400'}`} />
               ) : flags.present ? (
                 <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-good'}`} />
               ) : flags.checkedInOnly ? (
-                <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-warning'}`} />
+                <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-info'}`} />
               ) : null}
             </button>
           );
@@ -165,10 +165,13 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
           <span className="rounded-full bg-critical px-1.5 py-px text-[8px] font-bold uppercase leading-none text-white">Early</span> Early out
         </span>
         <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-info" /> Checked in
+        </span>
+        <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full bg-purple-500" /> On leave
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-critical" /> Absent
+          <span className="h-2.5 w-2.5 rounded-full bg-slate-400" /> Absent
         </span>
       </div>
     </div>

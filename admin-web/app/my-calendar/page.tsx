@@ -35,7 +35,7 @@ const CARD_STYLES: Record<CardKey, { label: string; bg: string; text: string }> 
   early: { label: 'Early Out', bg: 'bg-critical-bg', text: 'text-critical-text' },
   overtime: { label: 'Overtime', bg: 'bg-info-bg', text: 'text-info-text' },
   present: { label: 'Present Days', bg: 'bg-good-bg', text: 'text-good-text' },
-  absent: { label: 'Absent Days', bg: 'bg-critical-bg', text: 'text-critical-text' },
+  absent: { label: 'Absent Days', bg: 'bg-slate-100', text: 'text-slate-600' },
 };
 
 export default function MyCalendarPage() {
@@ -220,7 +220,7 @@ export default function MyCalendarPage() {
             dayStatus={dayStatus}
             leaveDates={leaveDates}
             selectedDate={selectedDate}
-            onSelectDate={setSelectedDate}
+            onSelectDate={d => setSelectedDate(cur => (cur === d ? null : d))}
             onMonthChange={setVisibleDates}
           />
 
@@ -328,7 +328,7 @@ export default function MyCalendarPage() {
                       <div key={entry.date} className="py-2 text-sm">
                         <div className="flex items-center justify-between">
                           <span className="font-medium text-ink">{formatAdDate(entry.date, system)}</span>
-                          {!day && <Badge tone="critical">Absent</Badge>}
+                          {!day && <Badge tone="neutral">Absent</Badge>}
                           {day?.isLate && <Badge tone="warning">Late</Badge>}
                         </div>
                         {day && (
