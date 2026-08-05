@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import { buildPeriodOptions, currentSystemYearMonth, formatDdMmYyyy, systemPeriod, type CalendarPeriod } from '@/lib/calendar';
@@ -206,13 +206,11 @@ export default function MyPayrollPage() {
           : null;
         return {
           label: formatDdMmYyyy(r.date, system).slice(0, 2),
-          hours: r.checkIn ? r.hours : 0,
           earning: earning ? Math.round(earning.total) : 0,
         };
       }),
     [dayRows, system, employee, daysInRange]
   );
-  const avgHoursPerDay = totals.presentDays > 0 ? totals.totalHours / totals.presentDays : 0;
 
   return (
     <EmployeeShell title="Payroll">
@@ -263,55 +261,28 @@ export default function MyPayrollPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl bg-good-bg p-4">
-              <div className="text-xs font-medium text-good-text">Total Hours</div>
-              <div className="mt-1 text-xl font-bold text-ink">{fmtHrs(totals.totalHours)}</div>
-            </div>
-            <div className="rounded-xl bg-info-bg p-4">
-              <div className="text-xs font-medium text-info-text">Overtime</div>
-              <div className="mt-1 text-xl font-bold text-ink">{fmtHrs(totals.overtimeHours)}</div>
-            </div>
-            <div className="rounded-xl bg-good-bg p-4">
-              <div className="text-xs font-medium text-good-text">Present Days</div>
-              <div className="mt-1 text-xl font-bold text-ink">{totals.presentDays}</div>
-            </div>
-            <div className="rounded-xl bg-critical-bg p-4">
-              <div className="text-xs font-medium text-critical-text">Absent Days</div>
-              <div className="mt-1 text-xl font-bold text-ink">{totals.absentDays}</div>
-            </div>
-            <div className="rounded-xl bg-warning-bg p-4">
-              <div className="text-xs font-medium text-warning-text">Late Days</div>
-              <div className="mt-1 text-xl font-bold text-ink">{totals.lateDays}</div>
-            </div>
-            <div className="rounded-xl bg-critical-bg p-4">
-              <div className="text-xs font-medium text-critical-text">Early Days</div>
-              <div className="mt-1 text-xl font-bold text-ink">{totals.earlyDays}</div>
-            </div>
-          </div>
-
-          <h2 className="mb-3 mt-6 text-sm font-semibold text-ink">Daily Breakdown of {period.label}</h2>
+          <h2 className="mb-2 mt-4 text-sm font-semibold text-ink">Daily Breakdown of {period.label}</h2>
           {dayRows.length === 0 ? (
             <p className="mt-2 text-center text-sm text-slate-400">No attendance records for this month yet.</p>
           ) : (
             <div className="rounded-xl border border-slate-200 bg-white">
               <table className="w-full table-fixed text-left text-[11px]">
                 <colgroup>
+                  <col className="w-[17%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[26%]" />
                   <col className="w-[20%]" />
-                  <col className="w-[13%]" />
-                  <col className="w-[12%]" />
-                  <col className="w-[18%]" />
-                  <col className="w-[18%]" />
-                  <col className="w-[19%]" />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500">
-                    <th className="truncate px-1.5 py-1.5 font-medium">Date</th>
-                    <th className="truncate px-1 py-1.5 font-medium">Hrs</th>
-                    <th className="truncate px-1 py-1.5 font-medium">OT</th>
-                    <th className="truncate px-1 py-1.5 font-medium">Status</th>
-                    <th className="truncate px-1 py-1.5 text-right font-medium">My Salary</th>
-                    <th className="truncate px-1.5 py-1.5 text-right font-medium">Total</th>
+                    <th className="truncate px-1 py-1 font-medium">Date</th>
+                    <th className="truncate px-0.5 py-1 font-medium">Hrs</th>
+                    <th className="truncate px-0.5 py-1 font-medium">OT</th>
+                    <th className="truncate px-0.5 py-1 font-medium">Status</th>
+                    <th className="truncate px-0.5 py-1 text-right font-medium">My Salary(OT)</th>
+                    <th className="truncate px-1 py-1 text-right font-medium">Total</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -321,10 +292,10 @@ export default function MyPayrollPage() {
                       : null;
                     return (
                       <tr key={row.date} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
-                        <td className="truncate px-1.5 py-1 text-ink">{formatDdMmYyyy(row.date, system).slice(0, 5)}</td>
-                        <td className="truncate px-1 py-1 text-slate-600">{row.checkIn ? fmtHrs(row.hours) : '—'}</td>
-                        <td className="truncate px-1 py-1 text-info-text">{row.checkIn && row.overtime > 0 ? fmtHrs(row.overtime) : '—'}</td>
-                        <td className="truncate px-1 py-1 font-medium">
+                        <td className="truncate px-1 py-0.5 text-ink">{formatDdMmYyyy(row.date, system).slice(0, 5)}</td>
+                        <td className="truncate px-0.5 py-0.5 text-slate-600">{row.checkIn ? fmtHrs(row.hours) : '—'}</td>
+                        <td className="truncate px-0.5 py-0.5 text-info-text">{row.checkIn ? fmtHrs(row.overtime) : '—'}</td>
+                        <td className="truncate px-0.5 py-0.5 font-medium">
                           {row.checkIn ? (
                             <span
                               className={
@@ -343,10 +314,17 @@ export default function MyPayrollPage() {
                             <span className="text-slate-300">—</span>
                           )}
                         </td>
-                        <td className="truncate px-1 py-1 text-right text-slate-600">
-                          {earning ? Math.round(earning.base).toLocaleString() : '—'}
+                        <td className="truncate px-0.5 py-0.5 text-right text-slate-600">
+                          {earning ? (
+                            <>
+                              {Math.round(earning.base).toLocaleString()}
+                              <span className="text-info-text">({Math.round(earning.overtime).toLocaleString()})</span>
+                            </>
+                          ) : (
+                            '—'
+                          )}
                         </td>
-                        <td className="truncate px-1.5 py-1 text-right font-semibold text-good-text">
+                        <td className="truncate px-1 py-0.5 text-right font-semibold text-good-text">
                           {earning ? Math.round(earning.total).toLocaleString() : '—'}
                         </td>
                       </tr>
@@ -355,14 +333,15 @@ export default function MyPayrollPage() {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-slate-200 bg-slate-50 text-ink">
-                    <td className="truncate px-1.5 py-1.5 font-semibold">Total</td>
-                    <td className="truncate px-1 py-1.5 font-semibold">{fmtHrs(totals.totalHours)}</td>
-                    <td className="truncate px-1 py-1.5 font-semibold text-info-text">{fmtHrs(totals.overtimeHours)}</td>
-                    <td className="px-1 py-1.5" />
-                    <td className="truncate px-1 py-1.5 text-right font-semibold">
+                    <td className="truncate px-1 py-1 font-semibold">Total</td>
+                    <td className="truncate px-0.5 py-1 font-semibold">{fmtHrs(totals.totalHours)}</td>
+                    <td className="truncate px-0.5 py-1 font-semibold text-info-text">{fmtHrs(totals.overtimeHours)}</td>
+                    <td className="px-0.5 py-1" />
+                    <td className="truncate px-0.5 py-1 text-right font-semibold">
                       {Math.round(totals.totalSalary - totals.overtimeEarning).toLocaleString()}
+                      <span className="text-info-text">({Math.round(totals.overtimeEarning).toLocaleString()})</span>
                     </td>
-                    <td className="truncate px-1.5 py-1.5 text-right font-bold text-good-text">
+                    <td className="truncate px-1 py-1 text-right font-bold text-good-text">
                       {Math.round(totals.totalSalary).toLocaleString()}
                     </td>
                   </tr>
@@ -371,76 +350,49 @@ export default function MyPayrollPage() {
             </div>
           )}
 
-          <div className="mb-2 mt-6 flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold text-ink">Hours &amp; Earning Trend</h2>
-            {totals.presentDays > 0 && <span className="text-xs text-slate-400">Avg {fmtHrs(avgHoursPerDay)}/day</span>}
+          <div className="mb-2 mt-4 flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold text-ink">Earning Trend</h2>
+            <span className="text-[10px] text-slate-400">Scroll to see all days →</span>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-3">
             {chartData.length === 0 ? (
               <p className="py-8 text-center text-sm text-slate-400">No data to chart yet.</p>
             ) : (
-              <ResponsiveContainer width="100%" height={160}>
-                <LineChart data={chartData} margin={{ top: 6, right: 6, left: -18, bottom: 0 }}>
-                  <CartesianGrid vertical={false} stroke="#e2e8f0" />
-                  <XAxis
-                    dataKey="label"
-                    tick={{ fontSize: 8, fill: '#64748b' }}
-                    axisLine={{ stroke: '#e2e8f0' }}
-                    tickLine={false}
-                    interval={0}
-                    angle={-45}
-                    textAnchor="end"
-                    height={28}
-                  />
-                  <YAxis
-                    yAxisId="hours"
-                    tick={{ fontSize: 9, fill: '#0d9488' }}
-                    axisLine={false}
-                    tickLine={false}
-                    allowDecimals={false}
-                    width={22}
-                  />
-                  <YAxis
-                    yAxisId="earning"
-                    orientation="right"
-                    tick={{ fontSize: 9, fill: '#7c3aed' }}
-                    axisLine={false}
-                    tickLine={false}
-                    width={30}
-                  />
-                  <Tooltip
-                    contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
-                    formatter={(v: number, name: string) =>
-                      name === 'hours' ? [`${v.toFixed(1)} hrs`, 'Hours'] : [v.toLocaleString(), 'Earning']
-                    }
-                  />
-                  <Legend
-                    wrapperStyle={{ fontSize: 10 }}
-                    iconSize={8}
-                    formatter={(value: string) => (value === 'hours' ? 'Hours' : 'Earning')}
-                  />
-                  <Line
-                    yAxisId="hours"
-                    type="monotone"
-                    dataKey="hours"
-                    name="hours"
-                    stroke="#0d9488"
-                    strokeWidth={1.5}
-                    dot={{ r: 1.5, fill: '#0d9488' }}
-                    activeDot={{ r: 4 }}
-                  />
-                  <Line
-                    yAxisId="earning"
-                    type="monotone"
-                    dataKey="earning"
-                    name="earning"
-                    stroke="#7c3aed"
-                    strokeWidth={1.5}
-                    dot={{ r: 1.5, fill: '#7c3aed' }}
-                    activeDot={{ r: 4 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              <div className="overflow-x-auto">
+                <div style={{ width: Math.max(chartData.length * 30, 320), height: 160 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData} margin={{ top: 6, right: 10, left: 0, bottom: 0 }}>
+                      <CartesianGrid vertical={false} stroke="#e2e8f0" />
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fontSize: 9, fill: '#64748b' }}
+                        axisLine={{ stroke: '#e2e8f0' }}
+                        tickLine={false}
+                        interval={0}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 9, fill: '#7c3aed' }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={34}
+                      />
+                      <Tooltip
+                        contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+                        formatter={(v: number) => [v.toLocaleString(), 'Earning']}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="earning"
+                        name="earning"
+                        stroke="#7c3aed"
+                        strokeWidth={2}
+                        dot={{ r: 2, fill: '#7c3aed' }}
+                        activeDot={{ r: 5 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
             )}
           </div>
         </>
