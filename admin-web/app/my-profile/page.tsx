@@ -442,55 +442,6 @@ export default function MyProfilePage() {
       </div>
 
       <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-ink">Filled by Employer</h2>
-        <p className="mb-3 text-xs text-slate-400">Set by HR/Admin — not editable here.</p>
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-slate-400">Enroll ID</span>
-            <span className="text-ink">{employee.fingerprint_id || '—'}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">Branch</span>
-            <span className="text-ink">{branches.find(b => b.id === employee.branch_id)?.name ?? '—'}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">Department</span>
-            <span className="text-ink">{employee.department || '—'}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">Designation</span>
-            <span className="text-ink">{employee.designation || '—'}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">Current Salary</span>
-            <span className="text-ink">{employee.salary != null ? employee.salary.toLocaleString() : '—'}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">PAN No.</span>
-            <span className="text-ink">{employee.pan_no || '—'}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">SSF No.</span>
-            <span className="text-ink">{employee.ssf_no || '—'}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">Date of joining</span>
-            <span className="text-ink">{formatAdDate(employee.date_of_joining, system)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">{employee.resigned_at ? 'Days worked' : 'Days with company'}</span>
-            <span className="text-ink">{days !== null ? `${days} days` : '—'}</span>
-          </div>
-          {employee.resigned_at && (
-            <div className="flex justify-between">
-              <span className="text-slate-400">Resigned</span>
-              <span className="text-ink">{formatAdDate(employee.resigned_at, system)}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ink">My Details</h2>
           {!editingDetails && (
@@ -522,10 +473,18 @@ export default function MyProfilePage() {
             </div>
 
             <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Employment details</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Filled by employer</p>
               <div className="flex justify-between">
                 <span className="text-slate-400">Username</span>
                 <span className="text-ink">{employee.username || '—'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Enroll ID</span>
+                <span className="text-ink">{employee.fingerprint_id || '—'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Branch</span>
+                <span className="text-ink">{branches.find(b => b.id === employee.branch_id)?.name ?? '—'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Department</span>
@@ -536,8 +495,8 @@ export default function MyProfilePage() {
                 <span className="text-ink">{employee.designation || '—'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Branch</span>
-                <span className="text-ink">{branches.find(b => b.id === employee.branch_id)?.name || '—'}</span>
+                <span className="text-slate-400">Current Salary</span>
+                <span className="text-ink">{employee.salary != null ? employee.salary.toLocaleString() : '—'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">PAN No.</span>
@@ -547,6 +506,21 @@ export default function MyProfilePage() {
                 <span className="text-slate-400">SSF No.</span>
                 <span className="text-ink">{employee.ssf_no || '—'}</span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Date of joining</span>
+                <span className="text-ink">{formatAdDate(employee.date_of_joining, system)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">{employee.resigned_at ? 'Days worked' : 'Days with company'}</span>
+                <span className="text-ink">{days !== null ? `${days} days` : '—'}</span>
+              </div>
+              {employee.resigned_at && (
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Resigned</span>
+                  <span className="text-ink">{formatAdDate(employee.resigned_at, system)}</span>
+                </div>
+              )}
+              <p className="pt-1 text-xs text-slate-400">Set by HR/Admin — not editable here.</p>
             </div>
 
             <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
