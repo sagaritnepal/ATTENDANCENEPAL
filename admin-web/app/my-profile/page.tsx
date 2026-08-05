@@ -647,7 +647,7 @@ export default function MyProfilePage() {
           ))}
           {employee.skills.length === 0 && <p className="text-xs text-slate-400">No skills added yet.</p>}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <select
             value={skillCategory}
             onChange={e => setSkillCategory(e.target.value as (typeof SKILL_CATEGORIES)[number])}
@@ -669,9 +669,12 @@ export default function MyProfilePage() {
               }
             }}
             placeholder="e.g. English, Forklift license…"
-            className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
           />
-          <button onClick={addSkill} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+          <button
+            onClick={addSkill}
+            className="shrink-0 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
             Add
           </button>
         </div>
