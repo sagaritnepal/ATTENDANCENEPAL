@@ -290,7 +290,7 @@ export default function MyPayrollPage() {
             </div>
           </div>
 
-          <h2 className="mb-3 mt-6 text-sm font-semibold text-ink">Daily Breakdown</h2>
+          <h2 className="mb-3 mt-6 text-sm font-semibold text-ink">Daily Breakdown of {period.label}</h2>
           {dayRows.length === 0 ? (
             <p className="mt-2 text-center text-sm text-slate-400">No attendance records for this month yet.</p>
           ) : (
@@ -324,21 +324,21 @@ export default function MyPayrollPage() {
                         <td className="truncate px-1.5 py-1 text-ink">{formatDdMmYyyy(row.date, system).slice(0, 5)}</td>
                         <td className="truncate px-1 py-1 text-slate-600">{row.checkIn ? fmtHrs(row.hours) : '—'}</td>
                         <td className="truncate px-1 py-1 text-info-text">{row.checkIn && row.overtime > 0 ? fmtHrs(row.overtime) : '—'}</td>
-                        <td className="truncate px-1 py-1">
+                        <td className="truncate px-1 py-1 font-medium">
                           {row.checkIn ? (
                             <span
-                              className={`rounded px-1 py-0.5 text-[9px] font-semibold ${
+                              className={
                                 row.lateMinutes > 0
-                                  ? 'bg-warning-bg text-warning-text'
+                                  ? 'text-warning-text'
                                   : row.earlyMinutes > 0
-                                    ? 'bg-critical-bg text-critical-text'
-                                    : 'bg-good-bg text-good-text'
-                              }`}
+                                    ? 'text-critical-text'
+                                    : 'text-good-text'
+                              }
                             >
-                              {row.lateMinutes > 0 ? 'Late' : row.earlyMinutes > 0 ? 'Early' : 'OK'}
+                              {row.lateMinutes > 0 ? 'Late' : row.earlyMinutes > 0 ? 'Early' : 'Present'}
                             </span>
                           ) : row.status === 'Absent' ? (
-                            <span className="rounded bg-critical-bg px-1 py-0.5 text-[9px] font-semibold text-critical-text">Absent</span>
+                            <span className="text-critical-text">Absent</span>
                           ) : (
                             <span className="text-slate-300">—</span>
                           )}
@@ -379,31 +379,34 @@ export default function MyPayrollPage() {
             {chartData.length === 0 ? (
               <p className="py-8 text-center text-sm text-slate-400">No data to chart yet.</p>
             ) : (
-              <ResponsiveContainer width="100%" height={240}>
-                <LineChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+              <ResponsiveContainer width="100%" height={160}>
+                <LineChart data={chartData} margin={{ top: 6, right: 6, left: -18, bottom: 0 }}>
                   <CartesianGrid vertical={false} stroke="#e2e8f0" />
                   <XAxis
                     dataKey="label"
-                    tick={{ fontSize: 10, fill: '#64748b' }}
+                    tick={{ fontSize: 8, fill: '#64748b' }}
                     axisLine={{ stroke: '#e2e8f0' }}
                     tickLine={false}
-                    interval={chartData.length > 15 ? Math.ceil(chartData.length / 12) : 0}
+                    interval={0}
+                    angle={-45}
+                    textAnchor="end"
+                    height={28}
                   />
                   <YAxis
                     yAxisId="hours"
-                    tick={{ fontSize: 11, fill: '#0d9488' }}
+                    tick={{ fontSize: 9, fill: '#0d9488' }}
                     axisLine={false}
                     tickLine={false}
                     allowDecimals={false}
-                    width={28}
+                    width={22}
                   />
                   <YAxis
                     yAxisId="earning"
                     orientation="right"
-                    tick={{ fontSize: 11, fill: '#7c3aed' }}
+                    tick={{ fontSize: 9, fill: '#7c3aed' }}
                     axisLine={false}
                     tickLine={false}
-                    width={36}
+                    width={30}
                   />
                   <Tooltip
                     contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
@@ -411,16 +414,20 @@ export default function MyPayrollPage() {
                       name === 'hours' ? [`${v.toFixed(1)} hrs`, 'Hours'] : [v.toLocaleString(), 'Earning']
                     }
                   />
-                  <Legend wrapperStyle={{ fontSize: 11 }} formatter={(value: string) => (value === 'hours' ? 'Hours' : 'Earning')} />
+                  <Legend
+                    wrapperStyle={{ fontSize: 10 }}
+                    iconSize={8}
+                    formatter={(value: string) => (value === 'hours' ? 'Hours' : 'Earning')}
+                  />
                   <Line
                     yAxisId="hours"
                     type="monotone"
                     dataKey="hours"
                     name="hours"
                     stroke="#0d9488"
-                    strokeWidth={2}
-                    dot={{ r: 2.5, fill: '#0d9488' }}
-                    activeDot={{ r: 5 }}
+                    strokeWidth={1.5}
+                    dot={{ r: 1.5, fill: '#0d9488' }}
+                    activeDot={{ r: 4 }}
                   />
                   <Line
                     yAxisId="earning"
@@ -428,9 +435,9 @@ export default function MyPayrollPage() {
                     dataKey="earning"
                     name="earning"
                     stroke="#7c3aed"
-                    strokeWidth={2}
-                    dot={{ r: 2.5, fill: '#7c3aed' }}
-                    activeDot={{ r: 5 }}
+                    strokeWidth={1.5}
+                    dot={{ r: 1.5, fill: '#7c3aed' }}
+                    activeDot={{ r: 4 }}
                   />
                 </LineChart>
               </ResponsiveContainer>
