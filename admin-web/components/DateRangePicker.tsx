@@ -2,16 +2,36 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { buildMonth, formatAdDate, stepAnchor, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
+import { buildMonth, formatAdDate, monthDateRange, stepAnchor, todayAnchor, type CalendarAnchor, type CalendarSystem } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-const POPOVER_WIDTH = 288; // matches w-72
+const POPOVER_WIDTH = 300; // matches w-[300px]
 
 function parseAdKey(value: string): CalendarAnchor | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!m) return null;
   return { year: Number(m[1]), month: Number(m[2]) - 1, day: Number(m[3]) };
+}
+
+function isoDaysAgo(n: number) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function buildPresets(system: CalendarSystem): { label: string; from: string; to: string }[] {
+  const today = todayAnchor();
+  const thisMonth = monthDateRange(system, today);
+  const lastMonth = monthDateRange(system, stepAnchor(system, today, -1));
+  const todayIso = isoDaysAgo(0);
+  return [
+    { label: 'Today', from: todayIso, to: todayIso },
+    { label: 'Last 7 days', from: isoDaysAgo(6), to: todayIso },
+    { label: 'Last 30 days', from: isoDaysAgo(29), to: todayIso },
+    { label: 'This month', from: thisMonth.start, to: thisMonth.end },
+    { label: 'Last month', from: lastMonth.start, to: lastMonth.end },
+  ];
 }
 
 /**
@@ -74,9 +94,25 @@ export default function DateRangePicker({
   }, [open]);
 
   const month = useMemo(() => buildMonth(system, anchor), [system, anchor]);
+  const presets = useMemo(() => buildPresets(system), [system]);
 
   function go(direction: 1 | -1) {
     setAnchor(stepAnchor(system, anchor, direction));
+  }
+
+  function goYear(direction: 1 | -1) {
+    setAnchor(a => {
+      let next = a;
+      for (let i = 0; i < 12; i++) next = stepAnchor(system, next, direction);
+      return next;
+    });
+  }
+
+  function applyPreset(from: string, to: string) {
+    onChange(from, to);
+    setPickingStart(null);
+    setHoverDate(null);
+    setOpen(false);
   }
 
   function selectCell(adKey: string) {
@@ -103,9 +139,6 @@ export default function DateRangePicker({
   const liveStart = pickingStart ? (pickingStart < previewAnchor! ? pickingStart : previewAnchor!) : from;
   const liveEnd = pickingStart ? (pickingStart < previewAnchor! ? previewAnchor! : pickingStart) : to;
 
-  const today = new Date();
-  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
   return (
     <>
       <button
@@ -127,14 +160,57 @@ export default function DateRangePicker({
             style={{ position: 'fixed', top: coords.top, left: coords.left, width: POPOVER_WIDTH }}
             className="z-[1000] rounded-xl border border-slate-200 bg-white p-3 shadow-lg"
           >
+            <div className="mb-3 flex flex-wrap gap-1.5 border-b border-slate-100 pb-3">
+              {presets.map(p => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => applyPreset(p.from, p.to)}
+                  className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:border-accent/40 hover:bg-accent/5 hover:text-accent"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
             <div className="mb-2 flex items-center justify-between">
-              <button type="button" onClick={() => go(-1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
-                ‹
-              </button>
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => goYear(-1)}
+                  title="Previous year"
+                  className="rounded-md border border-slate-200 px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-50"
+                >
+                  «
+                </button>
+                <button
+                  type="button"
+                  onClick={() => go(-1)}
+                  title="Previous month"
+                  className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50"
+                >
+                  ‹
+                </button>
+              </div>
               <span className="text-sm font-semibold text-ink">{month.label}</span>
-              <button type="button" onClick={() => go(1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
-                ›
-              </button>
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => go(1)}
+                  title="Next month"
+                  className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50"
+                >
+                  ›
+                </button>
+                <button
+                  type="button"
+                  onClick={() => goYear(1)}
+                  title="Next year"
+                  className="rounded-md border border-slate-200 px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-50"
+                >
+                  »
+                </button>
+              </div>
             </div>
 
             <p className="mb-1.5 text-center text-[11px] text-slate-400">
@@ -157,7 +233,7 @@ export default function DateRangePicker({
                     type="button"
                     onClick={() => selectCell(cell.adKey)}
                     onMouseEnter={() => pickingStart && setHoverDate(cell.adKey)}
-                    className={`h-7 w-7 rounded-full text-xs ${
+                    className={`h-8 w-8 rounded-full text-xs ${
                       !cell.inMonth
                         ? 'text-slate-300'
                         : isStart || isEnd
@@ -173,22 +249,6 @@ export default function DateRangePicker({
                   </button>
                 );
               })}
-            </div>
-
-            <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2">
-              <span className="text-[11px] text-slate-400">Today: {formatAdDate(todayIso, system)}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  onChange(todayIso, todayIso);
-                  setPickingStart(null);
-                  setHoverDate(null);
-                  setOpen(false);
-                }}
-                className="text-[11px] font-medium text-accent hover:underline"
-              >
-                Select today
-              </button>
             </div>
           </div>,
           document.body
