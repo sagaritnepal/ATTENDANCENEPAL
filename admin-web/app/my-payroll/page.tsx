@@ -13,7 +13,7 @@ import {
   type CalendarPeriod,
 } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { formatHoursMinutes } from '@/lib/shift';
+import { formatHoursMinutes, nepalTodayIso } from '@/lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '@/lib/payrollDetail';
 
 /** Decimal hours -> "Xh Ym". */
@@ -48,6 +48,8 @@ export default function MyPayrollPage() {
   const [dataRange, setDataRange] = useState<{ earliest: Date; latest: Date } | null>(null);
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
+  const [lifetimeSummaries, setLifetimeSummaries] = useState<PayrollSummary[]>([]);
+  const [lifetimeLogs, setLifetimeLogs] = useState<AttendanceLog[]>([]);
 
   const { start, end } = period;
 
@@ -122,6 +124,29 @@ export default function MyPayrollPage() {
       .then(({ data }) => setLogs(data ?? []));
   }, [employeeId, start, end]);
 
+  // Full employment history (date of joining -> today), independent of
+  // whichever period is selected above — feeds the "Total Earned" lifetime
+  // figure, which always means everything earned from the company to date,
+  // not just the currently viewed period.
+  useEffect(() => {
+    if (!employeeId || !employee?.date_of_joining) return;
+    const from = employee.date_of_joining;
+    const today = nepalTodayIso();
+    supabase
+      .from('payroll_summaries')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .gte('work_date', from)
+      .lte('work_date', today)
+      .then(({ data }) => setLifetimeSummaries(data ?? []));
+    supabase
+      .from('attendance_logs')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .gte('punch_time', `${from}T00:00:00Z`)
+      .then(({ data }) => setLifetimeLogs(data ?? []));
+  }, [employeeId, employee?.date_of_joining]);
+
   // Same shared day-by-day builder the admin Payroll employee detail page
   // uses, so this page's figures are never a second, independently-computed
   // version of the same numbers — both read through lib/payrollDetail.ts.
@@ -131,21 +156,60 @@ export default function MyPayrollPage() {
   );
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
 
+  const lifetimeDayRows: DayDetail[] = useMemo(
+    () =>
+      employee?.date_of_joining
+        ? buildEmployeeDayRows(employee, shifts, lifetimeSummaries, lifetimeLogs, employee.date_of_joining, nepalTodayIso())
+        : [],
+    [employee, shifts, lifetimeSummaries, lifetimeLogs]
+  );
+
+  // Prorates each day against the actual number of days in ITS OWN calendar
+  // month (unlike the period-scoped totals above, which prorate against the
+  // currently selected period's length) — a joining-to-date total spans many
+  // months, each with its own day count.
+  const totalEarned = useMemo(() => {
+    if (employee?.salary == null) return null;
+    const byMonth = new Map<string, DayDetail[]>();
+    for (const row of lifetimeDayRows) {
+      const key = row.date.slice(0, 7);
+      const list = byMonth.get(key);
+      if (list) list.push(row);
+      else byMonth.set(key, [row]);
+    }
+    let total = 0;
+    for (const [key, rows] of byMonth) {
+      const [y, m] = key.split('-').map(Number);
+      const daysInMonth = new Date(y, m, 0).getDate();
+      for (const row of rows) {
+        const earning = dailySalaryEarning(row, employee.salary, daysInMonth, OT_HOURS_PER_DAY, OT_MULTIPLIER, true);
+        if (earning) total += earning.total;
+      }
+    }
+    return Math.round(total);
+  }, [lifetimeDayRows, employee]);
+
   const totals = useMemo(() => {
     const totalHours = dayRows.reduce((s, r) => s + r.hours, 0);
     const overtimeHours = dayRows.reduce((s, r) => s + r.overtime, 0);
     const lateDays = dayRows.filter(r => r.status === 'Late').length;
+    const earlyDays = dayRows.filter(r => r.earlyMinutes > 0).length;
     const presentDays = dayRows.filter(r => r.checkIn).length;
     const absentDays = dayRows.filter(r => r.status === 'Absent').length;
-    const totalSalary = dayRows.reduce(
-      (s, r) => s + (dailySalaryEarning(r, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true)?.total ?? 0),
-      0
-    );
-    return { totalHours, overtimeHours, presentDays, lateDays, absentDays, totalSalary };
+    let baseEarning = 0;
+    let overtimeEarning = 0;
+    for (const r of dayRows) {
+      const earning = dailySalaryEarning(r, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true);
+      if (earning) {
+        baseEarning += earning.base;
+        overtimeEarning += earning.overtime;
+      }
+    }
+    return { totalHours, overtimeHours, presentDays, lateDays, earlyDays, absentDays, totalSalary: baseEarning + overtimeEarning, overtimeEarning };
   }, [dayRows, employee, daysInRange]);
 
   const received = employee?.salary != null ? Math.round(totals.totalSalary) : null;
-  const remaining = employee?.salary != null && received != null ? Math.max(0, employee.salary - received) : null;
+  const receivedOvertime = Math.round(totals.overtimeEarning);
 
   return (
     <EmployeeShell title="Payroll">
@@ -165,10 +229,12 @@ export default function MyPayrollPage() {
               <div className="rounded-xl bg-info-bg p-3 text-center">
                 <div className="text-[10px] font-medium uppercase text-info-text">Receivable</div>
                 <div className="text-sm font-bold text-ink">{received != null ? received.toLocaleString() : '—'}</div>
+                {received != null && <div className="text-[10px] text-info-text/70">(OT: {receivedOvertime.toLocaleString()})</div>}
               </div>
               <div className="rounded-xl bg-warning-bg p-3 text-center">
                 <div className="text-[10px] font-medium uppercase text-warning-text">Total Earned</div>
-                <div className="text-sm font-bold text-ink">{remaining != null ? remaining.toLocaleString() : '—'}</div>
+                <div className="text-sm font-bold text-ink">{totalEarned != null ? totalEarned.toLocaleString() : '—'}</div>
+                <div className="text-[10px] text-warning-text/70">till date</div>
               </div>
             </div>
           )}
@@ -214,6 +280,10 @@ export default function MyPayrollPage() {
             <div className="rounded-xl bg-warning-bg p-4">
               <div className="text-xs font-medium text-warning-text">Late Days</div>
               <div className="mt-1 text-xl font-bold text-ink">{totals.lateDays}</div>
+            </div>
+            <div className="rounded-xl bg-critical-bg p-4">
+              <div className="text-xs font-medium text-critical-text">Early Days</div>
+              <div className="mt-1 text-xl font-bold text-ink">{totals.earlyDays}</div>
             </div>
           </div>
 
