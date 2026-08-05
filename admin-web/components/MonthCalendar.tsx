@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { buildMonth, stepAnchor, todayAnchor } from '@/lib/calendar';
+import { buildMonth, localDateKey, stepAnchor, todayAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { DayStatus } from '@/lib/shift';
 
@@ -20,31 +20,53 @@ type Props = {
   onMonthChange?: (adKeys: string[]) => void;
 };
 
-/** A day cell's caption(s) + dot color for anything worth flagging at a
- * glance — mirrors the small in-cell event labels ("Sick Leave", "0.5 day
- * Annual Leave") from the reference dashboard, using our own real
- * attendance/leave data instead of invented event types. Late and Early can
- * both apply to the same day (late in AND left early), so this returns
- * every flag that applies instead of just the first match. */
-function dayCaptions(status: DayStatus | undefined, onLeave: boolean): { label: string; dot: string }[] {
-  if (onLeave) return [{ label: 'Leave', dot: 'bg-purple-500' }];
-  if (!status) return [];
-  const flags: { label: string; dot: string }[] = [];
-  if (status.isLate) flags.push({ label: 'Late', dot: 'bg-warning' });
-  if (status.isEarly) flags.push({ label: 'Early', dot: 'bg-critical' });
-  if (flags.length > 0) return flags;
-  if (status.hasOut) return [{ label: 'Present', dot: 'bg-good' }];
-  if (status.hasIn) return [{ label: 'In', dot: 'bg-warning' }];
-  return [];
+type DayFlags = {
+  late: boolean;
+  early: boolean;
+  leave: boolean;
+  present: boolean;
+  checkedInOnly: boolean;
+  absent: boolean;
+};
+
+/** Late and Early can both apply to the same day (late in AND left early),
+ * so they're tracked independently rather than as a single "the" flag — one
+ * renders above the day number, the other below. Everything else (leave,
+ * present, still-clocked-in, absent) is mutually exclusive and gets a single
+ * dot. A day with no punches, not on leave, that's already happened counts
+ * as absent — previously such a day rendered identically to a future day
+ * with no way to tell them apart. */
+function dayFlags(status: DayStatus | undefined, onLeave: boolean, isPastOrToday: boolean): DayFlags {
+  if (onLeave) return { late: false, early: false, leave: true, present: false, checkedInOnly: false, absent: false };
+  if (!status) return { late: false, early: false, leave: false, present: false, checkedInOnly: false, absent: isPastOrToday };
+  return {
+    late: status.isLate,
+    early: status.isEarly,
+    leave: false,
+    present: status.hasOut && !status.isLate && !status.isEarly,
+    checkedInOnly: status.hasIn && !status.hasOut,
+    absent: false,
+  };
+}
+
+function captionFor(flags: DayFlags): string | undefined {
+  const parts: string[] = [];
+  if (flags.leave) parts.push('On leave');
+  if (flags.late) parts.push('Late in');
+  if (flags.early) parts.push('Early out');
+  if (flags.present) parts.push('Present');
+  if (flags.checkedInOnly) parts.push('Checked in');
+  if (flags.absent) parts.push('Absent');
+  return parts.length > 0 ? parts.join(' & ') : undefined;
 }
 
 export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onSelectDate, onMonthChange }: Props) {
   const { system } = useCalendarSystem();
   const [anchor, setAnchor] = useState(todayAnchor);
-  const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
 
   const month = useMemo(() => buildMonth(system, anchor), [system, anchor]);
   const inMonthCells = useMemo(() => month.weeks.flat().filter(c => c.inMonth), [month]);
+  const todayKey = useMemo(() => localDateKey(new Date().toISOString()), []);
 
   useEffect(() => {
     onMonthChange?.(inMonthCells.map(c => c.adKey));
@@ -57,129 +79,96 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <button onClick={() => go(-1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
-            ←
-          </button>
-          <span className="min-w-[10ch] text-center text-base font-semibold text-ink">{month.label}</span>
-          <button onClick={() => go(1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
-            →
-          </button>
-        </div>
-        <div className="flex overflow-hidden rounded-lg border border-slate-200 text-xs font-semibold">
-          <button
-            onClick={() => setViewMode('calendar')}
-            className={`px-3 py-1.5 transition-colors ${viewMode === 'calendar' ? 'bg-accent text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
-          >
-            Calendar View
-          </button>
-          <button
-            onClick={() => setViewMode('list')}
-            className={`px-3 py-1.5 transition-colors ${viewMode === 'list' ? 'bg-accent text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
-          >
-            List View
-          </button>
-        </div>
+      <div className="mb-3 flex items-center justify-center gap-3">
+        <button onClick={() => go(-1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
+          ←
+        </button>
+        <span className="min-w-[10ch] text-center text-base font-semibold text-ink">{month.label}</span>
+        <button onClick={() => go(1)} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
+          →
+        </button>
       </div>
 
-      {viewMode === 'calendar' ? (
-        <>
-          <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-medium uppercase text-slate-400">
-            {WEEKDAY_LABELS.map(w => (
-              <div key={w} className="py-1">
-                {w}
-              </div>
-            ))}
+      <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-medium uppercase text-slate-400">
+        {WEEKDAY_LABELS.map(w => (
+          <div key={w} className="py-1">
+            {w}
           </div>
+        ))}
+      </div>
 
-          <div className="grid grid-cols-7 gap-1">
-            {month.weeks.flat().map((cell, i) => {
-              const status = dayStatus.get(cell.adKey);
-              const onLeave = leaveDates?.has(cell.adKey) ?? false;
-              const selected = selectedDate === cell.adKey;
-              const captions = cell.inMonth ? dayCaptions(status, onLeave) : [];
-              const attendanceBg = onLeave ? 'bg-purple-50' : status?.hasOut ? 'bg-good-bg' : status?.hasIn ? 'bg-warning-bg' : '';
-              return (
-                <button
-                  key={`${cell.adKey}-${i}`}
-                  onClick={() => onSelectDate(cell.adKey)}
-                  title={captions.map(c => c.label).join(' & ') || undefined}
-                  className={`relative flex min-h-[40px] flex-col items-center justify-center gap-0.5 rounded-lg text-sm sm:min-h-[50px] ${
-                    !cell.inMonth ? 'text-slate-300' : cell.isToday ? 'font-bold text-accent' : 'text-ink'
-                  } ${selected ? 'bg-accent text-white' : `${attendanceBg} hover:bg-slate-100`}`}
+      <div className="grid grid-cols-7 gap-1">
+        {month.weeks.flat().map((cell, i) => {
+          const status = dayStatus.get(cell.adKey);
+          const onLeave = leaveDates?.has(cell.adKey) ?? false;
+          const selected = selectedDate === cell.adKey;
+          const flags = cell.inMonth ? dayFlags(status, onLeave, cell.adKey <= todayKey) : dayFlags(undefined, false, false);
+          const caption = cell.inMonth ? captionFor(flags) : undefined;
+          const attendanceBg = onLeave
+            ? 'bg-purple-50'
+            : flags.present || flags.late
+              ? 'bg-good-bg'
+              : flags.checkedInOnly
+                ? 'bg-warning-bg'
+                : flags.absent
+                  ? 'bg-critical-bg/40'
+                  : '';
+          return (
+            <button
+              key={`${cell.adKey}-${i}`}
+              onClick={() => onSelectDate(cell.adKey)}
+              title={caption}
+              className={`relative flex min-h-[52px] flex-col items-center justify-center rounded-lg text-sm sm:min-h-[60px] ${
+                !cell.inMonth ? 'text-slate-300' : cell.isToday ? 'font-bold text-accent' : 'text-ink'
+              } ${selected ? 'bg-accent text-white' : `${attendanceBg} hover:bg-slate-100`}`}
+            >
+              {flags.late && (
+                <span
+                  className={`absolute top-1 rounded-full px-1.5 py-px text-[8px] font-bold uppercase leading-none shadow-sm ${
+                    selected ? 'bg-white text-accent' : 'bg-warning text-white'
+                  }`}
                 >
-                  <span>{cell.displayDay}</span>
-                  {captions.length > 0 && (
-                    <span
-                      className={`flex items-center gap-1 truncate px-1 text-[9px] font-medium leading-none ${
-                        selected ? 'text-white/90' : 'text-slate-500'
-                      }`}
-                    >
-                      <span className="flex shrink-0 items-center gap-0.5">
-                        {captions.map((c, ci) => (
-                          <span key={ci} className={`h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : c.dot}`} />
-                        ))}
-                      </span>
-                      {captions.map(c => c.label).join(' & ')}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </>
-      ) : (
-        <div className="max-h-[320px] divide-y divide-slate-100 overflow-y-auto">
-          {inMonthCells.map(cell => {
-            const status = dayStatus.get(cell.adKey);
-            const onLeave = leaveDates?.has(cell.adKey) ?? false;
-            const captions = dayCaptions(status, onLeave);
-            const selected = selectedDate === cell.adKey;
-            return (
-              <button
-                key={cell.adKey}
-                onClick={() => onSelectDate(cell.adKey)}
-                className={`flex w-full items-center justify-between gap-3 px-2 py-2.5 text-left transition-colors ${
-                  selected ? 'bg-accent/10' : 'hover:bg-slate-50'
-                }`}
-              >
-                <span className={`text-sm ${cell.isToday ? 'font-bold text-accent' : 'text-ink'}`}>
-                  {cell.displayDay} {month.label.split(' ')[0]}
+                  Late
                 </span>
-                {captions.length > 0 ? (
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-                    <span className="flex items-center gap-1">
-                      {captions.map((c, ci) => (
-                        <span key={ci} className={`h-2 w-2 rounded-full ${c.dot}`} />
-                      ))}
-                    </span>
-                    {captions.map(c => c.label).join(' & ')}
-                  </span>
-                ) : (
-                  <span className="text-xs text-slate-300">—</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
+              )}
+              <span>{cell.displayDay}</span>
+              {flags.early ? (
+                <span
+                  className={`absolute bottom-1 rounded-full px-1.5 py-px text-[8px] font-bold uppercase leading-none shadow-sm ${
+                    selected ? 'bg-white text-accent' : 'bg-critical text-white'
+                  }`}
+                >
+                  Early
+                </span>
+              ) : flags.leave ? (
+                <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-purple-500'}`} />
+              ) : flags.absent ? (
+                <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-critical'}`} />
+              ) : flags.present ? (
+                <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-good'}`} />
+              ) : flags.checkedInOnly ? (
+                <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-warning'}`} />
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
 
       <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-warning-bg" /> Checked in
+          <span className="h-2.5 w-2.5 rounded-full bg-good" /> Present
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-good-bg" /> Checked out
+          <span className="rounded-full bg-warning px-1.5 py-px text-[8px] font-bold uppercase leading-none text-white">Late</span> Late in
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-purple-50" /> On leave
+          <span className="rounded-full bg-critical px-1.5 py-px text-[8px] font-bold uppercase leading-none text-white">Early</span> Early out
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-full bg-warning" /> Late in
+          <span className="h-2.5 w-2.5 rounded-full bg-purple-500" /> On leave
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-full bg-critical" /> Early out
+          <span className="h-2.5 w-2.5 rounded-full bg-critical" /> Absent
         </span>
       </div>
     </div>
