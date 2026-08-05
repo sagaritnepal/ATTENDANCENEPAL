@@ -6,9 +6,9 @@ import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
+import PhotoCropModal from '@/components/PhotoCropModal';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { compressImage } from '@/lib/image';
 import type { Branch, Employee, EmployeeEducation, EmployeeWorkExperience, LeaderboardRow, PointRedemption } from '@/lib/types';
 
 const EMPTY_PROFILE_FORM = { name: '', email: '', phone: '', address: '', department: '', designation: '' };
@@ -46,6 +46,7 @@ export default function MyProfilePage() {
 
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [pendingPhotoFile, setPendingPhotoFile] = useState<File | null>(null);
 
   const [showRedeem, setShowRedeem] = useState(false);
   const [redeemPoints, setRedeemPoints] = useState(0);
@@ -296,16 +297,19 @@ export default function MyProfilePage() {
     photoInputRef.current?.click();
   }
 
-  async function handlePhotoSelected(e: React.ChangeEvent<HTMLInputElement>) {
+  function handlePhotoSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file || !employee) return;
+    if (!file) return;
+    setPendingPhotoFile(file);
+  }
 
+  async function handlePhotoCropped(blob: Blob) {
+    if (!employee) return;
     setUploadingPhoto(true);
     try {
-      const compressed = await compressImage(file);
       const path = `employee-photos/${employee.id}-${Date.now()}.jpg`;
-      const { error: uploadError } = await supabase.storage.from('attendance-selfies').upload(path, compressed, {
+      const { error: uploadError } = await supabase.storage.from('attendance-selfies').upload(path, blob, {
         contentType: 'image/jpeg',
       });
       if (uploadError) {
@@ -318,6 +322,7 @@ export default function MyProfilePage() {
         alert(`Could not save photo: ${rpcError.message}`);
         return;
       }
+      setPendingPhotoFile(null);
       reload(employee.id);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Photo upload failed.');
@@ -828,6 +833,15 @@ export default function MyProfilePage() {
             </div>
           </form>
         </div>
+      )}
+
+      {pendingPhotoFile && (
+        <PhotoCropModal
+          file={pendingPhotoFile}
+          saving={uploadingPhoto}
+          onCancel={() => setPendingPhotoFile(null)}
+          onSave={handlePhotoCropped}
+        />
       )}
     </EmployeeShell>
   );
