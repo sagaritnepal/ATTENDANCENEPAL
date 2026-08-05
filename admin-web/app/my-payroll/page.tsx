@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import Badge from '@/components/Badge';
@@ -211,6 +212,17 @@ export default function MyPayrollPage() {
   const received = employee?.salary != null ? Math.round(totals.totalSalary) : null;
   const receivedOvertime = Math.round(totals.overtimeEarning);
 
+  const chartData = useMemo(
+    () =>
+      dayRows.map(r => ({
+        label: formatDdMmYyyy(r.date, system).slice(0, 2),
+        base: r.checkIn ? Math.max(0, r.hours - r.overtime) : 0,
+        overtime: r.checkIn ? r.overtime : 0,
+      })),
+    [dayRows, system]
+  );
+  const avgHoursPerDay = totals.presentDays > 0 ? totals.totalHours / totals.presentDays : 0;
+
   return (
     <EmployeeShell title="Payroll">
       {loading ? (
@@ -291,46 +303,90 @@ export default function MyPayrollPage() {
           {dayRows.length === 0 ? (
             <p className="mt-2 text-center text-sm text-slate-400">No attendance records for this month yet.</p>
           ) : (
-            <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
-              {dayRows.map(row => {
-                const earning = row.checkIn
-                  ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true)
-                  : null;
-                return (
-                  <div key={row.date} className="px-4 py-3">
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="text-sm font-medium text-ink">
-                        {formatAdDate(row.date, system)}
-                        {row.pending && <span className="ml-1 text-[10px] font-normal text-slate-400">(live)</span>}
-                      </span>
-                      {row.checkIn ? (
-                        <span className="text-sm font-semibold text-ink">{fmtHrs(row.hours)}</span>
-                      ) : (
-                        statusBadge(row)
-                      )}
-                    </div>
-                    {row.checkIn && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {row.lateMinutes > 0 && <Badge tone="warning">Late {formatHoursMinutes(row.lateMinutes)}</Badge>}
-                        {row.earlyMinutes > 0 && <Badge tone="critical">Early {formatHoursMinutes(row.earlyMinutes)}</Badge>}
-                        {row.overtime > 0 && <Badge tone="info">OT {fmtHrs(row.overtime)}</Badge>}
-                        {row.lateMinutes === 0 && row.earlyMinutes === 0 && row.overtime === 0 && <Badge tone="good">On Time</Badge>}
-                      </div>
-                    )}
-                    {earning && (
-                      <div className="mt-1.5 flex items-center justify-between text-xs">
-                        <span className="text-slate-400">
-                          Salary {Math.round(earning.base).toLocaleString()}
-                          {earning.overtime > 0 && ` + OT ${Math.round(earning.overtime).toLocaleString()}`}
-                        </span>
-                        <span className="font-semibold text-good-text">{Math.round(earning.total).toLocaleString()}</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+              <table className="w-full min-w-[420px] text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                    <th className="whitespace-nowrap px-3 py-2 font-medium">Date</th>
+                    <th className="whitespace-nowrap px-3 py-2 font-medium">Hours</th>
+                    <th className="whitespace-nowrap px-3 py-2 font-medium">Status</th>
+                    <th className="whitespace-nowrap px-3 py-2 text-right font-medium">Salary</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dayRows.map((row, i) => {
+                    const earning = row.checkIn
+                      ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true)
+                      : null;
+                    return (
+                      <tr key={row.date} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
+                        <td className="whitespace-nowrap px-3 py-2 text-ink">
+                          {formatAdDate(row.date, system)}
+                          {row.pending && <span className="ml-1 text-[10px] font-normal text-slate-400">(live)</span>}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-slate-600">{row.checkIn ? fmtHrs(row.hours) : '—'}</td>
+                        <td className="px-3 py-2">
+                          {row.checkIn ? (
+                            <div className="flex flex-wrap gap-1">
+                              {row.lateMinutes > 0 && <Badge tone="warning">Late</Badge>}
+                              {row.earlyMinutes > 0 && <Badge tone="critical">Early</Badge>}
+                              {row.overtime > 0 && <Badge tone="info">OT</Badge>}
+                              {row.lateMinutes === 0 && row.earlyMinutes === 0 && row.overtime === 0 && (
+                                <Badge tone="good">On Time</Badge>
+                              )}
+                            </div>
+                          ) : (
+                            statusBadge(row)
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right">
+                          {earning ? (
+                            <span className="font-semibold text-good-text">{Math.round(earning.total).toLocaleString()}</span>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
+
+          <div className="mb-2 mt-6 flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold text-ink">Hours Trend</h2>
+            {totals.presentDays > 0 && <span className="text-xs text-slate-400">Avg {fmtHrs(avgHoursPerDay)}/day</span>}
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            {chartData.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-400">No data to chart yet.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                  <CartesianGrid vertical={false} stroke="#e2e8f0" />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 10, fill: '#64748b' }}
+                    axisLine={{ stroke: '#e2e8f0' }}
+                    tickLine={false}
+                    interval={chartData.length > 15 ? Math.ceil(chartData.length / 12) : 0}
+                  />
+                  <YAxis tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+                    formatter={(v: number, name: string) => [`${v.toFixed(1)} hrs`, name === 'base' ? 'Hours' : 'Overtime']}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: 11 }}
+                    formatter={(value: string) => (value === 'base' ? 'Hours' : 'Overtime')}
+                  />
+                  <Bar dataKey="base" stackId="hours" name="base" fill="#0d9488" maxBarSize={16} />
+                  <Bar dataKey="overtime" stackId="hours" name="overtime" fill="#2563eb" radius={[3, 3, 0, 0]} maxBarSize={16} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
         </>
       )}
     </EmployeeShell>
