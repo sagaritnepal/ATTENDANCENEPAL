@@ -138,6 +138,12 @@ export default function MyCalendarPage() {
     const todayKey = localDateKey(new Date().toISOString());
 
     for (const date of visibleDates) {
+      // An approved leave day never counts toward Present/Hours/Late/Early/
+      // Overtime even if a punch slipped in (e.g. leave approved after a
+      // device punch already synced) — the calendar cell already shows
+      // "Leave" for it, so the month totals need to agree instead of still
+      // counting that punch.
+      if (leaveDates.has(date)) continue;
       const status = dayStatus.get(date);
       if (status) {
         present.push({ date, minutes: 0 });

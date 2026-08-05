@@ -27,18 +27,21 @@ type DayFlags = {
   present: boolean;
   checkedInOnly: boolean;
   absent: boolean;
+  overtime: boolean;
 };
 
 /** Late and Early can both apply to the same day (late in AND left early),
  * so they're tracked independently rather than as a single "the" flag — one
- * renders above the day number, the other below. Everything else (leave,
- * present, still-clocked-in, absent) is mutually exclusive and gets a single
- * dot. A day with no punches, not on leave, that's already happened counts
- * as absent — previously such a day rendered identically to a future day
- * with no way to tell them apart. */
+ * renders above the day number, the other below. Overtime is also tracked
+ * independently (a corner dot) since it can co-occur with either. Everything
+ * else (leave, present, still-clocked-in, absent) is mutually exclusive and
+ * gets a single dot. A day with no punches, not on leave, that's already
+ * happened counts as absent — previously such a day rendered identically to
+ * a future day with no way to tell them apart. */
 function dayFlags(status: DayStatus | undefined, onLeave: boolean, isPastOrToday: boolean): DayFlags {
-  if (onLeave) return { late: false, early: false, leave: true, present: false, checkedInOnly: false, absent: false };
-  if (!status) return { late: false, early: false, leave: false, present: false, checkedInOnly: false, absent: isPastOrToday };
+  if (onLeave) return { late: false, early: false, leave: true, present: false, checkedInOnly: false, absent: false, overtime: false };
+  if (!status)
+    return { late: false, early: false, leave: false, present: false, checkedInOnly: false, absent: isPastOrToday, overtime: false };
   return {
     late: status.isLate,
     early: status.isEarly,
@@ -46,6 +49,7 @@ function dayFlags(status: DayStatus | undefined, onLeave: boolean, isPastOrToday
     present: status.hasOut && !status.isLate && !status.isEarly,
     checkedInOnly: status.hasIn && !status.hasOut,
     absent: false,
+    overtime: status.overtimeMinutes > 0,
   };
 }
 
@@ -57,6 +61,7 @@ function captionFor(flags: DayFlags): string | undefined {
   if (flags.present) parts.push('Present');
   if (flags.checkedInOnly) parts.push('Checked in');
   if (flags.absent) parts.push('Absent');
+  if (flags.overtime) parts.push('Overtime');
   return parts.length > 0 ? parts.join(' & ') : undefined;
 }
 
@@ -109,10 +114,18 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
             : flags.present || flags.late
               ? 'bg-good-bg'
               : flags.checkedInOnly
-                ? 'bg-info-bg'
+                ? 'bg-pink-50'
                 : flags.absent
                   ? 'bg-slate-100'
                   : '';
+          // The bottom dot's own color, so the overtime corner dot can skip
+          // itself if it would otherwise duplicate a color already showing
+          // on this same cell (checkedInOnly and overtime can't actually
+          // co-occur — overtime needs a checkout, checkedInOnly means there
+          // isn't one yet — but this keeps that guarantee explicit rather
+          // than implicit).
+          const bottomColorIsInfo = !flags.early && flags.checkedInOnly;
+          const showOvertimeDot = flags.overtime && !bottomColorIsInfo;
           return (
             <button
               key={`${cell.adKey}-${i}`}
@@ -131,6 +144,12 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
                   Late
                 </span>
               )}
+              {showOvertimeDot && (
+                <span
+                  title="Overtime"
+                  className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-info'}`}
+                />
+              )}
               <span>{cell.displayDay}</span>
               {flags.early ? (
                 <span
@@ -147,7 +166,7 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
               ) : flags.present ? (
                 <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-good'}`} />
               ) : flags.checkedInOnly ? (
-                <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-info'}`} />
+                <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-pink-500'}`} />
               ) : null}
             </button>
           );
@@ -165,7 +184,10 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
           <span className="rounded-full bg-critical px-1.5 py-px text-[8px] font-bold uppercase leading-none text-white">Early</span> Early out
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-info" /> Checked in
+          <span className="h-2.5 w-2.5 rounded-full bg-pink-500" /> Checked in
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-info" /> Overtime
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full bg-purple-500" /> On leave
