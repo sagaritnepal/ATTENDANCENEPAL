@@ -59,7 +59,8 @@ export default function PhotoCropModal({
   const [imgEl, setImgEl] = useState<HTMLImageElement | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragStartRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -86,21 +87,40 @@ export default function PhotoCropModal({
   );
 
   function onPointerDown(e: React.PointerEvent) {
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    dragRef.current = { startX: e.clientX, startY: e.clientY, panX: clampedPan.x, panY: clampedPan.y };
+    e.preventDefault();
+    dragStartRef.current = { startX: e.clientX, startY: e.clientY, panX: clampedPan.x, panY: clampedPan.y };
+    setDragging(true);
   }
-  function onPointerMove(e: React.PointerEvent) {
-    if (!dragRef.current) return;
-    const dx = e.clientX - dragRef.current.startX;
-    const dy = e.clientY - dragRef.current.startY;
-    setPan({
-      x: clamp(dragRef.current.panX + dx, -maxPanX, maxPanX),
-      y: clamp(dragRef.current.panY + dy, -maxPanY, maxPanY),
-    });
-  }
-  function onPointerUp() {
-    dragRef.current = null;
-  }
+
+  // Track the drag via window-level listeners instead of relying on the
+  // viewport div's own setPointerCapture — capture-based dragging has been
+  // flaky across mobile browsers/in-app webviews; a window listener keeps
+  // tracking the pointer regardless of what element it's currently over.
+  useEffect(() => {
+    if (!dragging) return;
+    const handleMove = (e: PointerEvent) => {
+      const start = dragStartRef.current;
+      if (!start) return;
+      const dx = e.clientX - start.startX;
+      const dy = e.clientY - start.startY;
+      setPan({
+        x: clamp(start.panX + dx, -maxPanX, maxPanX),
+        y: clamp(start.panY + dy, -maxPanY, maxPanY),
+      });
+    };
+    const handleUp = () => {
+      dragStartRef.current = null;
+      setDragging(false);
+    };
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    window.addEventListener('pointercancel', handleUp);
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      window.removeEventListener('pointercancel', handleUp);
+    };
+  }, [dragging, maxPanX, maxPanY]);
 
   async function handleSave() {
     if (!imgEl) return;
@@ -132,11 +152,8 @@ export default function PhotoCropModal({
 
         <div
           className="relative mx-auto touch-none overflow-hidden rounded-full border border-slate-200 bg-slate-100"
-          style={{ width: VIEWPORT, height: VIEWPORT, cursor: dragRef.current ? 'grabbing' : 'grab' }}
+          style={{ width: VIEWPORT, height: VIEWPORT, cursor: dragging ? 'grabbing' : 'grab' }}
           onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
         >
           {imgEl && (
             <img
