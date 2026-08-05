@@ -9,6 +9,7 @@ import DatePicker from '@/components/DatePicker';
 import PhotoCropModal from '@/components/PhotoCropModal';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
+import { SKILL_CATEGORIES } from '@/lib/skillCategories';
 import type { Branch, Department, Employee, EmployeeEducation, EmployeeWorkExperience } from '@/lib/types';
 
 function tenureDays(dateOfJoining: string | null, resignedAt: string | null) {
@@ -22,6 +23,7 @@ const EMPTY_EDUCATION_FORM = { degree: '', institution: '', year: '' };
 const EMPTY_EXPERIENCE_FORM = { employer: '', role: '', start_date: '', end_date: '' };
 const EMPTY_CORE_FORM = {
   name: '',
+  username: '',
   email: '',
   phone: '',
   department: '',
@@ -72,6 +74,7 @@ export default function EmployeeCvPage() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [pendingPhotoFile, setPendingPhotoFile] = useState<File | null>(null);
 
+  const [skillCategory, setSkillCategory] = useState<(typeof SKILL_CATEGORIES)[number]>(SKILL_CATEGORIES[0]);
   const [skillInput, setSkillInput] = useState('');
 
   const [showEducationForm, setShowEducationForm] = useState(false);
@@ -97,6 +100,7 @@ export default function EmployeeCvPage() {
           setEmployee({ ...data, skills: data.skills ?? [] });
           setCoreForm({
             name: data.name ?? '',
+            username: data.username ?? '',
             email: data.email ?? '',
             phone: data.phone ?? '',
             department: data.department ?? '',
@@ -159,6 +163,7 @@ export default function EmployeeCvPage() {
       .from('employees')
       .update({
         name: coreForm.name,
+        username: coreForm.username || null,
         email: coreForm.email || null,
         phone: coreForm.phone || null,
         department: coreForm.department || null,
@@ -221,8 +226,9 @@ export default function EmployeeCvPage() {
   }
 
   async function addSkill() {
-    const skill = skillInput.trim();
-    if (!skill || !employee) return;
+    const value = skillInput.trim();
+    if (!value || !employee) return;
+    const skill = `${skillCategory}: ${value}`;
     if (employee.skills.includes(skill)) {
       setSkillInput('');
       return;
@@ -515,6 +521,10 @@ export default function EmployeeCvPage() {
               <span className="text-ink">{employee.employee_code}</span>
             </div>
             <div>
+              <span className="block text-xs text-slate-400">Username</span>
+              <span className="text-ink">{employee.username || '—'}</span>
+            </div>
+            <div>
               <span className="block text-xs text-slate-400">Biometric / Registration ID</span>
               <span className="text-ink">{employee.fingerprint_id ?? '—'}</span>
             </div>
@@ -610,6 +620,14 @@ export default function EmployeeCvPage() {
                 required
                 value={coreForm.name}
                 onChange={e => setCoreForm(f => ({ ...f, name: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Username</label>
+              <input
+                value={coreForm.username}
+                onChange={e => setCoreForm(f => ({ ...f, username: e.target.value }))}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
               />
             </div>
@@ -754,6 +772,17 @@ export default function EmployeeCvPage() {
           {employee.skills.length === 0 && <p className="text-xs text-slate-400">No skills added yet.</p>}
         </div>
         <div className="flex gap-2">
+          <select
+            value={skillCategory}
+            onChange={e => setSkillCategory(e.target.value as (typeof SKILL_CATEGORIES)[number])}
+            className="shrink-0 rounded-lg border border-slate-200 px-2 py-2 text-sm"
+          >
+            {SKILL_CATEGORIES.map(c => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
           <input
             value={skillInput}
             onChange={e => setSkillInput(e.target.value)}
@@ -763,7 +792,7 @@ export default function EmployeeCvPage() {
                 addSkill();
               }
             }}
-            placeholder="Add a skill and press Enter"
+            placeholder="e.g. English, Forklift license…"
             className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
           />
           <button onClick={addSkill} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">

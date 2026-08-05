@@ -29,6 +29,7 @@ export type Employee = {
   designation: string | null;
   branch_id: string | null;
   fingerprint_id: string | null;
+  username: string | null;
   profile_photo_url: string | null;
   status: 'active' | 'inactive';
   date_of_joining: string | null;

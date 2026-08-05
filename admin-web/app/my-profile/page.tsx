@@ -9,6 +9,7 @@ import DatePicker from '@/components/DatePicker';
 import PhotoCropModal from '@/components/PhotoCropModal';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
+import { SKILL_CATEGORIES } from '@/lib/skillCategories';
 import type { Branch, Employee, EmployeeEducation, EmployeeWorkExperience, LeaderboardRow, PointRedemption } from '@/lib/types';
 
 const EMPTY_PROFILE_FORM = { name: '', email: '', phone: '', address: '', department: '', designation: '' };
@@ -57,6 +58,7 @@ export default function MyProfilePage() {
   const [emergencyForm, setEmergencyForm] = useState(EMPTY_EMERGENCY_FORM);
   const [savingEmergency, setSavingEmergency] = useState(false);
 
+  const [skillCategory, setSkillCategory] = useState<(typeof SKILL_CATEGORIES)[number]>(SKILL_CATEGORIES[0]);
   const [skillInput, setSkillInput] = useState('');
 
   const [education, setEducation] = useState<EmployeeEducation[]>([]);
@@ -213,8 +215,9 @@ export default function MyProfilePage() {
   }
 
   async function addSkill() {
-    const skill = skillInput.trim();
-    if (!skill || !employee) return;
+    const value = skillInput.trim();
+    if (!value || !employee) return;
+    const skill = `${skillCategory}: ${value}`;
     if (employee.skills.includes(skill)) {
       setSkillInput('');
       return;
@@ -615,6 +618,17 @@ export default function MyProfilePage() {
           {employee.skills.length === 0 && <p className="text-xs text-slate-400">No skills added yet.</p>}
         </div>
         <div className="flex gap-2">
+          <select
+            value={skillCategory}
+            onChange={e => setSkillCategory(e.target.value as (typeof SKILL_CATEGORIES)[number])}
+            className="shrink-0 rounded-lg border border-slate-200 px-2 py-2 text-sm"
+          >
+            {SKILL_CATEGORIES.map(c => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
           <input
             value={skillInput}
             onChange={e => setSkillInput(e.target.value)}
@@ -624,7 +638,7 @@ export default function MyProfilePage() {
                 addSkill();
               }
             }}
-            placeholder="Add a skill and press Enter"
+            placeholder="e.g. English, Forklift license…"
             className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
           />
           <button onClick={addSkill} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">

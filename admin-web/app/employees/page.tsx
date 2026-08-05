@@ -15,6 +15,7 @@ const PAGE_SIZE = 8;
 const EMPTY_FORM = {
   employee_code: '',
   name: '',
+  username: '',
   email: '',
   phone: '',
   address: '',
@@ -25,6 +26,9 @@ const EMPTY_FORM = {
   date_of_joining: '',
   pan_no: '',
   ssf_no: '',
+  emergency_contact_name: '',
+  emergency_contact_relationship: '',
+  emergency_contact_phone: '',
 };
 
 const CSV_COLUMNS = ['employee_code', 'name', 'email', 'phone', 'department', 'designation', 'fingerprint_id'] as const;
@@ -297,6 +301,7 @@ export default function EmployeesPage() {
     const { error } = await supabase.from('employees').insert({
       employee_code: form.employee_code,
       name: form.name,
+      username: form.username || null,
       email: form.email || null,
       phone: form.phone || null,
       address: form.address || null,
@@ -307,6 +312,9 @@ export default function EmployeesPage() {
       fingerprint_id: form.fingerprint_id || null,
       branch_id: form.branch_id || null,
       date_of_joining: form.date_of_joining || null,
+      emergency_contact_name: form.emergency_contact_name || null,
+      emergency_contact_relationship: form.emergency_contact_relationship || null,
+      emergency_contact_phone: form.emergency_contact_phone || null,
       status: 'active',
     });
     setSaving(false);
@@ -1146,6 +1154,7 @@ export default function EmployeesPage() {
                   [
                     ['employee_code', 'Employee code', true],
                     ['name', 'Full name', true],
+                    ['username', 'Username', false],
                     ['email', 'Email', false],
                     ['phone', 'Contact number', false],
                     ['address', 'Address', false],
@@ -1200,6 +1209,28 @@ export default function EmployeesPage() {
                   <label className="mb-1 block text-xs font-medium text-slate-600">Date of joining</label>
                   <DatePicker value={form.date_of_joining} onChange={v => setForm(f => ({ ...f, date_of_joining: v }))} />
                 </div>
+              </div>
+
+              <h4 className="mb-3 mt-5 border-t border-slate-100 pt-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Emergency Contact
+              </h4>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {(
+                  [
+                    ['emergency_contact_name', 'Name'],
+                    ['emergency_contact_relationship', 'Relationship'],
+                    ['emergency_contact_phone', 'Phone'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <div key={key}>
+                    <label className="mb-1 block text-xs font-medium text-slate-600">{label}</label>
+                    <input
+                      value={form[key]}
+                      onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+                    />
+                  </div>
+                ))}
               </div>
               {formError && <p className="mt-3 text-sm text-critical">{formError}</p>}
             </div>
