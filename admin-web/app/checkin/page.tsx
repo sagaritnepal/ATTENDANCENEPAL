@@ -122,6 +122,8 @@ export default function CheckInPage() {
     return history.filter(log => new Date(log.punch_time).getTime() >= cutoff);
   }, [history, historyRange]);
 
+  const pendingGpsRequests = useMemo(() => gpsRequests.filter(r => r.status === 'pending'), [gpsRequests]);
+
   // Only the first check-in and last check-out of a day are the punches that
   // actually count (same selection payroll uses) — every other punch that
   // day (duplicate ZKTeco taps, etc.) shows as rejected instead of accepted.
@@ -338,17 +340,17 @@ export default function CheckInPage() {
             </button>
           </div>
 
-          {gpsRequests.length > 0 && (
+          {pendingGpsRequests.length > 0 && (
             <>
               <h2 className="mb-3 mt-6 text-sm font-semibold text-ink">Recent check-ins</h2>
               <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
-                {gpsRequests.map(r => (
+                {pendingGpsRequests.map(r => (
                   <div key={r.id} className="flex items-center gap-3 px-4 py-3">
                     <div className="flex-1">
                       <div className="text-sm font-medium text-ink">{r.punch_type === '0' ? 'Check In' : 'Check Out'}</div>
                       <div className="text-xs text-slate-400">{formatDateTime(r.punch_time, system)}</div>
                     </div>
-                    <Badge tone={statusTone(r.status)}>{r.status}</Badge>
+                    <Badge tone={statusTone(r.status)}>{r.status === 'approved' ? 'Accepted' : r.status}</Badge>
                   </div>
                 ))}
               </div>
