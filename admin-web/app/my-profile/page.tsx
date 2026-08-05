@@ -462,6 +462,14 @@ export default function MyProfilePage() {
             <span className="text-ink">{employee.salary != null ? employee.salary.toLocaleString() : '—'}</span>
           </div>
           <div className="flex justify-between">
+            <span className="text-slate-400">PAN No.</span>
+            <span className="text-ink">{employee.pan_no || '—'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">SSF No.</span>
+            <span className="text-ink">{employee.ssf_no || '—'}</span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-slate-400">Date of joining</span>
             <span className="text-ink">{formatAdDate(employee.date_of_joining, system)}</span>
           </div>

@@ -38,6 +38,8 @@ export type Employee = {
   emergency_contact_relationship: string | null;
   emergency_contact_phone: string | null;
   skills: string[];
+  pan_no: string | null;
+  ssf_no: string | null;
   created_at: string;
 };
 

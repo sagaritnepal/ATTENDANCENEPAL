@@ -22,6 +22,8 @@ const EMPTY_FORM = {
   fingerprint_id: '',
   branch_id: '',
   date_of_joining: '',
+  pan_no: '',
+  ssf_no: '',
 };
 
 const CSV_COLUMNS = ['employee_code', 'name', 'email', 'phone', 'department', 'designation', 'fingerprint_id'] as const;
@@ -296,6 +298,8 @@ export default function EmployeesPage() {
       email: form.email || null,
       phone: form.phone || null,
       address: form.address || null,
+      pan_no: form.pan_no || null,
+      ssf_no: form.ssf_no || null,
       department: form.department || null,
       designation: form.designation || null,
       fingerprint_id: form.fingerprint_id || null,
@@ -1139,6 +1143,8 @@ export default function EmployeesPage() {
                     ['phone', 'Contact number', false],
                     ['address', 'Address', false],
                     ['designation', 'Designation', false],
+                    ['pan_no', 'PAN No.', false],
+                    ['ssf_no', 'SSF No.', false],
                     ['fingerprint_id', 'Fingerprint / Biometric ID', false],
                   ] as const
                 ).map(([key, label, required]) => (

@@ -31,6 +31,8 @@ const EMPTY_CORE_FORM = {
   emergency_contact_name: '',
   emergency_contact_relationship: '',
   emergency_contact_phone: '',
+  pan_no: '',
+  ssf_no: '',
 };
 
 async function toDataUrl(url: string): Promise<string | null> {
@@ -103,6 +105,8 @@ export default function EmployeeCvPage() {
             emergency_contact_name: data.emergency_contact_name ?? '',
             emergency_contact_relationship: data.emergency_contact_relationship ?? '',
             emergency_contact_phone: data.emergency_contact_phone ?? '',
+            pan_no: data.pan_no ?? '',
+            ssf_no: data.ssf_no ?? '',
           });
           if (data.branch_id) {
             supabase
@@ -163,6 +167,8 @@ export default function EmployeeCvPage() {
         emergency_contact_name: coreForm.emergency_contact_name || null,
         emergency_contact_relationship: coreForm.emergency_contact_relationship || null,
         emergency_contact_phone: coreForm.emergency_contact_phone || null,
+        pan_no: coreForm.pan_no || null,
+        ssf_no: coreForm.ssf_no || null,
       })
       .eq('id', employee.id);
     setSavingCore(false);
@@ -355,6 +361,8 @@ export default function EmployeeCvPage() {
         employee!.fingerprint_id ? `Biometric / Registration ID: ${employee!.fingerprint_id}` : null,
         `Date of joining: ${employee!.date_of_joining ?? '—'}`,
         days !== null ? `Tenure: ${days} days${employee!.resigned_at ? ' (resigned ' + employee!.resigned_at + ')' : ''}` : null,
+        employee!.pan_no ? `PAN No.: ${employee!.pan_no}` : null,
+        employee!.ssf_no ? `SSF No.: ${employee!.ssf_no}` : null,
         employee!.address ? `Address: ${employee!.address}` : null,
       ].filter(Boolean) as string[];
       for (const line of employmentLines) {
@@ -517,6 +525,14 @@ export default function EmployeeCvPage() {
                 <span className="text-ink">{formatAdDate(employee.resigned_at, system)}</span>
               </div>
             )}
+            <div>
+              <span className="block text-xs text-slate-400">PAN No.</span>
+              <span className="text-ink">{employee.pan_no || '—'}</span>
+            </div>
+            <div>
+              <span className="block text-xs text-slate-400">SSF No.</span>
+              <span className="text-ink">{employee.ssf_no || '—'}</span>
+            </div>
             <div className="col-span-2 sm:col-span-3">
               <span className="block text-xs text-slate-400">Address</span>
               <span className="text-ink">{employee.address || '—'}</span>
@@ -651,6 +667,22 @@ export default function EmployeeCvPage() {
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Date of joining</label>
               <DatePicker value={coreForm.date_of_joining} onChange={v => setCoreForm(f => ({ ...f, date_of_joining: v }))} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">PAN No.</label>
+              <input
+                value={coreForm.pan_no}
+                onChange={e => setCoreForm(f => ({ ...f, pan_no: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">SSF No.</label>
+              <input
+                value={coreForm.ssf_no}
+                onChange={e => setCoreForm(f => ({ ...f, ssf_no: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1 block text-xs font-medium text-slate-600">Address</label>
