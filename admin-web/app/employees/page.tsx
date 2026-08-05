@@ -16,6 +16,7 @@ const EMPTY_FORM = {
   name: '',
   email: '',
   phone: '',
+  address: '',
   department: '',
   designation: '',
   fingerprint_id: '',
@@ -294,6 +295,7 @@ export default function EmployeesPage() {
       name: form.name,
       email: form.email || null,
       phone: form.phone || null,
+      address: form.address || null,
       department: form.department || null,
       designation: form.designation || null,
       fingerprint_id: form.fingerprint_id || null,
@@ -1135,6 +1137,7 @@ export default function EmployeesPage() {
                     ['name', 'Full name', true],
                     ['email', 'Email', false],
                     ['phone', 'Contact number', false],
+                    ['address', 'Address', false],
                     ['designation', 'Designation', false],
                     ['fingerprint_id', 'Fingerprint / Biometric ID', false],
                   ] as const
