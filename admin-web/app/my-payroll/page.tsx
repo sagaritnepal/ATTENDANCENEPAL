@@ -158,15 +158,16 @@ export default function MyPayrollPage() {
           {employee?.salary != null && (
             <div className="mb-5 grid grid-cols-3 gap-3">
               <div className="rounded-xl bg-good-bg p-3 text-center">
-                <div className="text-[10px] font-medium uppercase text-good-text">Salary</div>
+                <div className="text-[10px] font-medium uppercase text-good-text">My Salary / Per Day</div>
                 <div className="text-sm font-bold text-ink">{employee.salary.toLocaleString()}</div>
+                <div className="text-[10px] text-good-text/70">{Math.round(employee.salary / daysInRange).toLocaleString()}/day</div>
               </div>
               <div className="rounded-xl bg-info-bg p-3 text-center">
-                <div className="text-[10px] font-medium uppercase text-info-text">Received</div>
+                <div className="text-[10px] font-medium uppercase text-info-text">Receivable</div>
                 <div className="text-sm font-bold text-ink">{received != null ? received.toLocaleString() : '—'}</div>
               </div>
               <div className="rounded-xl bg-warning-bg p-3 text-center">
-                <div className="text-[10px] font-medium uppercase text-warning-text">Remaining</div>
+                <div className="text-[10px] font-medium uppercase text-warning-text">Total Earned</div>
                 <div className="text-sm font-bold text-ink">{remaining != null ? remaining.toLocaleString() : '—'}</div>
               </div>
             </div>

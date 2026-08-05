@@ -8,7 +8,7 @@ import Badge from '@/components/Badge';
 import { formatAdDate, localDateKey } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { computeDayStatus, formatHoursMinutes, resolveShift } from '@/lib/shift';
-import type { AttendanceLog, Employee, LeaveRequest, Shift } from '@/lib/types';
+import type { AttendanceLog, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
 
 const WINDOW_DAYS = 400;
 
@@ -44,6 +44,7 @@ export default function MyCalendarPage() {
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
+  const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -63,20 +64,27 @@ export default function MyCalendarPage() {
       setLoading(false);
       if (!profile?.employee_id) return;
       setEmployeeId(profile.employee_id);
-      const [{ data: emp }, { data: shiftRows }, { data: rows }, { data: leaveRows }] = await Promise.all([
+      const windowStart = new Date(Date.now() - WINDOW_DAYS * 86400000);
+      const [{ data: emp }, { data: shiftRows }, { data: rows }, { data: summaryRows }, { data: leaveRows }] = await Promise.all([
         supabase.from('employees').select('*').eq('id', profile.employee_id).single(),
         supabase.from('shifts').select('*'),
         supabase
           .from('attendance_logs')
           .select('*')
           .eq('employee_id', profile.employee_id)
-          .gte('punch_time', new Date(Date.now() - WINDOW_DAYS * 86400000).toISOString())
+          .gte('punch_time', windowStart.toISOString())
           .order('punch_time', { ascending: true }),
+        supabase
+          .from('payroll_summaries')
+          .select('*')
+          .eq('employee_id', profile.employee_id)
+          .gte('work_date', windowStart.toISOString().slice(0, 10)),
         supabase.from('leave_requests').select('*').eq('employee_id', profile.employee_id).eq('status', 'approved'),
       ]);
       setEmployee(emp ?? null);
       setShifts(shiftRows ?? []);
       setLogs(rows ?? []);
+      setSummaries(summaryRows ?? []);
       setLeaveRequests(leaveRows ?? []);
     });
   }, []);
@@ -106,6 +114,18 @@ export default function MyCalendarPage() {
 
   const leaveDates = useMemo(() => new Set(leaveByDate.keys()), [leaveByDate]);
 
+  // work_date -> payroll_summaries row, so finalized days match the figures
+  // stored by the nightly job/admin "Recalculate" (same numbers the Payroll
+  // page reads) instead of a second, independently live-recomputed total
+  // that can drift from it — see buildEmployeeDayRows() in payrollDetail.ts,
+  // which the Payroll page uses and applies the same "today's always live"
+  // exception.
+  const summaryByDate = useMemo(() => {
+    const map = new Map<string, PayrollSummary>();
+    for (const s of summaries) map.set(s.work_date, s);
+    return map;
+  }, [summaries]);
+
   const monthSummary = useMemo(() => {
     const hours: CardEntry[] = [];
     const late: CardEntry[] = [];
@@ -121,15 +141,18 @@ export default function MyCalendarPage() {
       const status = dayStatus.get(date);
       if (status) {
         present.push({ date, minutes: 0 });
-        if (status.hasOut) {
-          hours.push({ date, minutes: status.totalMinutes });
-          totalWorkMinutes += status.totalMinutes;
+        const summary = date !== todayKey ? summaryByDate.get(date) : undefined;
+        const dayTotalMinutes = summary ? Math.round(Number(summary.total_hours) * 60) : status.totalMinutes;
+        const dayOvertimeMinutes = summary ? Math.round(Number(summary.overtime_hours) * 60) : status.overtimeMinutes;
+        if (status.hasOut || summary) {
+          hours.push({ date, minutes: dayTotalMinutes });
+          totalWorkMinutes += dayTotalMinutes;
         }
         if (status.isLate) late.push({ date, minutes: status.lateMinutes });
         if (status.isEarly) early.push({ date, minutes: status.earlyMinutes });
-        if (status.overtimeMinutes > 0) {
-          overtime.push({ date, minutes: status.overtimeMinutes });
-          overtimeMinutes += status.overtimeMinutes;
+        if (dayOvertimeMinutes > 0) {
+          overtime.push({ date, minutes: dayOvertimeMinutes });
+          overtimeMinutes += dayOvertimeMinutes;
         }
       } else if (date <= todayKey && !leaveDates.has(date)) {
         absent.push({ date, minutes: 0 });
@@ -148,7 +171,7 @@ export default function MyCalendarPage() {
         absent: absent.sort(byDateDesc),
       } satisfies Record<CardKey, CardEntry[]>,
     };
-  }, [visibleDates, dayStatus, leaveDates]);
+  }, [visibleDates, dayStatus, leaveDates, summaryByDate]);
 
   const selectedLeave = selectedDate ? leaveByDate.get(selectedDate) ?? null : null;
 
