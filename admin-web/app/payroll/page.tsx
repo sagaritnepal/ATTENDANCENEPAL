@@ -579,10 +579,7 @@ export default function PayrollPage() {
                 </div>
                 <div>
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Overtime</dt>
-                  <dd className="text-ink">
-                    {fmtHrs(row.overtime)}
-                    {overtimeSalary(row) != null && <span className="text-slate-400"> ({overtimeSalary(row)!.toLocaleString()})</span>}
-                  </dd>
+                  <dd className="text-ink">{fmtHrs(row.overtime)}</dd>
                 </div>
                 <div>
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Salary</dt>
@@ -590,7 +587,10 @@ export default function PayrollPage() {
                 </div>
                 <div>
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Calculated Salary</dt>
-                  <dd className="text-ink">{calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}</dd>
+                  <dd className="text-ink">
+                    {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
+                    {overtimeSalary(row) != null && <span className="text-slate-400"> ({overtimeSalary(row)!.toLocaleString()})</span>}
+                  </dd>
                 </div>
                 <div className="col-span-2">
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Overtime Salary</dt>
@@ -641,10 +641,7 @@ export default function PayrollPage() {
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-slate-600">{row.days}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-slate-600">{fmtHrs(row.hours)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">
-                    {fmtHrs(row.overtime)}
-                    {overtimeSalary(row) != null && <span className="text-slate-400"> ({overtimeSalary(row)!.toLocaleString()})</span>}
-                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">{fmtHrs(row.overtime)}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-xs">
                     <span className="text-warning-text">{row.lateDays}L</span>
                     {' / '}
@@ -653,6 +650,7 @@ export default function PayrollPage() {
                   <td className="whitespace-nowrap px-3 py-2">{salaryCellContent(row)}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-slate-600">
                     {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
+                    {overtimeSalary(row) != null && <span className="text-slate-400"> ({overtimeSalary(row)!.toLocaleString()})</span>}
                   </td>
                   <td className="whitespace-nowrap pl-2 pr-3 py-2 text-slate-600">{overtimeCellContent(row)}</td>
                   <td
@@ -681,16 +679,16 @@ export default function PayrollPage() {
                   <span className="text-critical-text">{totals.absentDays}A</span>
                 </td>
                 <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.totalHours)}</td>
-                <td className="whitespace-nowrap px-3 py-2">
-                  {fmtHrs(totals.overtimeHours)} ({totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })})
-                </td>
+                <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.overtimeHours)}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-xs">
                   <span className="text-warning-text">{totals.lateDays}L</span>
                   {' / '}
                   <span className="text-critical-text">{totals.earlyDays}E</span>
                 </td>
                 <td className="whitespace-nowrap px-3 py-2">{totals.totalEmployeeSalary.toLocaleString()}</td>
-                <td className="whitespace-nowrap px-3 py-2">{totals.totalSalaryPayable.toLocaleString()}</td>
+                <td className="whitespace-nowrap px-3 py-2">
+                  {totals.totalSalaryPayable.toLocaleString()} ({totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })})
+                </td>
                 <td className="whitespace-nowrap pl-2 pr-3 py-2">
                   {totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </td>
