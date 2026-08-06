@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import NepaliDate from 'nepali-date-converter';
 import { supabase } from '@/lib/supabase';
 import { stepWeek, weekRange } from '@/lib/calendar';
 import type { Employee, Shift } from '@/lib/types';
@@ -17,6 +18,11 @@ type RosterRow = { employee_id: string; work_date: string; shift_id: string | nu
 
 function shortDate(date: string) {
   return `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}`;
+}
+
+function shortBsDate(date: string) {
+  const [y, m, d] = date.split('-').map(Number);
+  return NepaliDate.fromAD(new Date(y, m - 1, d)).format('D/M');
 }
 
 export default function WeeklyRosterGrid() {
@@ -140,7 +146,9 @@ export default function WeeklyRosterGrid() {
                 {week.dates.map((date, i) => (
                   <th key={date} className="whitespace-nowrap px-1.5 py-2 text-center font-medium">
                     {WEEKDAY_LABELS[i]}
-                    <div className="text-[10px] font-normal normal-case text-slate-400">{shortDate(date)}</div>
+                    <div className="text-[10px] font-normal normal-case text-slate-400">
+                      {shortDate(date)} AD <span className="text-slate-300">·</span> {shortBsDate(date)} BS
+                    </div>
                   </th>
                 ))}
               </tr>
@@ -167,7 +175,7 @@ export default function WeeklyRosterGrid() {
                             <option value={WEEK_OFF_VALUE}>Week Off</option>
                             {templateShifts.map(s => (
                               <option key={s.id} value={s.id}>
-                                {s.name}
+                                {s.name} ({s.start_time.slice(0, 5)}–{s.end_time.slice(0, 5)})
                               </option>
                             ))}
                           </select>
