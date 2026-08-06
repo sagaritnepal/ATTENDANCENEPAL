@@ -268,11 +268,11 @@ export default function MyPayrollPage() {
             <div className="rounded-xl border border-slate-200 bg-white">
               <table className="w-full table-fixed text-center text-[11px]">
                 <colgroup>
-                  <col className="w-[17%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[11%]" />
+                  <col className="w-[14%]" />
                   <col className="w-[15%]" />
-                  <col className="w-[26%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[20%]" />
                   <col className="w-[20%]" />
                 </colgroup>
                 <thead>
