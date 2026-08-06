@@ -8,7 +8,13 @@ import MonthCalendar from '@/components/MonthCalendar';
 import Badge from '@/components/Badge';
 import { formatAdDate, formatDdMmYyyy, localDateKey } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { computeDayStatus, formatHoursMinutes, resolveShift } from '@/lib/shift';
+import {
+  applyOvernightShiftCorrection,
+  computeDayStatusForResolvedShift,
+  formatHoursMinutes,
+  resolveShiftForDate,
+  type DailyShiftByDate,
+} from '@/lib/shift';
 import type { AttendanceLog, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
 
 const WINDOW_DAYS = 400;
@@ -52,6 +58,7 @@ export default function MyCalendarPage() {
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [dailyShiftRows, setDailyShiftRows] = useState<{ work_date: string; shift_id: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [dayLogs, setDayLogs] = useState<AttendanceLog[]>([]);
@@ -71,29 +78,45 @@ export default function MyCalendarPage() {
       if (!profile?.employee_id) return;
       setEmployeeId(profile.employee_id);
       const windowStart = new Date(Date.now() - WINDOW_DAYS * 86400000);
-      const [{ data: emp }, { data: shiftRows }, { data: rows }, { data: summaryRows }, { data: leaveRows }] = await Promise.all([
-        supabase.from('employees').select('*').eq('id', profile.employee_id).single(),
-        supabase.from('shifts').select('*'),
-        supabase
-          .from('attendance_logs')
-          .select('*')
-          .eq('employee_id', profile.employee_id)
-          .gte('punch_time', windowStart.toISOString())
-          .order('punch_time', { ascending: true }),
-        supabase
-          .from('payroll_summaries')
-          .select('*')
-          .eq('employee_id', profile.employee_id)
-          .gte('work_date', windowStart.toISOString().slice(0, 10)),
-        supabase.from('leave_requests').select('*').eq('employee_id', profile.employee_id).eq('status', 'approved'),
-      ]);
+      const [{ data: emp }, { data: shiftRows }, { data: rows }, { data: summaryRows }, { data: leaveRows }, { data: rosterRows }] =
+        await Promise.all([
+          supabase.from('employees').select('*').eq('id', profile.employee_id).single(),
+          supabase.from('shifts').select('*'),
+          supabase
+            .from('attendance_logs')
+            .select('*')
+            .eq('employee_id', profile.employee_id)
+            .gte('punch_time', windowStart.toISOString())
+            .order('punch_time', { ascending: true }),
+          supabase
+            .from('payroll_summaries')
+            .select('*')
+            .eq('employee_id', profile.employee_id)
+            .gte('work_date', windowStart.toISOString().slice(0, 10)),
+          supabase.from('leave_requests').select('*').eq('employee_id', profile.employee_id).eq('status', 'approved'),
+          supabase
+            .from('employee_daily_shifts')
+            .select('work_date, shift_id')
+            .eq('employee_id', profile.employee_id)
+            .gte('work_date', windowStart.toISOString().slice(0, 10)),
+        ]);
       setEmployee(emp ?? null);
       setShifts(shiftRows ?? []);
       setLogs(rows ?? []);
       setSummaries(summaryRows ?? []);
       setLeaveRequests(leaveRows ?? []);
+      setDailyShiftRows(rosterRows ?? []);
     });
   }, []);
+
+  const dailyShiftByDate: DailyShiftByDate = useMemo(() => {
+    const map: DailyShiftByDate = new Map();
+    if (!employeeId) return map;
+    const perDate = new Map<string, string | null>();
+    for (const r of dailyShiftRows) perDate.set(r.work_date, r.shift_id);
+    map.set(employeeId, perDate);
+    return map;
+  }, [dailyShiftRows, employeeId]);
 
   const dayStatus = useMemo(() => {
     const byDate = new Map<string, AttendanceLog[]>();
@@ -103,12 +126,15 @@ export default function MyCalendarPage() {
       if (list) list.push(log);
       else byDate.set(key, [log]);
     }
-    const map = new Map<string, ReturnType<typeof computeDayStatus>>();
+    const map = new Map<string, ReturnType<typeof computeDayStatusForResolvedShift>>();
     if (!employee) return map;
-    const shift = resolveShift(employee, shifts);
-    for (const [date, dayLogs] of byDate) map.set(date, computeDayStatus(dayLogs, shift));
+    applyOvernightShiftCorrection(byDate, logs, employee, shifts, dailyShiftByDate);
+    for (const [date, dayLogs] of byDate) {
+      const resolved = resolveShiftForDate(employee, shifts, date, dailyShiftByDate);
+      map.set(date, computeDayStatusForResolvedShift(dayLogs, resolved));
+    }
     return map;
-  }, [logs, employee, shifts]);
+  }, [logs, employee, shifts, dailyShiftByDate]);
 
   const leaveByDate = useMemo(() => {
     const map = new Map<string, LeaveRequest>();
@@ -119,6 +145,21 @@ export default function MyCalendarPage() {
   }, [leaveRequests]);
 
   const leaveDates = useMemo(() => new Set(leaveByDate.keys()), [leaveByDate]);
+
+  // Dates this employee has an explicit Week Off roster entry for (a row
+  // exists in employee_daily_shifts with shift_id null) — treated the same
+  // way as approved leave: never counted toward Present/Hours/Late/Early/
+  // Overtime, never "Absent" on a day nothing was expected.
+  const weekOffDates = useMemo(() => {
+    const set = new Set<string>();
+    if (!employeeId) return set;
+    const perDate = dailyShiftByDate.get(employeeId);
+    if (!perDate) return set;
+    for (const [date, shiftId] of perDate) {
+      if (shiftId === null) set.add(date);
+    }
+    return set;
+  }, [dailyShiftByDate, employeeId]);
 
   const todayKey = useMemo(() => localDateKey(new Date().toISOString()), []);
 
@@ -144,12 +185,11 @@ export default function MyCalendarPage() {
     let overtimeMinutes = 0;
 
     for (const date of visibleDates) {
-      // An approved leave day never counts toward Present/Hours/Late/Early/
-      // Overtime even if a punch slipped in (e.g. leave approved after a
-      // device punch already synced) — the calendar cell already shows
-      // "Leave" for it, so the month totals need to agree instead of still
-      // counting that punch.
-      if (leaveDates.has(date)) continue;
+      // An approved leave day, or an explicit Week Off roster day, never
+      // counts toward Present/Hours/Late/Early/Overtime even if a punch
+      // slipped in — the month totals need to agree with what the calendar
+      // cell shows for that date.
+      if (leaveDates.has(date) || weekOffDates.has(date)) continue;
       // Prefer the finalized payroll_summaries row FIRST, independent of
       // whether dayStatus (built purely from raw attendance_logs) also has
       // an entry for this date — gating on dayStatus meant a day with a
@@ -194,7 +234,7 @@ export default function MyCalendarPage() {
         absent: absent.sort(byDateDesc),
       } satisfies Record<CardKey, CardEntry[]>,
     };
-  }, [visibleDates, dayStatus, leaveDates, summaryByDate, todayKey]);
+  }, [visibleDates, dayStatus, leaveDates, weekOffDates, summaryByDate, todayKey]);
 
   // Built from the exact same primitives (dayStatus, summaryByDate,
   // leaveDates, todayKey) as the "This Month" cards above, instead of a
@@ -203,7 +243,7 @@ export default function MyCalendarPage() {
   const tableRows = useMemo(
     () =>
       visibleDates.map(date => {
-        const onLeave = leaveDates.has(date);
+        const onLeave = leaveDates.has(date) || weekOffDates.has(date);
         if (onLeave) {
           return {
             date,
@@ -263,7 +303,7 @@ export default function MyCalendarPage() {
           absent: false,
         };
       }),
-    [visibleDates, leaveDates, dayStatus, summaryByDate, todayKey]
+    [visibleDates, leaveDates, weekOffDates, dayStatus, summaryByDate, todayKey]
   );
 
   const chartData = useMemo(
@@ -274,9 +314,10 @@ export default function MyCalendarPage() {
   const selectedLeave = selectedDate ? leaveByDate.get(selectedDate) ?? null : null;
 
   const selectedDaySummary = useMemo(() => {
-    if (dayLogs.length === 0 || !employee) return null;
-    return computeDayStatus(dayLogs, resolveShift(employee, shifts));
-  }, [dayLogs, employee, shifts]);
+    if (dayLogs.length === 0 || !employee || !selectedDate) return null;
+    const resolved = resolveShiftForDate(employee, shifts, selectedDate, dailyShiftByDate);
+    return computeDayStatusForResolvedShift(dayLogs, resolved);
+  }, [dayLogs, employee, shifts, selectedDate, dailyShiftByDate]);
 
   useEffect(() => {
     if (!selectedDate || !employeeId) {
@@ -317,6 +358,7 @@ export default function MyCalendarPage() {
           <MonthCalendar
             dayStatus={dayStatus}
             leaveDates={leaveDates}
+            weekOffDates={weekOffDates}
             selectedDate={selectedDate}
             onSelectDate={d => setSelectedDate(cur => (cur === d ? null : d))}
             onMonthChange={setVisibleDates}

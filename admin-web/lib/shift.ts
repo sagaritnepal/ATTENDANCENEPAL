@@ -18,6 +18,45 @@ export function resolveShift(employee: Employee, shifts: Shift[]) {
   return DEFAULT_SHIFT;
 }
 
+/** employeeId -> work_date (YYYY-MM-DD) -> shift_id, from employee_daily_shifts.
+ * A `null` value means an explicit Week Off row exists for that date. No entry
+ * for a date at all means "not on the roster" — falls back to resolveShift(). */
+export type DailyShiftByDate = Map<string, Map<string, string | null>>;
+
+/** Sentinel for "explicitly no shift today" (Week Off), distinct from a day
+ * with no roster entry at all (which still resolves via resolveShift()). */
+export const WEEK_OFF = { id: 'week-off', name: 'Week Off' } as const;
+export type ResolvedShift = Shift | typeof DEFAULT_SHIFT | typeof WEEK_OFF;
+
+export function isWeekOff(shift: ResolvedShift): shift is typeof WEEK_OFF {
+  return shift === WEEK_OFF;
+}
+
+/** Mirrors find_employee_shift_for_date() in the roster migration: an
+ * employee_daily_shifts row for this exact date wins (its shift, or
+ * WEEK_OFF if shift_id is null); no row at all falls through to the
+ * unchanged resolveShift() behavior — companies not using the roster
+ * feature see no change. */
+export function resolveShiftForDate(
+  employee: Employee,
+  shifts: Shift[],
+  date: string,
+  dailyShiftByDate?: DailyShiftByDate
+): ResolvedShift {
+  const perDate = dailyShiftByDate?.get(employee.id);
+  if (perDate?.has(date)) {
+    const shiftId = perDate.get(date);
+    if (shiftId === null) return WEEK_OFF;
+    const shift = shifts.find(s => s.id === shiftId);
+    if (shift) return shift;
+  }
+  return resolveShift(employee, shifts);
+}
+
+function isOvernightShift(shift: Pick<Shift, 'start_time' | 'end_time'>) {
+  return toMinutes(shift.end_time) <= toMinutes(shift.start_time);
+}
+
 export function formatShiftHours(shift: Pick<Shift, 'start_time' | 'end_time'>) {
   const hh = (t: string) => t.slice(0, 2);
   return `${shift.start_time.slice(0, 5)}–${shift.end_time.slice(0, 5)} (${hh(shift.start_time)}-${hh(shift.end_time)})`;
@@ -135,4 +174,96 @@ export function computeDayStatus(
     totalMinutes,
     overtimeMinutes,
   };
+}
+
+/** Same as computeDayStatus(), but for a ResolvedShift that might be
+ * WEEK_OFF — a day nothing was scheduled, so never late/early, but any
+ * hours actually punched still count (entirely as overtime, since there
+ * were 0 scheduled hours to exceed). Mirrors calc_payroll_fields()'s
+ * is_week_off branch. */
+export function computeDayStatusForResolvedShift(logs: AttendanceLog[], resolved: ResolvedShift): DayStatus {
+  if (isWeekOff(resolved)) {
+    const { checkIn, checkOut } = selectDayPunches(logs);
+    const hasOut = !!checkOut;
+    const totalMinutes = hasOut
+      ? Math.round((new Date(checkOut!.punch_time).getTime() - new Date(checkIn.punch_time).getTime()) / 60000)
+      : 0;
+    return {
+      hasIn: true,
+      hasOut,
+      isLate: false,
+      isEarly: false,
+      checkIn,
+      checkOut: hasOut ? checkOut : null,
+      lateMinutes: 0,
+      earlyMinutes: 0,
+      totalMinutes,
+      overtimeMinutes: totalMinutes,
+    };
+  }
+  return computeDayStatus(logs, resolved);
+}
+
+/** The UTC instant for `time` (HH:MM) on `dateKey` (YYYY-MM-DD), read as
+ * Nepal local time — the inverse of punchMinuteOfDay()'s conversion. */
+function nepalDateTimeToUtcMs(dateKey: string, time: string): number {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  const [hh, mm] = time.slice(0, 5).split(':').map(Number);
+  return Date.UTC(y, m - 1, d, hh, mm) - NEPAL_OFFSET_MINUTES * 60000;
+}
+
+/** Corrects a `byDate` grouping (built by each call site the usual way —
+ * bucketing raw punches by their own calendar date) for overnight shifts
+ * (Night Duty, Day & Night Duty): a shift starting in the evening has its
+ * check-out land on the NEXT calendar date, so naive same-date bucketing
+ * loses the shift entirely (the start date sees no matching check-out, and
+ * the end date mislabels the lone check-out as its own stray check-in).
+ * Mirrors shift_window_for_date()/compute_payroll_summaries()'s fix
+ * server-side: for any date whose resolved shift crosses midnight, rebuild
+ * that date's bucket from a window starting at the shift's scheduled start
+ * and spanning its duration plus a 2-hour overtime allowance, then strip
+ * whatever punches that window claimed out of neighboring dates' buckets
+ * so nothing gets double-counted. Mutates and returns `byDate`. */
+export function applyOvernightShiftCorrection(
+  byDate: Map<string, AttendanceLog[]>,
+  allLogs: AttendanceLog[],
+  employee: Employee,
+  shifts: Shift[],
+  dailyShiftByDate?: DailyShiftByDate
+): Map<string, AttendanceLog[]> {
+  const dates = [...byDate.keys()];
+  const claimed = new Set<string>();
+  const overnightDates = new Set<string>();
+
+  for (const date of dates) {
+    const resolved = resolveShiftForDate(employee, shifts, date, dailyShiftByDate);
+    if (isWeekOff(resolved) || !isOvernightShift(resolved)) continue;
+    overnightDates.add(date);
+
+    const startMin = toMinutes(resolved.start_time);
+    const endMin = toMinutes(resolved.end_time);
+    const durationMin = 24 * 60 - startMin + endMin;
+    const windowStartMs = nepalDateTimeToUtcMs(date, resolved.start_time);
+    const windowEndMs = windowStartMs + (durationMin + 120) * 60000;
+
+    const dayLogs = allLogs.filter(l => {
+      const t = new Date(l.punch_time).getTime();
+      return t >= windowStartMs && t < windowEndMs;
+    });
+    for (const l of dayLogs) claimed.add(l.id);
+    byDate.set(date, dayLogs);
+  }
+
+  if (claimed.size > 0) {
+    for (const [date, list] of byDate) {
+      if (overnightDates.has(date)) continue;
+      const filtered = list.filter(l => !claimed.has(l.id));
+      if (filtered.length !== list.length) {
+        if (filtered.length > 0) byDate.set(date, filtered);
+        else byDate.delete(date);
+      }
+    }
+  }
+
+  return byDate;
 }

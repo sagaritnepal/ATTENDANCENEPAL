@@ -13,7 +13,14 @@ import {
   type CalendarPeriod,
 } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { computeDayStatus, formatHoursMinutes, nepalTodayIso, resolveShift } from '@/lib/shift';
+import {
+  applyOvernightShiftCorrection,
+  computeDayStatusForResolvedShift,
+  formatHoursMinutes,
+  nepalTodayIso,
+  resolveShiftForDate,
+  type DailyShiftByDate,
+} from '@/lib/shift';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
 
 /** Decimal hours (e.g. row.hours, row.overtime) -> "Xh Ym". */
@@ -31,6 +38,7 @@ export default function PayrollPage() {
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [dailyShiftRows, setDailyShiftRows] = useState<{ employee_id: string; work_date: string; shift_id: string | null }[]>([]);
   const [pendingSalary, setPendingSalary] = useState<Record<string, string>>({});
   const [savingRowId, setSavingRowId] = useState<string | null>(null);
   const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
@@ -114,9 +122,28 @@ export default function PayrollPage() {
       .then(({ data }) => setLogs(data ?? []));
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
     supabase.from('employees').select('*').eq('status', 'active').then(({ data }) => setEmployees(data ?? []));
+    supabase
+      .from('employee_daily_shifts')
+      .select('employee_id, work_date, shift_id')
+      .gte('work_date', start)
+      .lte('work_date', end)
+      .then(({ data }) => setDailyShiftRows(data ?? []));
   }
 
   useEffect(reload, [start, end]);
+
+  const dailyShiftByDate: DailyShiftByDate = useMemo(() => {
+    const map: DailyShiftByDate = new Map();
+    for (const r of dailyShiftRows) {
+      let perDate = map.get(r.employee_id);
+      if (!perDate) {
+        perDate = new Map();
+        map.set(r.employee_id, perDate);
+      }
+      perDate.set(r.work_date, r.shift_id);
+    }
+    return map;
+  }, [dailyShiftRows]);
 
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
   // For attendance counting only (possibleDays/absentDays below) — a period
@@ -173,6 +200,22 @@ export default function PayrollPage() {
     }
 
     const today = nepalTodayIso();
+
+    // Per-employee: raw same-date bucketing, corrected for any day whose
+    // resolved shift crosses midnight — same fix as the Attendance Report
+    // page, computed once per employee rather than inside the day loop.
+    const logsByEmployeeDay = new Map<string, Map<string, AttendanceLog[]>>();
+    for (const emp of scopedEmployees) {
+      const empLogs = logs.filter(l => l.employee_id === emp.id);
+      const byDate = new Map<string, AttendanceLog[]>();
+      for (const day of days) {
+        const dayLogs = empLogs.filter(l => l.punch_time.slice(0, 10) === day);
+        if (dayLogs.length > 0) byDate.set(day, dayLogs);
+      }
+      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate);
+      logsByEmployeeDay.set(emp.id, byDate);
+    }
+
     for (const day of days) {
       for (const emp of scopedEmployees) {
         const row = map.get(emp.id);
@@ -190,13 +233,12 @@ export default function PayrollPage() {
           if (summary.is_early_departure) row.earlyDays += 1;
           continue;
         }
-        const dayLogs = logs
-          .filter(l => l.employee_id === emp.id && l.punch_time.slice(0, 10) === day)
-          .sort((a, b) => a.punch_time.localeCompare(b.punch_time));
+        const dayLogs = (logsByEmployeeDay.get(emp.id)?.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
         if (dayLogs.length === 0) continue;
         // Not yet processed by compute_payroll_summaries() — compute live
         // from the raw punches, same as the Attendance Report page does.
-        const live = computeDayStatus(dayLogs, resolveShift(emp, shifts));
+        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate);
+        const live = computeDayStatusForResolvedShift(dayLogs, resolved);
         row.days += 1;
         row.hours += live.totalMinutes / 60;
         row.overtime += live.overtimeMinutes / 60;
@@ -205,7 +247,7 @@ export default function PayrollPage() {
       }
     }
     return Array.from(map.values()).sort((a, b) => a.enrollId.localeCompare(b.enrollId, undefined, { numeric: true, sensitivity: 'base' }));
-  }, [summaries, logs, shifts, scopedEmployees, start, end]);
+  }, [summaries, logs, shifts, scopedEmployees, start, end, dailyShiftByDate]);
 
   const totals = useMemo(() => {
     const totalHours = byEmployee.reduce((s, r) => s + r.hours, 0);

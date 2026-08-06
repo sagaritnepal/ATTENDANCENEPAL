@@ -1,5 +1,11 @@
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from './types';
-import { computeDayStatus, nepalTodayIso, resolveShift } from './shift';
+import {
+  applyOvernightShiftCorrection,
+  computeDayStatusForResolvedShift,
+  nepalTodayIso,
+  resolveShiftForDate,
+  type DailyShiftByDate,
+} from './shift';
 
 export type DayDetail = {
   date: string;
@@ -26,9 +32,9 @@ export function buildEmployeeDayRows(
   summaries: PayrollSummary[],
   logs: AttendanceLog[],
   start: string,
-  end: string
+  end: string,
+  dailyShiftByDate?: DailyShiftByDate
 ): DayDetail[] {
-  const shift = resolveShift(employee, shifts);
   const days: string[] = [];
   const cur = new Date(start + 'T00:00:00Z');
   const endDate = new Date(end + 'T00:00:00Z');
@@ -36,6 +42,17 @@ export function buildEmployeeDayRows(
     days.push(cur.toISOString().slice(0, 10));
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
+
+  // Raw same-date bucketing first (unchanged for normal shifts), then
+  // corrected for any day whose resolved shift crosses midnight (Night
+  // Duty/Day & Night Duty) — see applyOvernightShiftCorrection().
+  const employeeLogs = logs.filter(l => l.employee_id === employee.id);
+  const byDate = new Map<string, AttendanceLog[]>();
+  for (const day of days) {
+    const dayLogs = employeeLogs.filter(l => l.punch_time.slice(0, 10) === day);
+    if (dayLogs.length > 0) byDate.set(day, dayLogs);
+  }
+  applyOvernightShiftCorrection(byDate, employeeLogs, employee, shifts, dailyShiftByDate);
 
   const today = nepalTodayIso();
   return days.map(day => {
@@ -55,16 +72,15 @@ export function buildEmployeeDayRows(
         status: summary.is_late ? 'Late' : 'Present',
       };
     }
-    const dayLogs = logs
-      .filter(l => l.employee_id === employee.id && l.punch_time.slice(0, 10) === day)
-      .sort((a, b) => a.punch_time.localeCompare(b.punch_time));
+    const dayLogs = (byDate.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
     if (dayLogs.length === 0) {
       // A day that hasn't happened yet isn't "Absent" — it just hasn't
       // occurred. Only mark days up to and including today that way.
       const status = day > today ? ('Upcoming' as const) : ('Absent' as const);
       return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status };
     }
-    const live = computeDayStatus(dayLogs, shift);
+    const resolved = resolveShiftForDate(employee, shifts, day, dailyShiftByDate);
+    const live = computeDayStatusForResolvedShift(dayLogs, resolved);
     return {
       date: day,
       checkIn: live.checkIn.punch_time,

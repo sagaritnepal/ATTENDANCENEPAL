@@ -8,7 +8,15 @@ import Badge from '@/components/Badge';
 import DateRangePicker from '@/components/DateRangePicker';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { computeDayStatus, formatHoursMinutes, nepalTodayIso, resolveShift } from '@/lib/shift';
+import {
+  applyOvernightShiftCorrection,
+  computeDayStatusForResolvedShift,
+  formatHoursMinutes,
+  isWeekOff,
+  nepalTodayIso,
+  resolveShiftForDate,
+  type DailyShiftByDate,
+} from '@/lib/shift';
 import type { AttendanceLog, Device, Employee, PayrollSummary, Shift } from '@/lib/types';
 
 type Row = {
@@ -70,6 +78,7 @@ function AttendanceView() {
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [dailyShiftRows, setDailyShiftRows] = useState<{ employee_id: string; work_date: string; shift_id: string | null }[]>([]);
 
   useEffect(() => {
     supabase.from('employees').select('*').eq('status', 'active').order('name').then(({ data }) => setEmployees(data ?? []));
@@ -90,12 +99,31 @@ function AttendanceView() {
       .gte('punch_time', `${from}T00:00:00Z`)
       .lte('punch_time', `${to}T23:59:59Z`)
       .then(({ data }) => setLogs(data ?? []));
+    supabase
+      .from('employee_daily_shifts')
+      .select('employee_id, work_date, shift_id')
+      .gte('work_date', from)
+      .lte('work_date', to)
+      .then(({ data }) => setDailyShiftRows(data ?? []));
   }, [from, to]);
 
   const scopedEmployees = useMemo(
     () => (employeeId === 'all' ? employees : employees.filter(e => e.id === employeeId)),
     [employees, employeeId]
   );
+
+  const dailyShiftByDate: DailyShiftByDate = useMemo(() => {
+    const map: DailyShiftByDate = new Map();
+    for (const r of dailyShiftRows) {
+      let perDate = map.get(r.employee_id);
+      if (!perDate) {
+        perDate = new Map();
+        map.set(r.employee_id, perDate);
+      }
+      perDate.set(r.work_date, r.shift_id);
+    }
+    return map;
+  }, [dailyShiftRows]);
 
   const rows: Row[] = useMemo(() => {
     const deviceName = (id: string | null) => devices.find(d => d.id === id)?.name ?? 'Mobile / QR / Selfie';
@@ -108,6 +136,23 @@ function AttendanceView() {
     }
 
     const today = nepalTodayIso();
+
+    // Per-employee: raw same-date bucketing, corrected for any day whose
+    // resolved shift crosses midnight (Night Duty/Day & Night Duty) — done
+    // once per employee up front (not inside the day×employee loop below)
+    // since applyOvernightShiftCorrection needs a whole date range at once.
+    const logsByEmployeeDay = new Map<string, Map<string, AttendanceLog[]>>();
+    for (const emp of scopedEmployees) {
+      const empLogs = logs.filter(l => l.employee_id === emp.id);
+      const byDate = new Map<string, AttendanceLog[]>();
+      for (const day of days) {
+        const dayLogs = empLogs.filter(l => l.punch_time.slice(0, 10) === day);
+        if (dayLogs.length > 0) byDate.set(day, dayLogs);
+      }
+      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate);
+      logsByEmployeeDay.set(emp.id, byDate);
+    }
+
     const out: Row[] = [];
     for (const day of days) {
       for (const emp of scopedEmployees) {
@@ -118,11 +163,11 @@ function AttendanceView() {
         // moment it was last computed. Always compute today live instead;
         // past days' summaries are final and safe to trust.
         const summary = day === today ? undefined : summaries.find(s => s.employee_id === emp.id && s.work_date === day);
-        const dayLogs = logs
-          .filter(l => l.employee_id === emp.id && l.punch_time.slice(0, 10) === day)
-          .sort((a, b) => a.punch_time.localeCompare(b.punch_time));
-        const shift = resolveShift(emp, shifts);
-        const shiftLabel = `${shift.name} (${shift.start_time.slice(0, 5)}–${shift.end_time.slice(0, 5)})`;
+        const dayLogs = (logsByEmployeeDay.get(emp.id)?.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
+        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate);
+        const shiftLabel = isWeekOff(resolved)
+          ? 'Week Off'
+          : `${resolved.name} (${resolved.start_time.slice(0, 5)}–${resolved.end_time.slice(0, 5)})`;
 
         if (summary) {
           out.push({
@@ -146,7 +191,7 @@ function AttendanceView() {
           // Payroll) — compute late/early/hours/overtime live from the raw
           // punches (same math payroll itself uses, see lib/shift.ts)
           // instead of leaving them blank until that job runs.
-          const live = computeDayStatus(dayLogs, shift);
+          const live = computeDayStatusForResolvedShift(dayLogs, resolved);
           out.push({
             key: `${emp.id}-${day}`,
             date: day,
@@ -195,7 +240,7 @@ function AttendanceView() {
         if (!bId) return -1;
         return aId.localeCompare(bId, undefined, { numeric: true, sensitivity: 'base' });
       });
-  }, [scopedEmployees, summaries, logs, devices, shifts, from, to, status]);
+  }, [scopedEmployees, summaries, logs, devices, shifts, from, to, status, dailyShiftByDate]);
 
   const totals = useMemo(() => {
     const workHours = rows.reduce((sum, r) => sum + r.hours, 0);

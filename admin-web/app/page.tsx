@@ -8,6 +8,7 @@ import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
 import type { AttendanceLog, Device, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
 import { dateKey, isLate, last7Days, presentEmployeeIds, WEEKDAY_LABEL } from '@/lib/metrics';
+import type { DailyShiftByDate } from '@/lib/shift';
 
 const DEPT_COLORS: Record<string, string> = {
   Engineering: '#0d9488',
@@ -28,6 +29,7 @@ export default function DashboardPage() {
   const [onLeave, setOnLeave] = useState<LeaveRequest[]>([]);
   const [todaySummaries, setTodaySummaries] = useState<PayrollSummary[]>([]);
   const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [todayRoster, setTodayRoster] = useState<{ employee_id: string; shift_id: string | null }[]>([]);
 
   useEffect(() => {
     const since = new Date();
@@ -49,6 +51,11 @@ export default function DashboardPage() {
       .select('*')
       .eq('work_date', today)
       .then(({ data }) => setTodaySummaries(data ?? []));
+    supabase
+      .from('employee_daily_shifts')
+      .select('employee_id, shift_id')
+      .eq('work_date', today)
+      .then(({ data }) => setTodayRoster(data ?? []));
     supabase
       .from('attendance_logs')
       .select('*')
@@ -82,14 +89,27 @@ export default function DashboardPage() {
   const todayLogs = useMemo(() => logs.filter(l => dateKey(l.punch_time) === today), [logs, today]);
   const presentIds = useMemo(() => presentEmployeeIds(logs, today), [logs, today]);
 
+  const dailyShiftByDate: DailyShiftByDate = useMemo(() => {
+    const map: DailyShiftByDate = new Map();
+    for (const r of todayRoster) {
+      let perDate = map.get(r.employee_id);
+      if (!perDate) {
+        perDate = new Map();
+        map.set(r.employee_id, perDate);
+      }
+      perDate.set(today, r.shift_id);
+    }
+    return map;
+  }, [todayRoster, today]);
+
   const lateCount = useMemo(() => {
     let count = 0;
     for (const emp of activeEmployees) {
       const empLogs = todayLogs.filter(l => l.employee_id === emp.id);
-      if (empLogs.length && isLate(emp, shifts, empLogs)) count++;
+      if (empLogs.length && isLate(emp, shifts, empLogs, today, dailyShiftByDate)) count++;
     }
     return count;
-  }, [activeEmployees, todayLogs, shifts]);
+  }, [activeEmployees, todayLogs, shifts, today, dailyShiftByDate]);
 
   const onLeaveIds = useMemo(() => new Set(onLeave.map(l => l.employee_id)), [onLeave]);
   const absentCount = Math.max(

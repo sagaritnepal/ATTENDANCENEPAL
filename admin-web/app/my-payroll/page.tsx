@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import { buildPeriodOptions, currentSystemYearMonth, formatDdMmYyyy, systemPeriod, type CalendarPeriod } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { formatHoursMinutes, nepalTodayIso } from '@/lib/shift';
+import { formatHoursMinutes, nepalTodayIso, type DailyShiftByDate } from '@/lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '@/lib/payrollDetail';
 
 /** Decimal hours -> "Xh Ym". */
@@ -37,6 +37,7 @@ export default function MyPayrollPage() {
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [lifetimeSummaries, setLifetimeSummaries] = useState<PayrollSummary[]>([]);
   const [lifetimeLogs, setLifetimeLogs] = useState<AttendanceLog[]>([]);
+  const [dailyShiftRows, setDailyShiftRows] = useState<{ work_date: string; shift_id: string | null }[]>([]);
 
   const { start, end } = period;
 
@@ -132,23 +133,50 @@ export default function MyPayrollPage() {
       .eq('employee_id', employeeId)
       .gte('punch_time', `${from}T00:00:00Z`)
       .then(({ data }) => setLifetimeLogs(data ?? []));
+    supabase
+      .from('employee_daily_shifts')
+      .select('work_date, shift_id')
+      .eq('employee_id', employeeId)
+      .gte('work_date', from)
+      .lte('work_date', today)
+      .then(({ data }) => setDailyShiftRows(data ?? []));
   }, [employeeId, employee?.date_of_joining]);
+
+  // employeeId -> work_date -> shift_id, covering this employee's whole
+  // employment history so it's valid for both the selected period's rows
+  // and the lifetime rows below.
+  const dailyShiftByDate: DailyShiftByDate = useMemo(() => {
+    const map: DailyShiftByDate = new Map();
+    if (!employeeId) return map;
+    const perDate = new Map<string, string | null>();
+    for (const r of dailyShiftRows) perDate.set(r.work_date, r.shift_id);
+    map.set(employeeId, perDate);
+    return map;
+  }, [dailyShiftRows, employeeId]);
 
   // Same shared day-by-day builder the admin Payroll employee detail page
   // uses, so this page's figures are never a second, independently-computed
   // version of the same numbers — both read through lib/payrollDetail.ts.
   const dayRows: DayDetail[] = useMemo(
-    () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end) : []),
-    [employee, shifts, summaries, logs, start, end]
+    () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate) : []),
+    [employee, shifts, summaries, logs, start, end, dailyShiftByDate]
   );
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
 
   const lifetimeDayRows: DayDetail[] = useMemo(
     () =>
       employee?.date_of_joining
-        ? buildEmployeeDayRows(employee, shifts, lifetimeSummaries, lifetimeLogs, employee.date_of_joining, nepalTodayIso())
+        ? buildEmployeeDayRows(
+            employee,
+            shifts,
+            lifetimeSummaries,
+            lifetimeLogs,
+            employee.date_of_joining,
+            nepalTodayIso(),
+            dailyShiftByDate
+          )
         : [],
-    [employee, shifts, lifetimeSummaries, lifetimeLogs]
+    [employee, shifts, lifetimeSummaries, lifetimeLogs, dailyShiftByDate]
   );
 
   // Prorates each day against the actual number of days in ITS OWN calendar

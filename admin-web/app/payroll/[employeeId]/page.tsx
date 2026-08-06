@@ -8,7 +8,7 @@ import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import { buildMonth, formatAdDate, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { formatHoursMinutes } from '@/lib/shift';
+import { formatHoursMinutes, type DailyShiftByDate } from '@/lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '@/lib/payrollDetail';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
 
@@ -70,6 +70,7 @@ function PayrollEmployeeDetailView() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
+  const [dailyShiftRows, setDailyShiftRows] = useState<{ work_date: string; shift_id: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -84,14 +85,29 @@ function PayrollEmployeeDetailView() {
         .eq('employee_id', employeeId)
         .gte('punch_time', `${start}T00:00:00Z`)
         .lte('punch_time', `${end}T23:59:59Z`),
-    ]).then(([empRes, shiftsRes, summariesRes, logsRes]) => {
+      supabase
+        .from('employee_daily_shifts')
+        .select('work_date, shift_id')
+        .eq('employee_id', employeeId)
+        .gte('work_date', start)
+        .lte('work_date', end),
+    ]).then(([empRes, shiftsRes, summariesRes, logsRes, rosterRes]) => {
       setEmployee(empRes.data ?? null);
       setShifts(shiftsRes.data ?? []);
       setSummaries(summariesRes.data ?? []);
       setLogs(logsRes.data ?? []);
+      setDailyShiftRows(rosterRes.data ?? []);
       setLoading(false);
     });
   }, [employeeId, start, end]);
+
+  const dailyShiftByDate: DailyShiftByDate = useMemo(() => {
+    const map: DailyShiftByDate = new Map();
+    const perDate = new Map<string, string | null>();
+    for (const r of dailyShiftRows) perDate.set(r.work_date, r.shift_id);
+    map.set(employeeId, perDate);
+    return map;
+  }, [dailyShiftRows, employeeId]);
 
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
   const monthLabel = useMemo(() => buildMonth(system, parseAdKey(start) ?? todayAnchor()).label, [system, start]);
@@ -100,14 +116,10 @@ function PayrollEmployeeDetailView() {
   // hour instead (see dailySalaryEarning() in lib/payrollDetail.ts).
   const salaryPerDay = useMemo(() => (employee?.salary != null ? employee.salary / daysInRange : null), [employee, daysInRange]);
 
-  const dayRows = useMemo(() => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end) : []), [
-    employee,
-    shifts,
-    summaries,
-    logs,
-    start,
-    end,
-  ]);
+  const dayRows = useMemo(
+    () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate) : []),
+    [employee, shifts, summaries, logs, start, end, dailyShiftByDate]
+  );
 
   const dayTotals = useMemo(() => {
     let hours = 0;

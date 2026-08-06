@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
+import WeeklyRosterGrid from '@/components/WeeklyRosterGrid';
 import type { Employee, Shift } from '@/lib/types';
 import { resolveShift, formatShiftHours } from '@/lib/shift';
 
@@ -15,6 +16,7 @@ export default function ShiftsPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState<'templates' | 'roster'>('templates');
 
   function reload() {
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
@@ -59,12 +61,36 @@ export default function ShiftsPage() {
 
   return (
     <AppShell title="Shift Roster Management">
-      <div className="mb-5 flex justify-end">
-        <button onClick={() => setShowForm(true)} className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90">
-          + New Shift
-        </button>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex gap-1 rounded-lg border border-slate-200 bg-white p-1 text-sm font-semibold shadow-sm">
+          <button
+            onClick={() => setTab('templates')}
+            className={`rounded-md px-3 py-1.5 transition-colors ${
+              tab === 'templates' ? 'bg-accent text-white' : 'text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            Shift Templates
+          </button>
+          <button
+            onClick={() => setTab('roster')}
+            className={`rounded-md px-3 py-1.5 transition-colors ${
+              tab === 'roster' ? 'bg-accent text-white' : 'text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            Weekly Roster
+          </button>
+        </div>
+        {tab === 'templates' && (
+          <button onClick={() => setShowForm(true)} className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90">
+            + New Shift
+          </button>
+        )}
       </div>
 
+      {tab === 'roster' ? (
+        <WeeklyRosterGrid />
+      ) : (
+        <>
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {templateShifts.map(shift => (
           <div key={shift.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -114,6 +140,8 @@ export default function ShiftsPage() {
         </table>
         </div>
       </div>
+        </>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">

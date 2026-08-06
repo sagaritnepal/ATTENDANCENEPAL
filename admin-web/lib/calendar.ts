@@ -254,3 +254,38 @@ export function formatAdDate(adKey: string | null | undefined, system: CalendarS
   }
   return NepaliDate.fromAD(new Date(Number(y), Number(mo) - 1, Number(d))).format('D MMMM YYYY');
 }
+
+export type WeekRange = { start: string; end: string; label: string; dates: string[] };
+
+/** The Sun-Sat AD week (7 real calendar dates) containing `anchorKey` —
+ * always AD, since the weekly duty roster is filled in Sun-Sat regardless
+ * of which calendar system the rest of the app is currently displaying. */
+export function weekRange(anchorKey: string): WeekRange {
+  const [y, m, d] = anchorKey.split('-').map(Number);
+  const anchor = new Date(y, m - 1, d);
+  const sunday = new Date(anchor);
+  sunday.setDate(anchor.getDate() - anchor.getDay());
+  const dates: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(sunday);
+    day.setDate(sunday.getDate() + i);
+    dates.push(dateKey(day.getFullYear(), day.getMonth(), day.getDate()));
+  }
+  const saturday = new Date(sunday);
+  saturday.setDate(sunday.getDate() + 6);
+  const fmt = (dt: Date) => dt.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  const label =
+    sunday.getFullYear() === saturday.getFullYear()
+      ? `${fmt(sunday)} – ${fmt(saturday)}, ${saturday.getFullYear()}`
+      : `${fmt(sunday)}, ${sunday.getFullYear()} – ${fmt(saturday)}, ${saturday.getFullYear()}`;
+  return { start: dates[0], end: dates[6], label, dates };
+}
+
+/** Steps `anchorKey` by one week (+1 or -1) — re-derive the new week with
+ * weekRange() on the result. */
+export function stepWeek(anchorKey: string, direction: 1 | -1): string {
+  const [y, m, d] = anchorKey.split('-').map(Number);
+  const next = new Date(y, m - 1, d);
+  next.setDate(next.getDate() + direction * 7);
+  return dateKey(next.getFullYear(), next.getMonth(), next.getDate());
+}

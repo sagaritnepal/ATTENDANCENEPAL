@@ -7,7 +7,13 @@ import MonthCalendar from '@/components/MonthCalendar';
 import Badge from '@/components/Badge';
 import { formatAdDate, localDateKey } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { computeDayStatus, formatHoursMinutes, resolveShift } from '@/lib/shift';
+import {
+  applyOvernightShiftCorrection,
+  computeDayStatusForResolvedShift,
+  formatHoursMinutes,
+  resolveShiftForDate,
+  type DailyShiftByDate,
+} from '@/lib/shift';
 import type { AttendanceLog, Employee, LeaveRequest, Shift } from '@/lib/types';
 
 const WINDOW_DAYS = 400;
@@ -45,6 +51,7 @@ export default function CalendarPage() {
   const [employeeId, setEmployeeId] = useState<string>('');
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [dailyShiftRows, setDailyShiftRows] = useState<{ work_date: string; shift_id: string | null }[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [dayLogs, setDayLogs] = useState<AttendanceLog[]>([]);
   const [dayLoading, setDayLoading] = useState(false);
@@ -83,9 +90,24 @@ export default function CalendarPage() {
       .eq('employee_id', employeeId)
       .eq('status', 'approved')
       .then(({ data }) => setLeaveRequests(data ?? []));
+    supabase
+      .from('employee_daily_shifts')
+      .select('work_date, shift_id')
+      .eq('employee_id', employeeId)
+      .gte('work_date', since.slice(0, 10))
+      .then(({ data }) => setDailyShiftRows(data ?? []));
   }, [employeeId]);
 
   const employee = useMemo(() => employees.find(e => e.id === employeeId) ?? null, [employees, employeeId]);
+
+  const dailyShiftByDate: DailyShiftByDate = useMemo(() => {
+    const map: DailyShiftByDate = new Map();
+    if (!employeeId) return map;
+    const perDate = new Map<string, string | null>();
+    for (const r of dailyShiftRows) perDate.set(r.work_date, r.shift_id);
+    map.set(employeeId, perDate);
+    return map;
+  }, [dailyShiftRows, employeeId]);
 
   const dayStatus = useMemo(() => {
     const byDate = new Map<string, AttendanceLog[]>();
@@ -95,12 +117,15 @@ export default function CalendarPage() {
       if (list) list.push(log);
       else byDate.set(key, [log]);
     }
-    const map = new Map<string, ReturnType<typeof computeDayStatus>>();
+    const map = new Map<string, ReturnType<typeof computeDayStatusForResolvedShift>>();
     if (!employee) return map;
-    const shift = resolveShift(employee, shifts);
-    for (const [date, dayLogs] of byDate) map.set(date, computeDayStatus(dayLogs, shift));
+    applyOvernightShiftCorrection(byDate, logs, employee, shifts, dailyShiftByDate);
+    for (const [date, dayLogs] of byDate) {
+      const resolved = resolveShiftForDate(employee, shifts, date, dailyShiftByDate);
+      map.set(date, computeDayStatusForResolvedShift(dayLogs, resolved));
+    }
     return map;
-  }, [logs, employee, shifts]);
+  }, [logs, employee, shifts, dailyShiftByDate]);
 
   const leaveByDate = useMemo(() => {
     const map = new Map<string, LeaveRequest>();
@@ -111,6 +136,17 @@ export default function CalendarPage() {
   }, [leaveRequests]);
 
   const leaveDates = useMemo(() => new Set(leaveByDate.keys()), [leaveByDate]);
+
+  const weekOffDates = useMemo(() => {
+    const set = new Set<string>();
+    if (!employeeId) return set;
+    const perDate = dailyShiftByDate.get(employeeId);
+    if (!perDate) return set;
+    for (const [date, shiftId] of perDate) {
+      if (shiftId === null) set.add(date);
+    }
+    return set;
+  }, [dailyShiftByDate, employeeId]);
 
   const monthSummary = useMemo(() => {
     const hours: CardEntry[] = [];
@@ -137,7 +173,7 @@ export default function CalendarPage() {
           overtime.push({ date, minutes: status.overtimeMinutes });
           overtimeMinutes += status.overtimeMinutes;
         }
-      } else if (date <= todayKey && !leaveDates.has(date)) {
+      } else if (date <= todayKey && !leaveDates.has(date) && !weekOffDates.has(date)) {
         absent.push({ date, minutes: 0 });
       }
     }
@@ -154,14 +190,15 @@ export default function CalendarPage() {
         absent: absent.sort(byDateDesc),
       } satisfies Record<CardKey, CardEntry[]>,
     };
-  }, [visibleDates, dayStatus, leaveDates]);
+  }, [visibleDates, dayStatus, leaveDates, weekOffDates]);
 
   const selectedLeave = selectedDate ? leaveByDate.get(selectedDate) ?? null : null;
 
   const selectedDaySummary = useMemo(() => {
-    if (dayLogs.length === 0 || !employee) return null;
-    return computeDayStatus(dayLogs, resolveShift(employee, shifts));
-  }, [dayLogs, employee, shifts]);
+    if (dayLogs.length === 0 || !employee || !selectedDate) return null;
+    const resolved = resolveShiftForDate(employee, shifts, selectedDate, dailyShiftByDate);
+    return computeDayStatusForResolvedShift(dayLogs, resolved);
+  }, [dayLogs, employee, shifts, selectedDate, dailyShiftByDate]);
 
   useEffect(() => {
     if (!selectedDate || !employeeId) {
@@ -282,6 +319,7 @@ export default function CalendarPage() {
         <MonthCalendar
           dayStatus={dayStatus}
           leaveDates={leaveDates}
+          weekOffDates={weekOffDates}
           selectedDate={selectedDate}
           onSelectDate={d => {
             setSelectedDate(d);

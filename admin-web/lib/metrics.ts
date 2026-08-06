@@ -1,5 +1,5 @@
 import type { AttendanceLog, Employee, Shift } from './types';
-import { resolveShift } from './shift';
+import { isWeekOff, resolveShiftForDate, type DailyShiftByDate } from './shift';
 
 export function dateKey(iso: string) {
   return iso.slice(0, 10);
@@ -21,10 +21,18 @@ export function firstCheckIn(logsForDay: AttendanceLog[]): AttendanceLog | undef
   return sorted.find(l => l.punch_type === '0') ?? sorted[0];
 }
 
-export function isLate(employee: Employee, shifts: Shift[], logsForDay: AttendanceLog[]) {
+export function isLate(
+  employee: Employee,
+  shifts: Shift[],
+  logsForDay: AttendanceLog[],
+  date: string,
+  dailyShiftByDate?: DailyShiftByDate
+) {
   const checkIn = firstCheckIn(logsForDay);
   if (!checkIn) return false;
-  const shift = resolveShift(employee, shifts);
+  const shift = resolveShiftForDate(employee, shifts, date, dailyShiftByDate);
+  // Week Off: nothing scheduled, so there's no start time to be late against.
+  if (isWeekOff(shift)) return false;
   const startMin = toMinutes(shift.start_time);
   return minutesOfDayUTC(checkIn.punch_time) > startMin + shift.grace_minutes;
 }

@@ -12,6 +12,8 @@ type Props = {
   dayStatus: Map<string, DayStatus>;
   /** AD dates (YYYY-MM-DD) covered by an approved leave request. */
   leaveDates?: Set<string>;
+  /** AD dates (YYYY-MM-DD) with an explicit Week Off roster entry. */
+  weekOffDates?: Set<string>;
   selectedDate: string | null;
   onSelectDate: (adKey: string) => void;
   /** Fires with the AD date keys currently in view (on mount and whenever
@@ -24,6 +26,7 @@ type DayFlags = {
   late: boolean;
   early: boolean;
   leave: boolean;
+  weekOff: boolean;
   present: boolean;
   checkedInOnly: boolean;
   absent: boolean;
@@ -34,18 +37,41 @@ type DayFlags = {
  * so they're tracked independently rather than as a single "the" flag — one
  * renders above the day number, the other below. Overtime is also tracked
  * independently (a corner dot) since it can co-occur with either. Everything
- * else (leave, present, still-clocked-in, absent) is mutually exclusive and
- * gets a single dot. A day with no punches, not on leave, that's already
- * happened counts as absent — previously such a day rendered identically to
- * a future day with no way to tell them apart. */
-function dayFlags(status: DayStatus | undefined, onLeave: boolean, isPastOrToday: boolean): DayFlags {
-  if (onLeave) return { late: false, early: false, leave: true, present: false, checkedInOnly: false, absent: false, overtime: false };
+ * else (leave, week off, present, still-clocked-in, absent) is mutually
+ * exclusive and gets a single dot — Week Off shares Leave's purple (both
+ * mean "nothing expected today"), distinguished only by caption text. A day
+ * with no punches, not on leave/week off, that's already happened counts as
+ * absent — previously such a day rendered identically to a future day with
+ * no way to tell them apart. */
+function dayFlags(status: DayStatus | undefined, onLeave: boolean, onWeekOff: boolean, isPastOrToday: boolean): DayFlags {
+  if (onLeave || onWeekOff) {
+    return {
+      late: false,
+      early: false,
+      leave: onLeave,
+      weekOff: onWeekOff,
+      present: false,
+      checkedInOnly: false,
+      absent: false,
+      overtime: false,
+    };
+  }
   if (!status)
-    return { late: false, early: false, leave: false, present: false, checkedInOnly: false, absent: isPastOrToday, overtime: false };
+    return {
+      late: false,
+      early: false,
+      leave: false,
+      weekOff: false,
+      present: false,
+      checkedInOnly: false,
+      absent: isPastOrToday,
+      overtime: false,
+    };
   return {
     late: status.isLate,
     early: status.isEarly,
     leave: false,
+    weekOff: false,
     present: status.hasOut && !status.isLate && !status.isEarly,
     checkedInOnly: status.hasIn && !status.hasOut,
     absent: false,
@@ -56,6 +82,7 @@ function dayFlags(status: DayStatus | undefined, onLeave: boolean, isPastOrToday
 function captionFor(flags: DayFlags): string | undefined {
   const parts: string[] = [];
   if (flags.leave) parts.push('On leave');
+  if (flags.weekOff) parts.push('Week Off');
   if (flags.late) parts.push('Late in');
   if (flags.early) parts.push('Early out');
   if (flags.present) parts.push('Present');
@@ -65,7 +92,7 @@ function captionFor(flags: DayFlags): string | undefined {
   return parts.length > 0 ? parts.join(' & ') : undefined;
 }
 
-export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onSelectDate, onMonthChange }: Props) {
+export default function MonthCalendar({ dayStatus, leaveDates, weekOffDates, selectedDate, onSelectDate, onMonthChange }: Props) {
   const { system } = useCalendarSystem();
   const [anchor, setAnchor] = useState(todayAnchor);
 
@@ -106,10 +133,13 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
         {month.weeks.flat().map((cell, i) => {
           const status = dayStatus.get(cell.adKey);
           const onLeave = leaveDates?.has(cell.adKey) ?? false;
+          const onWeekOff = weekOffDates?.has(cell.adKey) ?? false;
           const selected = selectedDate === cell.adKey;
-          const flags = cell.inMonth ? dayFlags(status, onLeave, cell.adKey <= todayKey) : dayFlags(undefined, false, false);
+          const flags = cell.inMonth
+            ? dayFlags(status, onLeave, onWeekOff, cell.adKey <= todayKey)
+            : dayFlags(undefined, false, false, false);
           const caption = cell.inMonth ? captionFor(flags) : undefined;
-          const attendanceBg = onLeave
+          const attendanceBg = onLeave || onWeekOff
             ? 'bg-purple-50'
             : flags.present || flags.late || flags.early
               ? 'bg-good-bg'
@@ -159,7 +189,7 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
                 >
                   Early
                 </span>
-              ) : flags.leave ? (
+              ) : flags.leave || flags.weekOff ? (
                 <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-purple-500'}`} />
               ) : flags.absent ? (
                 <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-slate-400'}`} />
@@ -190,7 +220,7 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
           <span className="h-2.5 w-2.5 rounded-full bg-info" /> Overtime
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-purple-500" /> On leave
+          <span className="h-2.5 w-2.5 rounded-full bg-purple-500" /> On leave / Week Off
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full bg-slate-400" /> Absent
