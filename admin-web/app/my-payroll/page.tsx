@@ -309,8 +309,8 @@ export default function MyPayrollPage() {
                     <th className="truncate px-0.5 py-1 font-medium">Hrs</th>
                     <th className="truncate px-0.5 py-1 font-medium">OT</th>
                     <th className="truncate px-0.5 py-1 font-medium">Status</th>
-                    <th className="truncate px-0.5 py-1 font-medium">My Salary(OT)</th>
-                    <th className="truncate px-1 py-1 font-medium">Total</th>
+                    <th className="truncate px-0.5 py-1 font-medium">My Salary</th>
+                    <th className="truncate px-1 py-1 font-medium">Total(OT)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -333,17 +333,19 @@ export default function MyPayrollPage() {
                           )}
                         </td>
                         <td className="truncate px-0.5 py-0.5 text-slate-600">
+                          {earning ? Math.round(earning.base).toLocaleString() : '—'}
+                        </td>
+                        <td className="truncate px-1 py-0.5 font-semibold text-good-text">
                           {earning ? (
                             <>
-                              {Math.round(earning.base).toLocaleString()}
-                              <span className="text-info-text">({Math.round(earning.overtime).toLocaleString()})</span>
+                              {Math.round(earning.total).toLocaleString()}
+                              {earning.overtime > 0 && (
+                                <span className="text-info-text">({Math.round(earning.overtime).toLocaleString()})</span>
+                              )}
                             </>
                           ) : (
                             '—'
                           )}
-                        </td>
-                        <td className="truncate px-1 py-0.5 font-semibold text-good-text">
-                          {earning ? Math.round(earning.total).toLocaleString() : '—'}
                         </td>
                       </tr>
                     );
@@ -357,10 +359,12 @@ export default function MyPayrollPage() {
                     <td className="px-0.5 py-1" />
                     <td className="truncate px-0.5 py-1 font-semibold">
                       {Math.round(totals.totalSalary - totals.overtimeEarning).toLocaleString()}
-                      <span className="text-info-text">({Math.round(totals.overtimeEarning).toLocaleString()})</span>
                     </td>
                     <td className="truncate px-1 py-1 font-bold text-good-text">
                       {Math.round(totals.totalSalary).toLocaleString()}
+                      {totals.overtimeEarning > 0 && (
+                        <span className="text-info-text">({Math.round(totals.overtimeEarning).toLocaleString()})</span>
+                      )}
                     </td>
                   </tr>
                   <tr className="border-t border-slate-200 bg-slate-50 text-ink">
