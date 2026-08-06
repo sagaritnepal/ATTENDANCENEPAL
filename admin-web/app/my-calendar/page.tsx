@@ -395,18 +395,16 @@ export default function MyCalendarPage() {
               <table className="w-full table-fixed text-center text-[10px]">
                 <colgroup>
                   <col className="w-[15%]" />
-                  <col className="w-[13%]" />
-                  <col className="w-[13%]" />
+                  <col className="w-[23%]" />
                   <col className="w-[17%]" />
                   <col className="w-[12%]" />
-                  <col className="w-[14%]" />
-                  <col className="w-[16%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[18%]" />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500">
                     <th className="truncate px-0.5 py-1 font-medium">Date</th>
-                    <th className="truncate px-0.5 py-1 font-medium">In</th>
-                    <th className="truncate px-0.5 py-1 font-medium">Out</th>
+                    <th className="truncate px-0.5 py-1 font-medium">In / Out</th>
                     <th className="truncate px-0.5 py-1 font-medium">Late/Early</th>
                     <th className="truncate px-0.5 py-1 font-medium">Status</th>
                     <th className="truncate px-0.5 py-1 font-medium">Hrs</th>
@@ -416,12 +414,13 @@ export default function MyCalendarPage() {
                 <tbody>
                   {tableRows.map((row, i) => {
                     const fmtTime = (t: string | null) =>
-                      t ? new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+                      t ? new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '–:–';
                     return (
                       <tr key={row.date} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
                         <td className="truncate px-0.5 py-0.5 text-ink">{formatDdMmYyyy(row.date, system).slice(0, 5)}</td>
-                        <td className="truncate px-0.5 py-0.5 text-slate-600">{row.onLeave ? '—' : fmtTime(row.checkIn)}</td>
-                        <td className="truncate px-0.5 py-0.5 text-slate-600">{row.onLeave ? '—' : fmtTime(row.checkOut)}</td>
+                        <td className="truncate px-0.5 py-0.5 text-slate-600">
+                          {row.onLeave ? '—' : `${fmtTime(row.checkIn)} – ${fmtTime(row.checkOut)}`}
+                        </td>
                         <td className="truncate px-0.5 py-0.5 font-medium">
                           {row.onLeave || !row.present ? (
                             <span className="text-slate-300">—</span>
@@ -470,7 +469,7 @@ export default function MyCalendarPage() {
                     return (
                       <>
                         <tr className="border-t-2 border-slate-200 bg-slate-50 text-ink">
-                          <td className="truncate px-0.5 py-1 font-semibold" colSpan={4}>
+                          <td className="truncate px-0.5 py-1 font-semibold" colSpan={3}>
                             Total
                           </td>
                           <td className="px-0.5 py-1" />
@@ -478,7 +477,7 @@ export default function MyCalendarPage() {
                           <td className="truncate px-0.5 py-1 font-semibold text-info-text">{fmtHrs(sumOvertime)}</td>
                         </tr>
                         <tr className="border-t border-slate-200 bg-slate-50 text-ink">
-                          <td className="truncate px-0.5 py-1 font-semibold" colSpan={4}>
+                          <td className="truncate px-0.5 py-1 font-semibold" colSpan={3}>
                             Present / Absent
                           </td>
                           <td className="truncate px-0.5 py-1 font-semibold text-good-text" colSpan={3}>
