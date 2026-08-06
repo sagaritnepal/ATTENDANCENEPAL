@@ -335,6 +335,14 @@ export default function MyPayrollPage() {
                       {Math.round(totals.totalSalary).toLocaleString()}
                     </td>
                   </tr>
+                  <tr className="border-t border-slate-200 bg-slate-50 text-ink">
+                    <td className="truncate px-1 py-1 font-semibold" colSpan={4}>
+                      P/A
+                    </td>
+                    <td className="truncate px-0.5 py-1 font-semibold text-good-text" colSpan={2}>
+                      {totals.presentDays} / <span className="text-critical-text">{totals.absentDays}</span>
+                    </td>
+                  </tr>
                 </tfoot>
               </table>
             </div>

@@ -477,7 +477,7 @@ export default function MyCalendarPage() {
                         </tr>
                         <tr className="border-t border-slate-200 bg-slate-50 text-ink">
                           <td className="truncate px-0.5 py-1 font-semibold" colSpan={4}>
-                            Present / Absent
+                            P/A
                           </td>
                           <td className="truncate px-0.5 py-1 font-semibold text-good-text" colSpan={3}>
                             {presentCount} / <span className="text-critical-text">{absentCount}</span>
