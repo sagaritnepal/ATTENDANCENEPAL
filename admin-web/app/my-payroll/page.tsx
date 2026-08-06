@@ -268,12 +268,12 @@ export default function MyPayrollPage() {
             <div className="rounded-xl border border-slate-200 bg-white">
               <table className="w-full table-fixed text-center text-[11px]">
                 <colgroup>
+                  <col className="w-[11%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[15%]" />
                   <col className="w-[12%]" />
-                  <col className="w-[12%]" />
-                  <col className="w-[12%]" />
-                  <col className="w-[13%]" />
-                  <col className="w-[25%]" />
-                  <col className="w-[26%]" />
+                  <col className="w-[23%]" />
+                  <col className="w-[24%]" />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500">
@@ -293,8 +293,8 @@ export default function MyPayrollPage() {
                     return (
                       <tr key={row.date} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
                         <td className="truncate px-1 py-0.5 text-ink">{formatDdMmYyyy(row.date, system).slice(0, 5)}</td>
-                        <td className="truncate px-0.5 py-0.5 text-slate-600">{row.checkIn ? fmtHrs(row.hours) : '—'}</td>
-                        <td className="truncate px-0.5 py-0.5 text-info-text">{row.checkIn ? fmtHrs(row.overtime) : '—'}</td>
+                        <td className="whitespace-nowrap px-0.5 py-0.5 text-slate-600">{row.checkIn ? fmtHrs(row.hours) : '—'}</td>
+                        <td className="whitespace-nowrap px-0.5 py-0.5 text-info-text">{row.checkIn ? fmtHrs(row.overtime) : '—'}</td>
                         <td className="truncate px-0.5 py-0.5 font-medium">
                           {row.checkIn ? (
                             <span className="text-good-text">Present</span>

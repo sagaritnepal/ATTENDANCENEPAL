@@ -111,7 +111,7 @@ export default function MonthCalendar({ dayStatus, leaveDates, selectedDate, onS
           const caption = cell.inMonth ? captionFor(flags) : undefined;
           const attendanceBg = onLeave
             ? 'bg-purple-50'
-            : flags.present || flags.late
+            : flags.present || flags.late || flags.early
               ? 'bg-good-bg'
               : flags.checkedInOnly
                 ? 'bg-pink-50'
