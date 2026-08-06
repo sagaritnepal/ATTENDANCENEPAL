@@ -9,7 +9,7 @@ const ZKLib = require('node-zklib');
 const { createClient } = require('@supabase/supabase-js');
 
 const SYNC_INTERVAL_MS = Number(process.env.SYNC_INTERVAL_MS || 15 * 1000);
-const SYNC_REQUEST_POLL_MS = Number(process.env.SYNC_REQUEST_POLL_MS || 5000);
+const SYNC_REQUEST_POLL_MS = Number(process.env.SYNC_REQUEST_POLL_MS || 15000);
 const MAX_BACKOFF_MS = 10 * 60 * 1000;
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -100,12 +100,17 @@ async function upsertLogs(device, rawLogs) {
   if (rows.length === 0) return 0;
 
   // Composite unique key (employee_id, punch_time) makes this idempotent regardless of
-  // how many times a device is polled or a sync is retried after a network blip.
-  const { error } = await supabase
+  // how many times a device is polled or a sync is retried after a network blip. .select()
+  // makes the response only contain rows actually inserted (ignoreDuplicates -> ON CONFLICT
+  // DO NOTHING, which returns nothing for a skipped conflict) — devices keep their entire
+  // punch history in memory, so without this every poll would report its whole log size,
+  // not just what's new since last time.
+  const { data: inserted, error } = await supabase
     .from('attendance_logs')
-    .upsert(rows, { onConflict: 'employee_id,punch_time', ignoreDuplicates: true });
+    .upsert(rows, { onConflict: 'employee_id,punch_time', ignoreDuplicates: true })
+    .select();
   if (error) throw error;
-  return rows.length;
+  return inserted.length;
 }
 
 // A device user is only ever matched by fingerprint_id — if one already maps
@@ -135,7 +140,7 @@ async function syncDevice(device) {
   try {
     const rawLogs = await pullDeviceLogs(device);
     const count = await upsertLogs(device, rawLogs);
-    console.log(`[${device.name}] synced ${count} punch(es)`);
+    if (count > 0) console.log(`[${device.name}] synced ${count} new punch(es)`);
     failureCounts.set(device.id, 0);
     await supabase.from('devices').update({ last_sync: new Date().toISOString(), status: 'online' }).eq('id', device.id);
   } catch (err) {
