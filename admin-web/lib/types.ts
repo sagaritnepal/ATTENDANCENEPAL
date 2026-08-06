@@ -98,7 +98,7 @@ export type DeviceSyncEvent = {
   id: string;
   device_id: string;
   sync_type: 'users' | 'logs';
-  status: 'pending' | 'running' | 'success' | 'failed';
+  status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
   requested_at: string;
   completed_at: string | null;
   summary: string | null;

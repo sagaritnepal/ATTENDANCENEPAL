@@ -90,6 +90,15 @@ export default function DevicesPage() {
     reload();
   }
 
+  async function cancelSync(eventId: string) {
+    const { error } = await supabase
+      .from('device_sync_events')
+      .update({ status: 'cancelled', completed_at: new Date().toISOString() })
+      .eq('id', eventId);
+    if (error) alert(`Could not cancel: ${error.message}`);
+    reload();
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -181,6 +190,10 @@ export default function DevicesPage() {
           const busy = (type: 'users' | 'logs') =>
             queuing === `${d.id}-${type}` ||
             deviceEvents.some(e => e.sync_type === type && (e.status === 'pending' || e.status === 'running'));
+          // Only a still-pending request can be cancelled — once the bridge
+          // flips it to 'running' it's already claimed and can't be stopped
+          // from here.
+          const pendingEvent = (type: 'users' | 'logs') => deviceEvents.find(e => e.sync_type === type && e.status === 'pending');
           return (
             <div key={d.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-2 flex items-center justify-between">
@@ -207,20 +220,42 @@ export default function DevicesPage() {
               </div>
 
               <div className="mt-3 flex gap-2">
-                <button
-                  onClick={() => queueSync(d.id, 'users')}
-                  disabled={busy('users')}
-                  className="flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                >
-                  {busy('users') ? 'Syncing users…' : '👥 Sync Users'}
-                </button>
-                <button
-                  onClick={() => queueSync(d.id, 'logs')}
-                  disabled={busy('logs')}
-                  className="flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                >
-                  {busy('logs') ? 'Syncing log…' : '🕐 Sync Log'}
-                </button>
+                <div className="flex flex-1 items-center gap-1">
+                  <button
+                    onClick={() => queueSync(d.id, 'users')}
+                    disabled={busy('users')}
+                    className="flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    {busy('users') ? 'Syncing users…' : '👥 Sync Users'}
+                  </button>
+                  {pendingEvent('users') && (
+                    <button
+                      onClick={() => cancelSync(pendingEvent('users')!.id)}
+                      title="Cancel pending sync"
+                      className="text-xs font-medium text-critical hover:underline"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-1 items-center gap-1">
+                  <button
+                    onClick={() => queueSync(d.id, 'logs')}
+                    disabled={busy('logs')}
+                    className="flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    {busy('logs') ? 'Syncing log…' : '🕐 Sync Log'}
+                  </button>
+                  {pendingEvent('logs') && (
+                    <button
+                      onClick={() => cancelSync(pendingEvent('logs')!.id)}
+                      title="Cancel pending sync"
+                      className="text-xs font-medium text-critical hover:underline"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -252,6 +287,11 @@ export default function DevicesPage() {
                 </div>
                 {e.summary && <div className="mt-1 text-sm text-slate-600">{e.summary}</div>}
                 {e.error && <div className="mt-1 text-sm text-critical">{e.error}</div>}
+                {e.status === 'pending' && (
+                  <button onClick={() => cancelSync(e.id)} className="mt-2 text-xs font-medium text-critical hover:underline">
+                    Cancel
+                  </button>
+                )}
               </div>
             );
           })}
@@ -268,6 +308,7 @@ export default function DevicesPage() {
                 <th className="px-5 py-3 font-medium">Requested</th>
                 <th className="px-5 py-3 font-medium">Completed</th>
                 <th className="px-5 py-3 font-medium">Result</th>
+                <th className="px-5 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -293,12 +334,19 @@ export default function DevicesPage() {
                       {e.error && <span className="text-critical">{e.error}</span>}
                       {!e.summary && !e.error && <span className="text-slate-400">—</span>}
                     </td>
+                    <td className="px-5 py-3">
+                      {e.status === 'pending' && (
+                        <button onClick={() => cancelSync(e.id)} className="text-xs font-medium text-critical hover:underline">
+                          Cancel
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
               {syncEvents.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
+                  <td colSpan={7} className="px-5 py-8 text-center text-slate-400">
                     No sync requests yet.
                   </td>
                 </tr>
