@@ -73,9 +73,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: createError?.message ?? 'Could not create the account.' }, { status: 400 });
   }
 
+  // company_id must be included even though handle_new_user() already set it
+  // on the row this upsert will match — Postgres validates NOT NULL on the
+  // speculative INSERT row for ON CONFLICT DO UPDATE before it ever gets to
+  // resolve the conflict, so omitting a NOT NULL column here fails even
+  // though the existing row already has a value for it.
   const { error: linkError } = await admin
     .from('profiles')
-    .upsert({ id: created.user.id, employee_id: employeeId, role: 'employee' }, { onConflict: 'id' });
+    .upsert(
+      { id: created.user.id, employee_id: employeeId, role: 'employee', company_id: callerProfile.company_id },
+      { onConflict: 'id' }
+    );
   if (linkError) {
     // Roll back the orphaned auth user so a failed link doesn't leave a
     // dangling account nobody can see from the Employees page.
