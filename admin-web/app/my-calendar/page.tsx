@@ -150,27 +150,34 @@ export default function MyCalendarPage() {
       // "Leave" for it, so the month totals need to agree instead of still
       // counting that punch.
       if (leaveDates.has(date)) continue;
+      // Prefer the finalized payroll_summaries row FIRST, independent of
+      // whether dayStatus (built purely from raw attendance_logs) also has
+      // an entry for this date — gating on dayStatus meant a day with a
+      // perfectly valid summary row but no matching live log loaded (a
+      // fetch-window edge, logs pruned after the summary was computed,
+      // etc.) silently dropped its whole day, hours and overtime included.
+      const summary = date !== todayKey ? summaryByDate.get(date) : undefined;
       const status = dayStatus.get(date);
-      if (status) {
+      if (summary || status) {
         present.push({ date, minutes: 0 });
-        const summary = date !== todayKey ? summaryByDate.get(date) : undefined;
-        const dayTotalMinutes = summary ? Math.round(Number(summary.total_hours) * 60) : status.totalMinutes;
-        const dayOvertimeMinutes = summary ? Math.round(Number(summary.overtime_hours) * 60) : status.overtimeMinutes;
-        if (status.hasOut || summary) {
+        const dayTotalMinutes = summary ? Math.round(Number(summary.total_hours) * 60) : status!.totalMinutes;
+        const dayOvertimeMinutes = summary ? Math.round(Number(summary.overtime_hours) * 60) : status!.overtimeMinutes;
+        const hasOut = summary ? !!summary.check_out : status!.hasOut;
+        if (hasOut) {
           hours.push({ date, minutes: dayTotalMinutes });
           totalWorkMinutes += dayTotalMinutes;
         }
-        const isLate = summary ? summary.is_late : status.isLate;
-        const lateMinutes = summary ? summary.late_minutes : status.lateMinutes;
-        const isEarly = summary ? summary.is_early_departure : status.isEarly;
-        const earlyMinutes = summary ? summary.early_departure_minutes : status.earlyMinutes;
+        const isLate = summary ? summary.is_late : status!.isLate;
+        const lateMinutes = summary ? summary.late_minutes : status!.lateMinutes;
+        const isEarly = summary ? summary.is_early_departure : status!.isEarly;
+        const earlyMinutes = summary ? summary.early_departure_minutes : status!.earlyMinutes;
         if (isLate) late.push({ date, minutes: lateMinutes });
         if (isEarly) early.push({ date, minutes: earlyMinutes });
         if (dayOvertimeMinutes > 0) {
           overtime.push({ date, minutes: dayOvertimeMinutes });
           overtimeMinutes += dayOvertimeMinutes;
         }
-      } else if (date <= todayKey && !leaveDates.has(date)) {
+      } else if (date <= todayKey) {
         absent.push({ date, minutes: 0 });
       }
     }
@@ -211,6 +218,23 @@ export default function MyCalendarPage() {
             absent: false,
           };
         }
+        // Same fix as monthSummary above: check the summary row first,
+        // independent of whether dayStatus has a matching live entry.
+        const summary = date !== todayKey ? summaryByDate.get(date) : undefined;
+        if (summary) {
+          return {
+            date,
+            onLeave: false,
+            checkIn: summary.check_in,
+            checkOut: summary.check_out,
+            hours: Number(summary.total_hours),
+            overtime: Number(summary.overtime_hours),
+            lateMinutes: summary.is_late ? summary.late_minutes : 0,
+            earlyMinutes: summary.is_early_departure ? summary.early_departure_minutes : 0,
+            present: true,
+            absent: false,
+          };
+        }
         const status = dayStatus.get(date);
         if (!status) {
           return {
@@ -226,16 +250,15 @@ export default function MyCalendarPage() {
             absent: date <= todayKey,
           };
         }
-        const summary = date !== todayKey ? summaryByDate.get(date) : undefined;
         return {
           date,
           onLeave: false,
           checkIn: status.checkIn.punch_time,
           checkOut: status.checkOut?.punch_time ?? null,
-          hours: summary ? Number(summary.total_hours) : status.totalMinutes / 60,
-          overtime: summary ? Number(summary.overtime_hours) : status.overtimeMinutes / 60,
-          lateMinutes: summary ? summary.late_minutes : status.lateMinutes,
-          earlyMinutes: summary ? summary.early_departure_minutes : status.earlyMinutes,
+          hours: status.totalMinutes / 60,
+          overtime: status.overtimeMinutes / 60,
+          lateMinutes: status.lateMinutes,
+          earlyMinutes: status.earlyMinutes,
           present: true,
           absent: false,
         };

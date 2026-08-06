@@ -341,7 +341,7 @@ export default function CheckInPage() {
             <button
               onClick={() => openPunchModal('0')}
               disabled={!employeeId}
-              className="rounded-xl bg-green-600 py-4 text-base font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-50"
+              className="rounded-xl bg-green-400 py-4 text-base font-semibold text-white shadow-sm hover:bg-green-500 disabled:opacity-50"
             >
               📍 Check In
             </button>
