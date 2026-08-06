@@ -89,6 +89,7 @@ export type Device = {
   branch_id: string;
   ip_address: string;
   port: number;
+  serial_number: string | null;
   status: 'online' | 'offline';
   last_sync: string | null;
 };
