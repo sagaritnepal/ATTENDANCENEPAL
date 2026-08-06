@@ -10,6 +10,42 @@ import { resolveShift, formatShiftHours } from '@/lib/shift';
 
 const EMPTY_FORM = { name: '', type: 'fixed' as Shift['type'], start_time: '09:00', end_time: '18:00', grace_minutes: 10, department: '' };
 
+/** Plain 24-hour HH:MM input — native <input type="time"> renders AM/PM on
+ * some Windows/Chrome locale combos regardless of the `lang` attribute. */
+function Time24Input({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [hh = '00', mm = '00'] = value.split(':');
+  function commit(nextHh: string, nextMm: string) {
+    onChange(`${nextHh}:${nextMm}`);
+  }
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        type="number"
+        min={0}
+        max={23}
+        value={hh}
+        onChange={e => {
+          const n = Math.max(0, Math.min(23, Number(e.target.value) || 0));
+          commit(String(n).padStart(2, '0'), mm);
+        }}
+        className="w-16 rounded-lg border border-slate-200 px-2 py-2 text-center text-sm"
+      />
+      <span className="text-slate-400">:</span>
+      <input
+        type="number"
+        min={0}
+        max={59}
+        value={mm}
+        onChange={e => {
+          const n = Math.max(0, Math.min(59, Number(e.target.value) || 0));
+          commit(hh, String(n).padStart(2, '0'));
+        }}
+        className="w-16 rounded-lg border border-slate-200 px-2 py-2 text-center text-sm"
+      />
+    </div>
+  );
+}
+
 export default function ShiftsPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -188,24 +224,12 @@ export default function ShiftsPage() {
             />
             <div className="mb-3 grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Start</label>
-                <input
-                  type="time"
-                  lang="en-GB"
-                  value={form.start_time}
-                  onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
+                <label className="mb-1 block text-xs font-medium text-slate-600">Start (24h)</label>
+                <Time24Input value={form.start_time} onChange={v => setForm(f => ({ ...f, start_time: v }))} />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">End</label>
-                <input
-                  type="time"
-                  lang="en-GB"
-                  value={form.end_time}
-                  onChange={e => setForm(f => ({ ...f, end_time: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
+                <label className="mb-1 block text-xs font-medium text-slate-600">End (24h)</label>
+                <Time24Input value={form.end_time} onChange={v => setForm(f => ({ ...f, end_time: v }))} />
               </div>
             </div>
             <div className="mb-3">
