@@ -191,6 +191,7 @@ export default function ShiftsPage() {
                 <label className="mb-1 block text-xs font-medium text-slate-600">Start</label>
                 <input
                   type="time"
+                  lang="en-GB"
                   value={form.start_time}
                   onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
@@ -200,6 +201,7 @@ export default function ShiftsPage() {
                 <label className="mb-1 block text-xs font-medium text-slate-600">End</label>
                 <input
                   type="time"
+                  lang="en-GB"
                   value={form.end_time}
                   onChange={e => setForm(f => ({ ...f, end_time: e.target.value }))}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
