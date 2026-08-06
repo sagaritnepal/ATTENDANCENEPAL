@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import MonthCalendar from '@/components/MonthCalendar';
@@ -8,7 +9,6 @@ import Badge from '@/components/Badge';
 import { formatAdDate, formatDdMmYyyy, localDateKey } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { computeDayStatus, formatHoursMinutes, resolveShift } from '@/lib/shift';
-import { buildEmployeeDayRows } from '@/lib/payrollDetail';
 import type { AttendanceLog, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
 
 const WINDOW_DAYS = 400;
@@ -120,12 +120,13 @@ export default function MyCalendarPage() {
 
   const leaveDates = useMemo(() => new Set(leaveByDate.keys()), [leaveByDate]);
 
+  const todayKey = useMemo(() => localDateKey(new Date().toISOString()), []);
+
   // work_date -> payroll_summaries row, so finalized days match the figures
   // stored by the nightly job/admin "Recalculate" (same numbers the Payroll
   // page reads) instead of a second, independently live-recomputed total
-  // that can drift from it — see buildEmployeeDayRows() in payrollDetail.ts,
-  // which the Payroll page uses and applies the same "today's always live"
-  // exception.
+  // that can drift from it — same "today's always live" exception
+  // buildEmployeeDayRows() in payrollDetail.ts uses for the Payroll page.
   const summaryByDate = useMemo(() => {
     const map = new Map<string, PayrollSummary>();
     for (const s of summaries) map.set(s.work_date, s);
@@ -141,7 +142,6 @@ export default function MyCalendarPage() {
     const absent: CardEntry[] = [];
     let totalWorkMinutes = 0;
     let overtimeMinutes = 0;
-    const todayKey = localDateKey(new Date().toISOString());
 
     for (const date of visibleDates) {
       // An approved leave day never counts toward Present/Hours/Late/Early/
@@ -187,17 +187,65 @@ export default function MyCalendarPage() {
         absent: absent.sort(byDateDesc),
       } satisfies Record<CardKey, CardEntry[]>,
     };
-  }, [visibleDates, dayStatus, leaveDates, summaryByDate]);
+  }, [visibleDates, dayStatus, leaveDates, summaryByDate, todayKey]);
 
-  // Same shared day-by-day builder My Payroll uses, so this table's Hours/OT/
-  // Salary figures are never a second, independently-computed version of
-  // those numbers — both read through lib/payrollDetail.ts.
-  const calendarDayRows = useMemo(
+  // Built from the exact same primitives (dayStatus, summaryByDate,
+  // leaveDates, todayKey) as the "This Month" cards above, instead of a
+  // separately-recomputed source — so the table can never disagree with
+  // what the cards show, whatever day it is.
+  const tableRows = useMemo(
     () =>
-      employee && visibleDates.length > 0
-        ? buildEmployeeDayRows(employee, shifts, summaries, logs, visibleDates[0], visibleDates[visibleDates.length - 1])
-        : [],
-    [employee, shifts, summaries, logs, visibleDates]
+      visibleDates.map(date => {
+        const onLeave = leaveDates.has(date);
+        if (onLeave) {
+          return {
+            date,
+            onLeave: true,
+            checkIn: null as string | null,
+            checkOut: null as string | null,
+            hours: 0,
+            overtime: 0,
+            lateMinutes: 0,
+            earlyMinutes: 0,
+            present: false,
+            absent: false,
+          };
+        }
+        const status = dayStatus.get(date);
+        if (!status) {
+          return {
+            date,
+            onLeave: false,
+            checkIn: null as string | null,
+            checkOut: null as string | null,
+            hours: 0,
+            overtime: 0,
+            lateMinutes: 0,
+            earlyMinutes: 0,
+            present: false,
+            absent: date <= todayKey,
+          };
+        }
+        const summary = date !== todayKey ? summaryByDate.get(date) : undefined;
+        return {
+          date,
+          onLeave: false,
+          checkIn: status.checkIn.punch_time,
+          checkOut: status.checkOut?.punch_time ?? null,
+          hours: summary ? Number(summary.total_hours) : status.totalMinutes / 60,
+          overtime: summary ? Number(summary.overtime_hours) : status.overtimeMinutes / 60,
+          lateMinutes: summary ? summary.late_minutes : status.lateMinutes,
+          earlyMinutes: summary ? summary.early_departure_minutes : status.earlyMinutes,
+          present: true,
+          absent: false,
+        };
+      }),
+    [visibleDates, leaveDates, dayStatus, summaryByDate, todayKey]
+  );
+
+  const chartData = useMemo(
+    () => tableRows.map(row => ({ label: formatDdMmYyyy(row.date, system).slice(0, 2), hours: row.present ? row.hours : 0 })),
+    [tableRows, system]
   );
 
   const selectedLeave = selectedDate ? leaveByDate.get(selectedDate) ?? null : null;
@@ -342,51 +390,64 @@ export default function MyCalendarPage() {
             })}
           </div>
 
-          {calendarDayRows.length > 0 && (
+          {tableRows.length > 0 && (
             <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <table className="w-full table-fixed text-center text-[11px]">
+              <table className="w-full table-fixed text-center text-[10px]">
                 <colgroup>
-                  <col className="w-[16%]" />
-                  <col className="w-[16%]" />
-                  <col className="w-[16%]" />
-                  <col className="w-[19%]" />
-                  <col className="w-[16%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[13%]" />
                   <col className="w-[17%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[16%]" />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500">
-                    <th className="truncate px-1 py-1 font-medium">Date</th>
+                    <th className="truncate px-0.5 py-1 font-medium">Date</th>
                     <th className="truncate px-0.5 py-1 font-medium">In</th>
                     <th className="truncate px-0.5 py-1 font-medium">Out</th>
                     <th className="truncate px-0.5 py-1 font-medium">Late/Early</th>
+                    <th className="truncate px-0.5 py-1 font-medium">Status</th>
                     <th className="truncate px-0.5 py-1 font-medium">Hrs</th>
-                    <th className="truncate px-1 py-1 font-medium">OT</th>
+                    <th className="truncate px-0.5 py-1 font-medium">OT</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {calendarDayRows.map((row, i) => {
-                    const onLeave = leaveDates.has(row.date);
+                  {tableRows.map((row, i) => {
                     const fmtTime = (t: string | null) =>
                       t ? new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
                     return (
                       <tr key={row.date} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
-                        <td className="truncate px-1 py-0.5 text-ink">{formatDdMmYyyy(row.date, system).slice(0, 5)}</td>
-                        <td className="truncate px-0.5 py-0.5 text-slate-600">{onLeave ? '—' : fmtTime(row.checkIn)}</td>
-                        <td className="truncate px-0.5 py-0.5 text-slate-600">{onLeave ? '—' : fmtTime(row.checkOut)}</td>
+                        <td className="truncate px-0.5 py-0.5 text-ink">{formatDdMmYyyy(row.date, system).slice(0, 5)}</td>
+                        <td className="truncate px-0.5 py-0.5 text-slate-600">{row.onLeave ? '—' : fmtTime(row.checkIn)}</td>
+                        <td className="truncate px-0.5 py-0.5 text-slate-600">{row.onLeave ? '—' : fmtTime(row.checkOut)}</td>
                         <td className="truncate px-0.5 py-0.5 font-medium">
-                          {onLeave || !row.checkIn ? (
+                          {row.onLeave || !row.present ? (
+                            <span className="text-slate-300">—</span>
+                          ) : row.lateMinutes === 0 && row.earlyMinutes === 0 ? (
                             <span className="text-slate-300">—</span>
                           ) : (
                             <>
-                              {row.lateMinutes > 0 && <span className="text-warning-text">Late</span>}
+                              {row.lateMinutes > 0 && <span className="text-warning-text">{formatHoursMinutes(row.lateMinutes)}</span>}
                               {row.lateMinutes > 0 && row.earlyMinutes > 0 && ' '}
-                              {row.earlyMinutes > 0 && <span className="text-critical-text">Early</span>}
-                              {row.lateMinutes === 0 && row.earlyMinutes === 0 && <span className="text-slate-300">—</span>}
+                              {row.earlyMinutes > 0 && <span className="text-critical-text">{formatHoursMinutes(row.earlyMinutes)}</span>}
                             </>
                           )}
                         </td>
-                        <td className="truncate px-0.5 py-0.5 text-slate-600">{row.checkIn && !onLeave ? fmtHrs(row.hours) : '—'}</td>
-                        <td className="truncate px-1 py-0.5 text-info-text">{row.checkIn && !onLeave ? fmtHrs(row.overtime) : '—'}</td>
+                        <td className="truncate px-0.5 py-0.5 font-medium">
+                          {row.onLeave ? (
+                            <span className="text-slate-300">—</span>
+                          ) : row.present ? (
+                            <span className="text-good-text">Present</span>
+                          ) : row.absent ? (
+                            <span className="text-critical-text">Absent</span>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </td>
+                        <td className="truncate px-0.5 py-0.5 text-slate-600">{row.present ? fmtHrs(row.hours) : '—'}</td>
+                        <td className="truncate px-0.5 py-0.5 text-info-text">{row.present ? fmtHrs(row.overtime) : '—'}</td>
                       </tr>
                     );
                   })}
@@ -395,26 +456,77 @@ export default function MyCalendarPage() {
                   {(() => {
                     let sumHours = 0;
                     let sumOvertime = 0;
-                    for (const row of calendarDayRows) {
-                      if (leaveDates.has(row.date) || !row.checkIn) continue;
-                      sumHours += row.hours;
-                      sumOvertime += row.overtime;
+                    let presentCount = 0;
+                    let absentCount = 0;
+                    for (const row of tableRows) {
+                      if (row.present) {
+                        sumHours += row.hours;
+                        sumOvertime += row.overtime;
+                        presentCount += 1;
+                      } else if (row.absent) {
+                        absentCount += 1;
+                      }
                     }
                     return (
-                      <tr className="border-t-2 border-slate-200 bg-slate-50 text-ink">
-                        <td className="truncate px-1 py-1 font-semibold">Total</td>
-                        <td className="px-0.5 py-1" />
-                        <td className="px-0.5 py-1" />
-                        <td className="px-0.5 py-1" />
-                        <td className="truncate px-0.5 py-1 font-semibold">{fmtHrs(sumHours)}</td>
-                        <td className="truncate px-1 py-1 font-semibold text-info-text">{fmtHrs(sumOvertime)}</td>
-                      </tr>
+                      <>
+                        <tr className="border-t-2 border-slate-200 bg-slate-50 text-ink">
+                          <td className="truncate px-0.5 py-1 font-semibold" colSpan={4}>
+                            Total
+                          </td>
+                          <td className="px-0.5 py-1" />
+                          <td className="truncate px-0.5 py-1 font-semibold">{fmtHrs(sumHours)}</td>
+                          <td className="truncate px-0.5 py-1 font-semibold text-info-text">{fmtHrs(sumOvertime)}</td>
+                        </tr>
+                        <tr className="border-t border-slate-200 bg-slate-50 text-ink">
+                          <td className="truncate px-0.5 py-1 font-semibold" colSpan={4}>
+                            Present / Absent
+                          </td>
+                          <td className="truncate px-0.5 py-1 font-semibold text-good-text" colSpan={3}>
+                            {presentCount} / <span className="text-critical-text">{absentCount}</span>
+                          </td>
+                        </tr>
+                      </>
                     );
                   })()}
                 </tfoot>
               </table>
             </div>
           )}
+
+          <div className="mb-2 mt-4 flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold text-ink">Hours Trend</h2>
+            <span className="text-[10px] text-slate-400">Scroll to see all days →</span>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-3">
+            {chartData.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-400">No data to chart yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <div style={{ width: Math.max(chartData.length * 30, 320), height: 160 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData} margin={{ top: 6, right: 10, left: 0, bottom: 0 }}>
+                      <CartesianGrid vertical={false} stroke="#e2e8f0" />
+                      <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} interval={0} />
+                      <YAxis tick={{ fontSize: 9, fill: '#0d9488' }} axisLine={false} tickLine={false} allowDecimals={false} width={22} />
+                      <Tooltip
+                        contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+                        formatter={(v: number) => [`${v.toFixed(1)} hrs`, 'Hours']}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="hours"
+                        name="hours"
+                        stroke="#0d9488"
+                        strokeWidth={2}
+                        dot={{ r: 2, fill: '#0d9488' }}
+                        activeDot={{ r: 5 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+          </div>
 
           {expandedCard && (
             <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4">
