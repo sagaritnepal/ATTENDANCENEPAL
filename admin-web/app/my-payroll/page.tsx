@@ -297,17 +297,7 @@ export default function MyPayrollPage() {
                         <td className="truncate px-0.5 py-0.5 text-info-text">{row.checkIn ? fmtHrs(row.overtime) : '—'}</td>
                         <td className="truncate px-0.5 py-0.5 font-medium">
                           {row.checkIn ? (
-                            <span
-                              className={
-                                row.lateMinutes > 0
-                                  ? 'text-warning-text'
-                                  : row.earlyMinutes > 0
-                                    ? 'text-critical-text'
-                                    : 'text-good-text'
-                              }
-                            >
-                              {row.lateMinutes > 0 ? 'Late' : row.earlyMinutes > 0 ? 'Early' : 'Present'}
-                            </span>
+                            <span className="text-good-text">Present</span>
                           ) : row.status === 'Absent' ? (
                             <span className="text-critical-text">Absent</span>
                           ) : (
