@@ -123,6 +123,7 @@ export default function CheckInPage() {
   }, [history, historyRange]);
 
   const pendingGpsRequests = useMemo(() => gpsRequests.filter(r => r.status === 'pending'), [gpsRequests]);
+  const rejectedGpsRequests = useMemo(() => gpsRequests.filter(r => r.status === 'rejected'), [gpsRequests]);
 
   // Only the first check-in and last check-out of a day are the punches that
   // actually count (same selection payroll uses) — every other punch that
@@ -143,6 +144,31 @@ export default function CheckInPage() {
     }
     return ids;
   }, [history]);
+
+  // A rejected GPS request never becomes an attendance_logs row, so on its
+  // own it would just vanish once it left Recent Request — merged in here
+  // (same time window as the real punches) so the employee can still see it
+  // was rejected instead of it disappearing with no trace.
+  const historyEntries = useMemo(() => {
+    const cutoff = Date.now() - HISTORY_RANGE_DAYS[historyRange] * 86400000;
+    const fromLogs = filteredHistory.map(log => ({
+      id: log.id,
+      punchTime: log.punch_time,
+      punchType: log.punch_type,
+      method: log.method,
+      accepted: acceptedPunchIds.has(log.id),
+    }));
+    const fromRejected = rejectedGpsRequests
+      .filter(r => new Date(r.punch_time).getTime() >= cutoff)
+      .map(r => ({
+        id: `req-${r.id}`,
+        punchTime: r.punch_time,
+        punchType: r.punch_type,
+        method: 'gps',
+        accepted: false,
+      }));
+    return [...fromLogs, ...fromRejected].sort((a, b) => new Date(b.punchTime).getTime() - new Date(a.punchTime).getTime());
+  }, [filteredHistory, acceptedPunchIds, rejectedGpsRequests, historyRange]);
 
   function reloadHistory(empId: string) {
     supabase
@@ -342,7 +368,7 @@ export default function CheckInPage() {
 
           {pendingGpsRequests.length > 0 && (
             <>
-              <h2 className="mb-3 mt-6 text-sm font-semibold text-ink">Recent check-ins</h2>
+              <h2 className="mb-3 mt-6 text-sm font-semibold text-ink">Recent Request</h2>
               <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
                 {pendingGpsRequests.map(r => (
                   <div key={r.id} className="flex items-center gap-3 px-4 py-3">
@@ -373,26 +399,24 @@ export default function CheckInPage() {
               ))}
             </div>
           </div>
-          {filteredHistory.length === 0 ? (
+          {historyEntries.length === 0 ? (
             <p className="mt-2 text-center text-sm text-slate-400">No attendance records for this period.</p>
           ) : (
             <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
-              {filteredHistory.map(log => (
-                <div key={log.id} className="flex items-center gap-3 px-4 py-3">
+              {historyEntries.map(entry => (
+                <div key={entry.id} className="flex items-center gap-3 px-4 py-3">
                   <span
                     className={`w-12 shrink-0 rounded-md px-2 py-1 text-center text-xs font-bold ${
-                      log.punch_type === '0' ? 'bg-good-bg text-good-text' : 'bg-warning-bg text-warning-text'
+                      entry.punchType === '0' ? 'bg-good-bg text-good-text' : 'bg-warning-bg text-warning-text'
                     }`}
                   >
-                    {log.punch_type === '0' ? 'IN' : 'OUT'}
+                    {entry.punchType === '0' ? 'IN' : 'OUT'}
                   </span>
                   <div className="flex-1">
-                    <div className="text-sm text-ink">{formatDateTime(log.punch_time, system)}</div>
-                    <div className="text-xs capitalize text-slate-400">{log.method}</div>
+                    <div className="text-sm text-ink">{formatDateTime(entry.punchTime, system)}</div>
+                    <div className="text-xs capitalize text-slate-400">{entry.method}</div>
                   </div>
-                  <Badge tone={acceptedPunchIds.has(log.id) ? 'good' : 'critical'}>
-                    {acceptedPunchIds.has(log.id) ? 'Accepted' : 'Rejected'}
-                  </Badge>
+                  <Badge tone={entry.accepted ? 'good' : 'critical'}>{entry.accepted ? 'Accepted' : 'Rejected'}</Badge>
                 </div>
               ))}
             </div>
