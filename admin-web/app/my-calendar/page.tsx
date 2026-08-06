@@ -394,21 +394,23 @@ export default function MyCalendarPage() {
             <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
               <table className="w-full table-fixed text-center text-[10px]">
                 <colgroup>
-                  <col className="w-[15%]" />
-                  <col className="w-[23%]" />
-                  <col className="w-[17%]" />
                   <col className="w-[12%]" />
-                  <col className="w-[15%]" />
-                  <col className="w-[18%]" />
+                  <col className="w-[22%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[17%]" />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500">
                     <th className="truncate px-0.5 py-1 font-medium">Date</th>
                     <th className="truncate px-0.5 py-1 font-medium">In / Out</th>
-                    <th className="truncate px-0.5 py-1 font-medium">Late/Early</th>
+                    <th className="truncate px-0.5 py-1 font-medium">Late</th>
+                    <th className="truncate px-0.5 py-1 font-medium">Early</th>
                     <th className="truncate px-0.5 py-1 font-medium">Status</th>
-                    <th className="truncate px-0.5 py-1 font-medium">Hrs</th>
                     <th className="truncate px-0.5 py-1 font-medium">OT</th>
+                    <th className="truncate px-0.5 py-1 font-medium">Hrs</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -421,17 +423,14 @@ export default function MyCalendarPage() {
                         <td className="truncate px-0.5 py-0.5 text-slate-600">
                           {row.onLeave ? '—' : `${fmtTime(row.checkIn)} – ${fmtTime(row.checkOut)}`}
                         </td>
-                        <td className="truncate px-0.5 py-0.5 font-medium">
-                          {row.onLeave || !row.present ? (
-                            <span className="text-slate-300">—</span>
-                          ) : row.lateMinutes === 0 && row.earlyMinutes === 0 ? (
-                            <span className="text-slate-300">—</span>
+                        <td className="truncate px-0.5 py-0.5 font-medium text-warning-text">
+                          {row.present && row.lateMinutes > 0 ? formatHoursMinutes(row.lateMinutes) : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="truncate px-0.5 py-0.5 font-medium text-critical-text">
+                          {row.present && row.earlyMinutes > 0 ? (
+                            formatHoursMinutes(row.earlyMinutes)
                           ) : (
-                            <>
-                              {row.lateMinutes > 0 && <span className="text-warning-text">{formatHoursMinutes(row.lateMinutes)}</span>}
-                              {row.lateMinutes > 0 && row.earlyMinutes > 0 && ' '}
-                              {row.earlyMinutes > 0 && <span className="text-critical-text">{formatHoursMinutes(row.earlyMinutes)}</span>}
-                            </>
+                            <span className="text-slate-300">—</span>
                           )}
                         </td>
                         <td className="truncate px-0.5 py-0.5 font-medium">
@@ -445,8 +444,8 @@ export default function MyCalendarPage() {
                             <span className="text-slate-300">—</span>
                           )}
                         </td>
-                        <td className="truncate px-0.5 py-0.5 text-slate-600">{row.present ? fmtHrs(row.hours) : '—'}</td>
                         <td className="truncate px-0.5 py-0.5 text-info-text">{row.present ? fmtHrs(row.overtime) : '—'}</td>
+                        <td className="truncate px-0.5 py-0.5 text-slate-600">{row.present ? fmtHrs(row.hours) : '—'}</td>
                       </tr>
                     );
                   })}
@@ -469,15 +468,15 @@ export default function MyCalendarPage() {
                     return (
                       <>
                         <tr className="border-t-2 border-slate-200 bg-slate-50 text-ink">
-                          <td className="truncate px-0.5 py-1 font-semibold" colSpan={3}>
+                          <td className="truncate px-0.5 py-1 font-semibold" colSpan={4}>
                             Total
                           </td>
                           <td className="px-0.5 py-1" />
-                          <td className="truncate px-0.5 py-1 font-semibold">{fmtHrs(sumHours)}</td>
                           <td className="truncate px-0.5 py-1 font-semibold text-info-text">{fmtHrs(sumOvertime)}</td>
+                          <td className="truncate px-0.5 py-1 font-semibold">{fmtHrs(sumHours)}</td>
                         </tr>
                         <tr className="border-t border-slate-200 bg-slate-50 text-ink">
-                          <td className="truncate px-0.5 py-1 font-semibold" colSpan={3}>
+                          <td className="truncate px-0.5 py-1 font-semibold" colSpan={4}>
                             Present / Absent
                           </td>
                           <td className="truncate px-0.5 py-1 font-semibold text-good-text" colSpan={3}>
