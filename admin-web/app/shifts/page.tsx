@@ -14,6 +14,7 @@ export default function ShiftsPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<'templates' | 'roster'>('templates');
@@ -35,27 +36,46 @@ export default function ShiftsPage() {
     return counts;
   }, [employees, shifts]);
 
-  async function handleCreate(e: React.FormEvent) {
+  async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    await supabase.from('shifts').insert({
+    const payload = {
       name: form.name,
       type: form.type,
       start_time: form.start_time,
       end_time: form.end_time,
       grace_minutes: form.grace_minutes,
       department: form.department || null,
-      employee_id: null,
-    });
+    };
+    if (editingId) {
+      await supabase.from('shifts').update(payload).eq('id', editingId);
+    } else {
+      await supabase.from('shifts').insert({ ...payload, employee_id: null });
+    }
     setSaving(false);
     setForm(EMPTY_FORM);
+    setEditingId(null);
     setShowForm(false);
     reload();
   }
 
+  function handleEdit(shift: Shift) {
+    setForm({
+      name: shift.name,
+      type: shift.type,
+      start_time: shift.start_time.slice(0, 5),
+      end_time: shift.end_time.slice(0, 5),
+      grace_minutes: shift.grace_minutes,
+      department: shift.department ?? '',
+    });
+    setEditingId(shift.id);
+    setShowForm(true);
+  }
+
   async function handleDelete(id: string) {
     if (!confirm('Delete this shift?')) return;
-    await supabase.from('shifts').delete().eq('id', id);
+    const { error } = await supabase.from('shifts').delete().eq('id', id);
+    if (error) alert(`Couldn't delete: ${error.message}`);
     reload();
   }
 
@@ -81,7 +101,14 @@ export default function ShiftsPage() {
           </button>
         </div>
         {tab === 'templates' && (
-          <button onClick={() => setShowForm(true)} className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90">
+          <button
+            onClick={() => {
+              setForm(EMPTY_FORM);
+              setEditingId(null);
+              setShowForm(true);
+            }}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
+          >
             + New Shift
           </button>
         )}
@@ -103,9 +130,14 @@ export default function ShiftsPage() {
               👥 {countsByShift.get(shift.id) ?? 0} employees
               {shift.department && <span> · {shift.department}</span>}
             </p>
-            <button onClick={() => handleDelete(shift.id)} className="mt-3 text-xs font-medium text-critical hover:underline">
-              Delete
-            </button>
+            <div className="mt-3 flex gap-3">
+              <button onClick={() => handleEdit(shift)} className="text-xs font-medium text-accent hover:underline">
+                Edit
+              </button>
+              <button onClick={() => handleDelete(shift.id)} className="text-xs font-medium text-critical hover:underline">
+                Delete
+              </button>
+            </div>
           </div>
         ))}
         {templateShifts.length === 0 && <p className="text-sm text-slate-400">No shift templates yet — create one to get started.</p>}
@@ -145,8 +177,8 @@ export default function ShiftsPage() {
 
       {showForm && (
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
-          <form onSubmit={handleCreate} className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
-            <h3 className="mb-4 text-lg font-semibold text-ink">New Shift</h3>
+          <form onSubmit={handleSave} className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+            <h3 className="mb-4 text-lg font-semibold text-ink">{editingId ? 'Edit Shift' : 'New Shift'}</h3>
             <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
             <input
               required
@@ -174,31 +206,28 @@ export default function ShiftsPage() {
                 />
               </div>
             </div>
-            <div className="mb-3 grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Grace (min)</label>
-                <input
-                  type="number"
-                  value={form.grace_minutes}
-                  onChange={e => setForm(f => ({ ...f, grace_minutes: Number(e.target.value) }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Department</label>
-                <input
-                  value={form.department}
-                  onChange={e => setForm(f => ({ ...f, department: e.target.value }))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-              </div>
+            <div className="mb-3">
+              <label className="mb-1 block text-xs font-medium text-slate-600">Grace (min)</label>
+              <input
+                type="number"
+                value={form.grace_minutes}
+                onChange={e => setForm(f => ({ ...f, grace_minutes: Number(e.target.value) }))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
             </div>
             <div className="mt-4 flex justify-end gap-2">
-              <button type="button" onClick={() => setShowForm(false)} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForm(false);
+                  setEditingId(null);
+                }}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              >
                 Cancel
               </button>
               <button type="submit" disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60">
-                {saving ? 'Saving…' : 'Create shift'}
+                {saving ? 'Saving…' : editingId ? 'Save changes' : 'Create shift'}
               </button>
             </div>
           </form>

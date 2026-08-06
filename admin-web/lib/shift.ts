@@ -243,8 +243,10 @@ export function applyOvernightShiftCorrection(
     const startMin = toMinutes(resolved.start_time);
     const endMin = toMinutes(resolved.end_time);
     const durationMin = 24 * 60 - startMin + endMin;
-    const windowStartMs = nepalDateTimeToUtcMs(date, resolved.start_time);
-    const windowEndMs = windowStartMs + (durationMin + 120) * 60000;
+    // Window starts at midnight, not the scheduled start minute, so a punch
+    // a few minutes early (arriving ahead of shift) isn't excluded.
+    const windowStartMs = nepalDateTimeToUtcMs(date, '00:00');
+    const windowEndMs = nepalDateTimeToUtcMs(date, resolved.start_time) + (durationMin + 120) * 60000;
 
     const dayLogs = allLogs.filter(l => {
       const t = new Date(l.punch_time).getTime();
