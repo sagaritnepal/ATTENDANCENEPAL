@@ -17,6 +17,7 @@ const NAV_ITEMS: NavItem[] = [
     children: [
       { href: '/shifts', label: 'Shifts', icon: CalendarIcon, adminOnly: true },
       { href: '/branches', label: 'Branch/Depart', icon: BranchIcon, adminOnly: true },
+      { href: '/employees?filter=Resigned', label: 'Resigned', icon: ResignedIcon, adminOnly: true },
     ],
   },
   {
@@ -211,6 +212,14 @@ function BranchIcon({ className }: IconProps) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-7-6.1-7-11a7 7 0 1 1 14 0c0 4.9-7 11-7 11Z" />
       <circle cx="12" cy="10" r="2.5" />
+    </svg>
+  );
+}
+function ResignedIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <circle cx="9" cy="8" r="3.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.5 19c1-3.2 3.6-5 6.5-5s5.5 1.8 6.5 5M15.5 9h6" />
     </svg>
   );
 }
