@@ -27,6 +27,14 @@
     },
     "web": {
       "bundler": "metro"
-    }
+    },
+    "plugins": [
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Attendance Nepal to use Face ID to unlock the app."
+        }
+      ]
+    ]
   }
 }
