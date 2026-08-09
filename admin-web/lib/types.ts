@@ -81,6 +81,7 @@ export type Profile = {
   company_name: string | null;
   pan_no: string | null;
   location: string | null;
+  photo_url: string | null;
 };
 
 export type Device = {
