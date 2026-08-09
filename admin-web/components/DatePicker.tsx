@@ -7,6 +7,7 @@ import { useCalendarSystem } from '@/lib/calendarSystem';
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const POPOVER_WIDTH = 288; // matches w-72
+const POPOVER_HEIGHT = 340; // header + weekday row + up to 6 grid rows + footer
 
 function parseAdKey(value: string): CalendarAnchor | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -55,7 +56,14 @@ export default function DatePicker({
     const rect = triggerRef.current?.getBoundingClientRect();
     if (rect) {
       const left = Math.min(rect.left, window.innerWidth - POPOVER_WIDTH - 8);
-      setCoords({ top: rect.bottom + 4, left: Math.max(8, left) });
+      // Flip above the trigger when there isn't room below (e.g. a field
+      // near the bottom of a modal) instead of letting the popover run off
+      // the bottom of the viewport.
+      const top =
+        rect.bottom + 4 + POPOVER_HEIGHT > window.innerHeight
+          ? Math.max(8, rect.top - POPOVER_HEIGHT - 4)
+          : rect.bottom + 4;
+      setCoords({ top, left: Math.max(8, left) });
     }
     setOpen(true);
   }

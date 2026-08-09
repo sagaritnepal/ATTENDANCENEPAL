@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
@@ -9,6 +9,7 @@ import Leaderboard from '@/components/Leaderboard';
 import TaskHoursChart from '@/components/TaskHoursChart';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
+import { nepalTodayIso } from '@/lib/shift';
 import { totalsByTask } from '@/lib/taskHours';
 import type { Employee, PointRedemption, Task, TaskStatus, TaskTimeLog } from '@/lib/types';
 
@@ -35,6 +36,8 @@ export default function TasksPage() {
   const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
   const [pointsDraft, setPointsDraft] = useState<Record<string, number>>({});
   const [reviewingTask, setReviewingTask] = useState<Task | null>(null);
+  const [titleSuggestionsOpen, setTitleSuggestionsOpen] = useState(false);
+  const titleBoxRef = useRef<HTMLDivElement>(null);
 
   const [hoursEmployeeId, setHoursEmployeeId] = useState('');
   const [hoursLogs, setHoursLogs] = useState<TaskTimeLog[]>([]);
@@ -76,10 +79,38 @@ export default function TasksPage() {
   const employeeTasks = useMemo(() => tasks.filter(t => t.assigned_to === hoursEmployeeId), [tasks, hoursEmployeeId]);
 
   const filtered = useMemo(() => (filter === 'All' ? tasks : tasks.filter(t => t.status === filter)), [tasks, filter]);
+  const todayIso = useMemo(nepalTodayIso, []);
+  const isOverdue = (t: Task) =>
+    (t.status === 'pending' || t.status === 'in_progress') && !!t.due_date && t.due_date < todayIso;
+
+  // Every title ever assigned at this company, newest first, deduplicated —
+  // "bookmarking" a title happens automatically just by having used it once,
+  // and since `tasks` is already RLS-scoped to the caller's own company,
+  // every admin/HR user here sees the same shared list without a separate
+  // table to store it in.
+  const knownTitles = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const t of tasks) {
+      if (seen.has(t.title)) continue;
+      seen.add(t.title);
+      out.push(t.title);
+    }
+    return out;
+  }, [tasks]);
+  const titleSuggestions = useMemo(() => {
+    const term = form.title.trim().toLowerCase();
+    const list = term ? knownTitles.filter(title => title.toLowerCase().includes(term)) : knownTitles;
+    return list.slice(0, 8);
+  }, [knownTitles, form.title]);
 
   async function handleAssign(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
+    if (!form.due_date) {
+      setFormError('A deadline is required — pick a date this task must be finished by.');
+      return;
+    }
     setSaving(true);
     const { data } = await supabase.auth.getUser();
     const { error } = await supabase.from('tasks').insert({
@@ -88,7 +119,7 @@ export default function TasksPage() {
       title: form.title,
       description: form.description || null,
       points: form.points,
-      due_date: form.due_date || null,
+      due_date: form.due_date,
     });
     setSaving(false);
     if (error) {
@@ -171,7 +202,10 @@ export default function TasksPage() {
                       {t.source === 'self' && <Badge tone="info">Self-assigned</Badge>}
                     </div>
                   </div>
-                  <Badge tone={STATUS_TONE[t.status]}>{t.status.replace('_', ' ')}</Badge>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <Badge tone={STATUS_TONE[t.status]}>{t.status.replace('_', ' ')}</Badge>
+                    {isOverdue(t) && <Badge tone="critical">Overdue</Badge>}
+                  </div>
                 </div>
                 {t.description && <div className="mt-1 text-xs text-slate-400">{t.description}</div>}
                 {t.work_notes && (
@@ -239,7 +273,10 @@ export default function TasksPage() {
                     )}
                   </td>
                   <td className="px-5 py-3 text-slate-600">{t.points}</td>
-                  <td className="px-5 py-3 text-slate-600">{formatAdDate(t.due_date, system)}</td>
+                  <td className="px-5 py-3 text-slate-600">
+                    {formatAdDate(t.due_date, system)}
+                    {isOverdue(t) && <div className="mt-0.5 text-[10px] font-semibold text-critical-text">Overdue</div>}
+                  </td>
                   <td className="px-5 py-3">
                     <Badge tone={STATUS_TONE[t.status]}>{t.status.replace('_', ' ')}</Badge>
                   </td>
@@ -390,12 +427,43 @@ export default function TasksPage() {
             </select>
 
             <label className="mb-1 block text-xs font-medium text-slate-600">Title</label>
-            <input
-              required
-              value={form.title}
-              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
+            <div
+              ref={titleBoxRef}
+              tabIndex={-1}
+              onBlur={e => {
+                if (!titleBoxRef.current?.contains(e.relatedTarget as Node)) setTitleSuggestionsOpen(false);
+              }}
+              className="relative mb-3"
+            >
+              <input
+                required
+                value={form.title}
+                onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                onFocus={() => setTitleSuggestionsOpen(true)}
+                placeholder="e.g. Website development"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+              {titleSuggestionsOpen && titleSuggestions.length > 0 && (
+                <div className="absolute left-0 top-full z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                  {titleSuggestions.map(title => (
+                    <button
+                      key={title}
+                      type="button"
+                      onClick={() => {
+                        setForm(f => ({ ...f, title }));
+                        setTitleSuggestionsOpen(false);
+                      }}
+                      className="block w-full truncate px-3 py-2 text-left text-sm text-ink hover:bg-slate-50"
+                    >
+                      {title}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <p className="-mt-2 mb-3 text-[11px] text-slate-400">
+              Previously used titles show up here — pick one to reuse it instead of retyping.
+            </p>
 
             <label className="mb-1 block text-xs font-medium text-slate-600">Description (optional)</label>
             <textarea
@@ -418,8 +486,8 @@ export default function TasksPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Due date (optional)</label>
-                <DatePicker value={form.due_date} onChange={v => setForm(f => ({ ...f, due_date: v }))} placeholder="Select due date" />
+                <label className="mb-1 block text-xs font-medium text-slate-600">Deadline</label>
+                <DatePicker value={form.due_date} onChange={v => setForm(f => ({ ...f, due_date: v }))} placeholder="Select deadline" />
               </div>
             </div>
 
