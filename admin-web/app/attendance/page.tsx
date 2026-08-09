@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import DateRangePicker from '@/components/DateRangePicker';
-import { formatAdDate } from '@/lib/calendar';
+import { formatAdDate, formatDdMmYyyy } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import {
   applyOvernightShiftCorrection,
@@ -43,6 +43,16 @@ type Row = {
 /** Decimal hours -> "Xh Ym". */
 function fmtHrs(hours: number) {
   return formatHoursMinutes(Math.round(hours * 60));
+}
+
+function fmtTime(iso: string | null) {
+  return iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–';
+}
+
+function statusText(r: Row) {
+  if (r.checkIn) return <span className="text-good-text">Present</span>;
+  if (r.status === 'Upcoming') return <span className="text-slate-400">Upcoming</span>;
+  return <span className="text-critical-text">Absent</span>;
 }
 
 function isoDaysAgo(n: number) {
@@ -365,80 +375,88 @@ function AttendanceView() {
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        {/* Phones get a stacked card per record instead of the 12-column
-            table below — nothing to horizontally scroll through. */}
-        <div className="max-h-[70vh] divide-y divide-slate-100 overflow-y-auto md:hidden">
-          {rows.map(r => (
-            <div key={r.key} className="p-4">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="truncate font-medium text-ink">{r.employeeName}</div>
-                  <div className="text-xs text-slate-500">
-                    {r.enrollId} · {formatAdDate(r.date, system)}
-                  </div>
-                </div>
-                <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
-                  {statusBadge(r)}
-                </div>
-              </div>
-              <div className="mt-1.5 text-xs text-slate-500">{r.shiftLabel}</div>
-              <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 text-sm">
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Check-In</dt>
-                  <dd className="text-ink">
-                    {r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Check-Out</dt>
-                  <dd className="text-ink">
-                    {r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Late By</dt>
-                  <dd>
-                    {r.lateMinutes > 0 ? (
-                      <span className="font-medium text-warning-text">{formatHoursMinutes(r.lateMinutes)}</span>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Early Out</dt>
-                  <dd>
-                    {r.earlyMinutes > 0 ? (
-                      <span className="font-medium text-warning-text">{formatHoursMinutes(r.earlyMinutes)}</span>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Work Hours</dt>
-                  <dd className="text-ink">
-                    {fmtHrs(r.hours)}{r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Overtime</dt>
-                  <dd className="text-ink">
-                    {fmtHrs(r.overtime)}{r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
-                  </dd>
-                </div>
-              </dl>
-              <div className="mt-2.5 text-xs text-slate-400">{r.device}</div>
-            </div>
-          ))}
-          {rows.length === 0 && <p className="p-8 text-center text-sm text-slate-400">No records in this range.</p>}
-          {rows.length > 0 && (
-            <div className="flex items-center justify-center gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold">
-              <span className="text-good-text">{totals.presentDays} present</span>
-              <span className="text-slate-300">·</span>
-              <span className="text-critical-text">{totals.absentDays} absent</span>
-            </div>
-          )}
+        {/* Phones get the same dense per-day table as My Calendar/My Payroll
+            instead of one tall card per record — many rows visible at once,
+            nothing to hunt through. */}
+        <div className="max-h-[70vh] overflow-y-auto md:hidden">
+          <table className="w-full table-fixed text-center text-[10px]">
+            <colgroup>
+              <col className="w-[22%]" />
+              <col className="w-[11%]" />
+              <col className="w-[19%]" />
+              <col className="w-[16%]" />
+              <col className="w-[11%]" />
+              <col className="w-[10%]" />
+              <col className="w-[11%]" />
+            </colgroup>
+            <thead>
+              <tr className="sticky top-0 border-b border-slate-200 bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500">
+                <th className="truncate px-0.5 py-1 font-medium">Employee</th>
+                <th className="truncate px-0.5 py-1 font-medium">Date</th>
+                <th className="truncate px-0.5 py-1 font-medium">In / Out</th>
+                <th className="truncate px-0.5 py-1 font-medium">Late / Early</th>
+                <th className="truncate px-0.5 py-1 font-medium">Status</th>
+                <th className="truncate px-0.5 py-1 font-medium">OT</th>
+                <th className="truncate px-0.5 py-1 font-medium">Hrs</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={r.key} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
+                  <td className="truncate px-0.5 py-0.5 text-left font-medium text-ink" title={r.employeeName}>
+                    {r.employeeName}
+                  </td>
+                  <td className="truncate px-0.5 py-0.5 text-slate-600">{formatDdMmYyyy(r.date, system).slice(0, 5)}</td>
+                  <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight text-slate-600">
+                    {fmtTime(r.checkIn)} – {fmtTime(r.checkOut)}
+                  </td>
+                  <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight font-medium">
+                    {r.lateMinutes === 0 && r.earlyMinutes === 0 && <span className="text-slate-300">—</span>}
+                    {r.lateMinutes > 0 && <span className="text-warning-text">L {formatHoursMinutes(r.lateMinutes)}</span>}
+                    {r.lateMinutes > 0 && r.earlyMinutes > 0 && ' · '}
+                    {r.earlyMinutes > 0 && <span className="text-critical-text">E {formatHoursMinutes(r.earlyMinutes)}</span>}
+                  </td>
+                  <td className="truncate px-0.5 py-0.5 font-medium">{statusText(r)}</td>
+                  <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight text-info-text">
+                    {fmtHrs(r.overtime)}
+                  </td>
+                  <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight text-slate-600">
+                    {fmtHrs(r.hours)}
+                  </td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-2 py-8 text-center text-slate-400">
+                    No records in this range.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            {rows.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-slate-200 bg-slate-50 text-ink">
+                  <td className="truncate px-0.5 py-1 text-left font-semibold" colSpan={2}>
+                    Total
+                  </td>
+                  <td />
+                  <td className="whitespace-normal break-words px-0.5 py-1 font-semibold leading-tight">
+                    {totals.lateMinutes > 0 && <span className="text-warning-text">L {formatHoursMinutes(totals.lateMinutes)}</span>}
+                    {totals.lateMinutes > 0 && totals.earlyMinutes > 0 && ' · '}
+                    {totals.earlyMinutes > 0 && <span className="text-critical-text">E {formatHoursMinutes(totals.earlyMinutes)}</span>}
+                    {totals.lateMinutes === 0 && totals.earlyMinutes === 0 && '—'}
+                  </td>
+                  <td className="truncate px-0.5 py-1 font-semibold text-[9px]">
+                    <span className="text-good-text">{totals.presentDays}P</span> / <span className="text-critical-text">{totals.absentDays}A</span>
+                  </td>
+                  <td className="whitespace-normal break-words px-0.5 py-1 font-semibold leading-tight text-info-text">
+                    {fmtHrs(totals.overtimeHours)}
+                  </td>
+                  <td className="whitespace-normal break-words px-0.5 py-1 font-semibold leading-tight">{fmtHrs(totals.workHours)}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
         </div>
 
         <div className="hidden max-h-[65vh] overflow-auto rounded-xl md:block">

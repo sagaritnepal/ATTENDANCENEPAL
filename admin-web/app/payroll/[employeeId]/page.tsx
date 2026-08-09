@@ -6,7 +6,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
-import { buildMonth, formatAdDate, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
+import { buildMonth, formatAdDate, formatDdMmYyyy, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { formatHoursMinutes, type DailyShiftByDate } from '@/lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '@/lib/payrollDetail';
@@ -29,6 +29,12 @@ function statusBadge(d: DayDetail) {
   if (d.checkIn) return <Badge tone="good">Present</Badge>;
   if (d.status === 'Upcoming') return <Badge tone="neutral">Upcoming</Badge>;
   return <Badge tone="critical">Absent</Badge>;
+}
+
+function statusText(d: DayDetail) {
+  if (d.checkIn) return <span className="text-good-text">Present</span>;
+  if (d.status === 'Upcoming') return <span className="text-slate-400">Upcoming</span>;
+  return <span className="text-critical-text">Absent</span>;
 }
 
 function parseAdKey(value: string): CalendarAnchor | null {
@@ -195,47 +201,90 @@ function PayrollEmployeeDetailView() {
           </div>
 
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            {/* Phones get a card per day, desktop gets the full table. */}
-            <div className="mt-3 divide-y divide-slate-100 p-4 md:hidden">
-              {dayRows.map(d => {
-                const earning = dailySalaryEarning(d, employee.salary, daysInRange, otHoursPerDay, otMultiplier, otOn);
-                return (
-                  <div key={d.date} className="py-2.5 first:pt-0 last:pb-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium text-ink">{formatAdDate(d.date, system)}</span>
-                      {statusBadge(d)}
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                      <span>
-                        {d.checkIn ? fmtTime(d.checkIn) : '–:–'} – {d.checkOut ? fmtTime(d.checkOut) : '–:–'}
-                      </span>
-                      <span>
-                        {fmtHrs(d.hours)}{d.pending && ' (live)'}
-                      </span>
-                      {d.overtime > 0 && <span className="font-medium text-info-text">OT {fmtHrs(d.overtime)}</span>}
-                      {d.lateMinutes > 0 && <span className="font-medium text-warning-text">Late {formatHoursMinutes(d.lateMinutes)}</span>}
-                      {d.earlyMinutes > 0 && <span className="font-medium text-critical-text">Early {formatHoursMinutes(d.earlyMinutes)}</span>}
-                    </div>
-                    {earning && (
-                      <div className="mt-1.5 flex items-center justify-between text-xs">
-                        <span className="text-slate-400">
-                          My Salary {Math.round(earning.base).toLocaleString()}
-                          {earning.overtime > 0 && ` + OT Salary ${Math.round(earning.overtime).toLocaleString()}`}
-                        </span>
-                        <span className="font-semibold text-good-text">{Math.round(earning.total).toLocaleString()}</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              {dayRows.length === 0 && <p className="py-8 text-center text-sm text-slate-400">No days in this period.</p>}
-              {dayRows.length > 0 && (
-                <div className="-mx-4 mt-1 flex items-center justify-center gap-3 border-t border-slate-100 bg-slate-50 px-4 py-3 text-xs font-semibold">
-                  <span className="text-good-text">{dayTotals.presentDays} present</span>
-                  <span className="text-slate-300">·</span>
-                  <span className="text-critical-text">{dayTotals.absentDays} absent</span>
-                </div>
-              )}
+            {/* Phones get the same dense per-day table as My Calendar/My
+                Payroll instead of one card per day — the My/OT Salary
+                breakdown stays on the desktop table below, this shows just
+                the Total Salary headline to keep columns readable. */}
+            <div className="mt-3 md:hidden">
+              <table className="w-full table-fixed text-center text-[10px]">
+                <colgroup>
+                  <col className="w-[12%]" />
+                  <col className="w-[19%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[21%]" />
+                </colgroup>
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500">
+                    <th className="truncate px-0.5 py-1 font-medium">Date</th>
+                    <th className="truncate px-0.5 py-1 font-medium">In / Out</th>
+                    <th className="truncate px-0.5 py-1 font-medium">Late / Early</th>
+                    <th className="truncate px-0.5 py-1 font-medium">Status</th>
+                    <th className="truncate px-0.5 py-1 font-medium">OT</th>
+                    <th className="truncate px-0.5 py-1 font-medium">Hrs</th>
+                    <th className="truncate px-0.5 py-1 font-medium">Salary</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dayRows.map((d, i) => {
+                    const earning = dailySalaryEarning(d, employee.salary, daysInRange, otHoursPerDay, otMultiplier, otOn);
+                    return (
+                      <tr key={d.date} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
+                        <td className="truncate px-0.5 py-0.5 text-ink">{formatDdMmYyyy(d.date, system).slice(0, 5)}</td>
+                        <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight text-slate-600">
+                          {d.checkIn ? fmtTime(d.checkIn) : '–:–'} – {d.checkOut ? fmtTime(d.checkOut) : '–:–'}
+                        </td>
+                        <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight font-medium">
+                          {d.lateMinutes === 0 && d.earlyMinutes === 0 && <span className="text-slate-300">—</span>}
+                          {d.lateMinutes > 0 && <span className="text-warning-text">L {formatHoursMinutes(d.lateMinutes)}</span>}
+                          {d.lateMinutes > 0 && d.earlyMinutes > 0 && ' · '}
+                          {d.earlyMinutes > 0 && <span className="text-critical-text">E {formatHoursMinutes(d.earlyMinutes)}</span>}
+                        </td>
+                        <td className="truncate px-0.5 py-0.5 font-medium">{statusText(d)}</td>
+                        <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight text-info-text">{fmtHrs(d.overtime)}</td>
+                        <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight text-slate-600">{fmtHrs(d.hours)}</td>
+                        <td className="whitespace-normal break-words px-0.5 py-0.5 font-semibold leading-tight text-good-text">
+                          {earning ? Math.round(earning.total).toLocaleString() : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {dayRows.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-2 py-8 text-center text-slate-400">
+                        No days in this period.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+                {dayRows.length > 0 && (
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-200 bg-slate-50 text-ink">
+                      <td className="truncate px-0.5 py-1 text-left font-semibold" colSpan={2}>
+                        Total
+                      </td>
+                      <td className="whitespace-normal break-words px-0.5 py-1 font-semibold leading-tight">
+                        {dayTotals.lateMinutes > 0 && <span className="text-warning-text">L {formatHoursMinutes(dayTotals.lateMinutes)}</span>}
+                        {dayTotals.lateMinutes > 0 && dayTotals.earlyMinutes > 0 && ' · '}
+                        {dayTotals.earlyMinutes > 0 && <span className="text-critical-text">E {formatHoursMinutes(dayTotals.earlyMinutes)}</span>}
+                        {dayTotals.lateMinutes === 0 && dayTotals.earlyMinutes === 0 && '—'}
+                      </td>
+                      <td className="truncate px-0.5 py-1 font-semibold text-[9px]">
+                        <span className="text-good-text">{dayTotals.presentDays}P</span> / <span className="text-critical-text">{dayTotals.absentDays}A</span>
+                      </td>
+                      <td className="whitespace-normal break-words px-0.5 py-1 font-semibold leading-tight text-info-text">
+                        {fmtHrs(dayTotals.overtime)}
+                      </td>
+                      <td className="whitespace-normal break-words px-0.5 py-1 font-semibold leading-tight">{fmtHrs(dayTotals.hours)}</td>
+                      <td className="whitespace-normal break-words px-0.5 py-1 font-semibold leading-tight text-good-text">
+                        {Math.round(dayTotals.totalSalary).toLocaleString()}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
             </div>
 
             <div className="mt-4 hidden overflow-x-auto pb-2 md:block">
