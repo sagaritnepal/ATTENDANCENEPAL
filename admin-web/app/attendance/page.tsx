@@ -84,6 +84,7 @@ function AttendanceView() {
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [dailyShiftRows, setDailyShiftRows] = useState<{ employee_id: string; work_date: string; shift_id: string | null }[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     supabase.from('employees').select('*').eq('status', 'active').order('name').then(({ data }) => setEmployees(data ?? []));
@@ -92,24 +93,17 @@ function AttendanceView() {
   }, []);
 
   useEffect(() => {
-    supabase
-      .from('payroll_summaries')
-      .select('*')
-      .gte('work_date', from)
-      .lte('work_date', to)
-      .then(({ data }) => setSummaries(data ?? []));
-    supabase
-      .from('attendance_logs')
-      .select('*')
-      .gte('punch_time', `${from}T00:00:00Z`)
-      .lte('punch_time', `${to}T23:59:59Z`)
-      .then(({ data }) => setLogs(data ?? []));
-    supabase
-      .from('employee_daily_shifts')
-      .select('employee_id, work_date, shift_id')
-      .gte('work_date', from)
-      .lte('work_date', to)
-      .then(({ data }) => setDailyShiftRows(data ?? []));
+    setLoading(true);
+    Promise.all([
+      supabase.from('payroll_summaries').select('*').gte('work_date', from).lte('work_date', to),
+      supabase.from('attendance_logs').select('*').gte('punch_time', `${from}T00:00:00Z`).lte('punch_time', `${to}T23:59:59Z`),
+      supabase.from('employee_daily_shifts').select('employee_id, work_date, shift_id').gte('work_date', from).lte('work_date', to),
+    ]).then(([summariesRes, logsRes, rosterRes]) => {
+      setSummaries(summariesRes.data ?? []);
+      setLogs(logsRes.data ?? []);
+      setDailyShiftRows(rosterRes.data ?? []);
+      setLoading(false);
+    });
   }, [from, to]);
 
   const scopedEmployees = useMemo(
@@ -425,7 +419,7 @@ function AttendanceView() {
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-2 py-8 text-center text-slate-400">
-                    No records in this range.
+                    {loading ? 'Loading…' : 'No records in this range.'}
                   </td>
                 </tr>
               )}
@@ -474,7 +468,7 @@ function AttendanceView() {
           </thead>
           <tbody>
             {rows.map(r => (
-              <tr key={r.key} className="border-b border-slate-100 last:border-0">
+              <tr key={r.key} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                 <td className="whitespace-nowrap px-3 py-2 text-slate-600">{formatAdDate(r.date, system)}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-slate-600">{r.enrollId}</td>
                 <td className="whitespace-nowrap px-3 py-2 font-medium text-ink">{r.employeeName}</td>
@@ -511,7 +505,7 @@ function AttendanceView() {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={10} className="px-5 py-8 text-center text-slate-400">
-                  No records in this range.
+                  {loading ? 'Loading…' : 'No records in this range.'}
                 </td>
               </tr>
             )}

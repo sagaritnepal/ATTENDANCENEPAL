@@ -52,6 +52,7 @@ export default function PayrollPage() {
   // extra for it) — on by default, toggled off per row.
   const [overtimeEnabled, setOvertimeEnabled] = useState<Record<string, boolean>>({});
   const [employeeId, setEmployeeId] = useState('all');
+  const [loading, setLoading] = useState(true);
 
   const { start, end } = period;
 
@@ -113,21 +114,21 @@ export default function PayrollPage() {
   // against raw punches where it hasn't) — so a day shows up here exactly
   // when it shows up there, with the same numbers.
   function reload() {
-    supabase.from('payroll_summaries').select('*').gte('work_date', start).lte('work_date', end).then(({ data }) => setSummaries(data ?? []));
-    supabase
-      .from('attendance_logs')
-      .select('*')
-      .gte('punch_time', `${start}T00:00:00Z`)
-      .lte('punch_time', `${end}T23:59:59Z`)
-      .then(({ data }) => setLogs(data ?? []));
-    supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
-    supabase.from('employees').select('*').eq('status', 'active').then(({ data }) => setEmployees(data ?? []));
-    supabase
-      .from('employee_daily_shifts')
-      .select('employee_id, work_date, shift_id')
-      .gte('work_date', start)
-      .lte('work_date', end)
-      .then(({ data }) => setDailyShiftRows(data ?? []));
+    setLoading(true);
+    Promise.all([
+      supabase.from('payroll_summaries').select('*').gte('work_date', start).lte('work_date', end),
+      supabase.from('attendance_logs').select('*').gte('punch_time', `${start}T00:00:00Z`).lte('punch_time', `${end}T23:59:59Z`),
+      supabase.from('shifts').select('*'),
+      supabase.from('employees').select('*').eq('status', 'active'),
+      supabase.from('employee_daily_shifts').select('employee_id, work_date, shift_id').gte('work_date', start).lte('work_date', end),
+    ]).then(([summariesRes, logsRes, shiftsRes, employeesRes, rosterRes]) => {
+      setSummaries(summariesRes.data ?? []);
+      setLogs(logsRes.data ?? []);
+      setShifts(shiftsRes.data ?? []);
+      setEmployees(employeesRes.data ?? []);
+      setDailyShiftRows(rosterRes.data ?? []);
+      setLoading(false);
+    });
   }
 
   useEffect(reload, [start, end]);
@@ -599,7 +600,9 @@ export default function PayrollPage() {
               </dl>
             </div>
           ))}
-          {byEmployee.length === 0 && <p className="p-8 text-center text-sm text-slate-400">No active employees.</p>}
+          {byEmployee.length === 0 && (
+            <p className="p-8 text-center text-sm text-slate-400">{loading ? 'Loading…' : 'No active employees.'}</p>
+          )}
           {byEmployee.length > 0 && (
             <div className="flex items-center justify-center gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold">
               <span className="text-good-text">{totals.workedDays} present days</span>
@@ -631,7 +634,7 @@ export default function PayrollPage() {
             {byEmployee.map((row, i) => {
               const rowBg = i % 2 === 1 ? 'bg-slate-50' : 'bg-white';
               return (
-                <tr key={row.id} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
+                <tr key={row.id} className={`border-b border-slate-100 last:border-0 hover:bg-slate-100 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
                   <td className="whitespace-nowrap px-3 py-2 text-slate-600">{row.enrollId}</td>
                   <td className="whitespace-nowrap px-3 py-2 font-medium text-ink">
                     <Link href={detailHref(row.id)} className="flex items-center gap-2.5 hover:text-accent hover:underline">
@@ -663,7 +666,9 @@ export default function PayrollPage() {
             })}
             {byEmployee.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-4 py-8 text-center text-slate-400">No active employees.</td>
+                <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
+                  {loading ? 'Loading…' : 'No active employees.'}
+                </td>
               </tr>
             )}
           </tbody>
