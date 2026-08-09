@@ -139,6 +139,17 @@ export default function MonthCalendar({ dayStatus, leaveDates, weekOffDates, sel
             ? dayFlags(status, onLeave, onWeekOff, cell.adKey <= todayKey)
             : dayFlags(undefined, false, false, false);
           const caption = cell.inMonth ? captionFor(flags) : undefined;
+          // On Leave/Week Off gets its own yellow, distinct from Checked-in's
+          // pink — those two used to both read as similar light pastels.
+          const attendanceBg = onLeave || onWeekOff
+            ? 'bg-yellow-50'
+            : flags.present || flags.late || flags.early
+              ? 'bg-good-bg'
+              : flags.checkedInOnly
+                ? 'bg-pink-50'
+                : flags.absent
+                  ? 'bg-slate-100'
+                  : '';
           return (
             <button
               key={`${cell.adKey}-${i}`}
@@ -146,7 +157,7 @@ export default function MonthCalendar({ dayStatus, leaveDates, weekOffDates, sel
               title={caption}
               className={`relative flex min-h-[52px] flex-col items-center justify-center rounded-lg text-sm sm:min-h-[60px] ${
                 !cell.inMonth ? 'text-slate-300' : cell.isToday ? 'font-bold text-accent' : 'text-ink'
-              } ${selected ? 'bg-accent text-white' : 'hover:bg-slate-100'}`}
+              } ${selected ? 'bg-accent text-white' : `${attendanceBg} hover:bg-slate-100`}`}
             >
               {flags.late && (
                 <span
@@ -157,17 +168,16 @@ export default function MonthCalendar({ dayStatus, leaveDates, weekOffDates, sel
                   Late
                 </span>
               )}
-              {flags.overtime && (
+              <span>{cell.displayDay}</span>
+              {flags.overtime ? (
                 <span
-                  className={`absolute right-1 top-1 rounded-full px-1 py-px text-[8px] font-bold uppercase leading-none shadow-sm ${
+                  className={`absolute bottom-1 rounded-full px-1.5 py-px text-[8px] font-bold uppercase leading-none shadow-sm ${
                     selected ? 'bg-white text-accent' : 'bg-info text-white'
                   }`}
                 >
                   OT
                 </span>
-              )}
-              <span>{cell.displayDay}</span>
-              {flags.early && (
+              ) : flags.early ? (
                 <span
                   className={`absolute bottom-1 rounded-full px-1.5 py-px text-[8px] font-bold uppercase leading-none shadow-sm ${
                     selected ? 'bg-white text-accent' : 'bg-critical text-white'
@@ -175,13 +185,25 @@ export default function MonthCalendar({ dayStatus, leaveDates, weekOffDates, sel
                 >
                   Early
                 </span>
-              )}
+              ) : null}
             </button>
           );
         })}
       </div>
 
       <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-good-bg" /> Present
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-pink-50" /> Checked in
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-yellow-50" /> On leave / Week Off
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-slate-100" /> Absent
+        </span>
         <span className="flex items-center gap-1.5">
           <span className="rounded-full bg-warning px-1.5 py-px text-[8px] font-bold uppercase leading-none text-white">Late</span> Late in
         </span>
