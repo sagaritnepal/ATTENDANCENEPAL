@@ -6,6 +6,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
+import StatusText from '@/components/StatusText';
 import { buildMonth, formatAdDate, formatDdMmYyyy, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { formatHoursMinutes, type DailyShiftByDate } from '@/lib/shift';
@@ -29,12 +30,6 @@ function statusBadge(d: DayDetail) {
   if (d.checkIn) return <Badge tone="good">Present</Badge>;
   if (d.status === 'Upcoming') return <Badge tone="neutral">Upcoming</Badge>;
   return <Badge tone="critical">Absent</Badge>;
-}
-
-function statusText(d: DayDetail) {
-  if (d.checkIn) return <span className="text-good-text">Present</span>;
-  if (d.status === 'Upcoming') return <span className="text-slate-400">Upcoming</span>;
-  return <span className="text-critical-text">Absent</span>;
 }
 
 function parseAdKey(value: string): CalendarAnchor | null {
@@ -309,7 +304,9 @@ function PayrollEmployeeDetailView() {
                           {d.lateMinutes > 0 && d.earlyMinutes > 0 && ' · '}
                           {d.earlyMinutes > 0 && <span className="text-critical-text">E {formatHoursMinutes(d.earlyMinutes)}</span>}
                         </td>
-                        <td className="truncate px-0.5 py-0.5 font-medium">{statusText(d)}</td>
+                        <td className="truncate px-0.5 py-0.5 font-medium">
+                          <StatusText checkIn={d.checkIn} status={d.status} />
+                        </td>
                         <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight text-info-text">{fmtHrs(d.overtime)}</td>
                         <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight text-slate-600">{fmtHrs(d.hours)}</td>
                         <td className="whitespace-normal break-words px-0.5 py-0.5 font-semibold leading-tight text-good-text">

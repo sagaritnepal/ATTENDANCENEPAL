@@ -8,7 +8,13 @@ import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
 import type { AttendanceLog, Device, Employee, LeaveRequest, Shift } from '@/lib/types';
 import { dateKey, firstCheckIn, isLate, last7Days, presentEmployeeIds, WEEKDAY_LABEL } from '@/lib/metrics';
-import { applyOvernightShiftCorrection, computeDayStatusForResolvedShift, resolveShiftForDate, type DailyShiftByDate } from '@/lib/shift';
+import {
+  applyOvernightShiftCorrection,
+  computeDayStatusForResolvedShift,
+  nepalTodayIso,
+  resolveShiftForDate,
+  type DailyShiftByDate,
+} from '@/lib/shift';
 
 const DEPT_COLORS: Record<string, string> = {
   Engineering: '#0d9488',
@@ -40,7 +46,7 @@ export default function DashboardPage() {
     supabase.from('employees').select('*').then(({ data }) => setEmployees(data ?? []));
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
     supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
-    const today = new Date().toISOString().slice(0, 10);
+    const today = nepalTodayIso();
     supabase
       .from('leave_requests')
       .select('*')
@@ -82,7 +88,11 @@ export default function DashboardPage() {
   }, [logs, employees]);
 
   const activeEmployees = useMemo(() => employees.filter(e => e.status === 'active'), [employees]);
-  const today = dateKey(new Date().toISOString());
+  // Nepal calendar day, not the browser/UTC day — matches My Calendar and
+  // Attendance Report, which already use nepalTodayIso() for the same
+  // reason: a plain new Date().toISOString() boundary disagrees with Nepal
+  // local time for roughly six hours a day.
+  const today = nepalTodayIso();
   const todayLogs = useMemo(() => logs.filter(l => dateKey(l.punch_time) === today), [logs, today]);
   const presentIds = useMemo(() => presentEmployeeIds(logs, today), [logs, today]);
 

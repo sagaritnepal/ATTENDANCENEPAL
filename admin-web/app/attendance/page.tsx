@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
+import StatusText from '@/components/StatusText';
 import DateRangePicker from '@/components/DateRangePicker';
 import { formatAdDate, formatDdMmYyyy } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
@@ -47,12 +48,6 @@ function fmtHrs(hours: number) {
 
 function fmtTime(iso: string | null) {
   return iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–';
-}
-
-function statusText(r: Row) {
-  if (r.checkIn) return <span className="text-good-text">Present</span>;
-  if (r.status === 'Upcoming') return <span className="text-slate-400">Upcoming</span>;
-  return <span className="text-critical-text">Absent</span>;
 }
 
 function isoDaysAgo(n: number) {
@@ -416,7 +411,9 @@ function AttendanceView() {
                     {r.lateMinutes > 0 && r.earlyMinutes > 0 && ' · '}
                     {r.earlyMinutes > 0 && <span className="text-critical-text">E {formatHoursMinutes(r.earlyMinutes)}</span>}
                   </td>
-                  <td className="truncate px-0.5 py-0.5 font-medium">{statusText(r)}</td>
+                  <td className="truncate px-0.5 py-0.5 font-medium">
+                    <StatusText checkIn={r.checkIn} status={r.status} />
+                  </td>
                   <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight text-info-text">
                     {fmtHrs(r.overtime)}
                   </td>

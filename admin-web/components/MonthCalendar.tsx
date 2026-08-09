@@ -36,13 +36,15 @@ type DayFlags = {
 /** Late and Early can both apply to the same day (late in AND left early),
  * so they're tracked independently rather than as a single "the" flag — one
  * renders above the day number, the other below. Overtime is also tracked
- * independently (a corner dot) since it can co-occur with either. Everything
- * else (leave, week off, present, still-clocked-in, absent) is mutually
- * exclusive and gets a single dot — Week Off shares Leave's purple (both
- * mean "nothing expected today"), distinguished only by caption text. A day
- * with no punches, not on leave/week off, that's already happened counts as
- * absent — previously such a day rendered identically to a future day with
- * no way to tell them apart. */
+ * independently since it can co-occur with either — it shares the bottom
+ * slot with Early as a two-pill row rather than one silently replacing the
+ * other when both apply. Everything else (leave, week off, present,
+ * still-clocked-in, absent) is mutually exclusive and gets a single dot —
+ * Week Off shares Leave's purple (both mean "nothing expected today"),
+ * distinguished only by caption text. A day with no punches, not on
+ * leave/week off, that's already happened counts as absent — previously
+ * such a day rendered identically to a future day with no way to tell them
+ * apart. */
 function dayFlags(status: DayStatus | undefined, onLeave: boolean, onWeekOff: boolean, isPastOrToday: boolean): DayFlags {
   if (onLeave || onWeekOff) {
     return {
@@ -169,23 +171,28 @@ export default function MonthCalendar({ dayStatus, leaveDates, weekOffDates, sel
                 </span>
               )}
               <span>{cell.displayDay}</span>
-              {flags.overtime ? (
-                <span
-                  className={`absolute bottom-1 rounded-full px-1.5 py-px text-[8px] font-bold uppercase leading-none shadow-sm ${
-                    selected ? 'bg-white text-accent' : 'bg-info text-white'
-                  }`}
-                >
-                  OT
+              {(flags.overtime || flags.early) && (
+                <span className="absolute bottom-1 flex items-center gap-0.5">
+                  {flags.overtime && (
+                    <span
+                      className={`rounded-full px-1.5 py-px text-[8px] font-bold uppercase leading-none shadow-sm ${
+                        selected ? 'bg-white text-accent' : 'bg-info text-white'
+                      }`}
+                    >
+                      OT
+                    </span>
+                  )}
+                  {flags.early && (
+                    <span
+                      className={`rounded-full px-1.5 py-px text-[8px] font-bold uppercase leading-none shadow-sm ${
+                        selected ? 'bg-white text-accent' : 'bg-critical text-white'
+                      }`}
+                    >
+                      Early
+                    </span>
+                  )}
                 </span>
-              ) : flags.early ? (
-                <span
-                  className={`absolute bottom-1 rounded-full px-1.5 py-px text-[8px] font-bold uppercase leading-none shadow-sm ${
-                    selected ? 'bg-white text-accent' : 'bg-critical text-white'
-                  }`}
-                >
-                  Early
-                </span>
-              ) : null}
+              )}
             </button>
           );
         })}
