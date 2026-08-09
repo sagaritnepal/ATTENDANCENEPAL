@@ -444,6 +444,7 @@ export default function DevicesPage() {
             </div>
             <label className="mb-1 block text-xs font-medium text-slate-600">Serial number</label>
             <input
+              required
               value={editForm.serial_number}
               onChange={e => setEditForm(f => ({ ...f, serial_number: e.target.value }))}
               placeholder="Unique per device — printed on the unit"
