@@ -268,14 +268,10 @@ export default function EmployeesPage() {
           .some(v => (v as string).toLowerCase().includes(term));
       });
     }
-    return [...list].sort((a, b) => {
-      const aId = a.fingerprint_id ?? '';
-      const bId = b.fingerprint_id ?? '';
-      if (!aId && !bId) return 0;
-      if (!aId) return 1;
-      if (!bId) return -1;
-      return aId.localeCompare(bId, undefined, { numeric: true, sensitivity: 'base' });
-    });
+    // Newest first, so a just-added or just-synced employee is easy to spot
+    // at the top instead of buried wherever their fingerprint ID happens to
+    // fall.
+    return [...list].sort((a, b) => b.created_at.localeCompare(a.created_at));
   }, [employees, shifts, filter, search]);
 
   const searchSuggestions = useMemo(() => {

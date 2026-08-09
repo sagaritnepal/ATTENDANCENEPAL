@@ -200,6 +200,73 @@ function PayrollEmployeeDetailView() {
             </div>
           </div>
 
+          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="rounded-xl bg-accent/10 p-3 shadow-sm ring-1 ring-inset ring-accent/10">
+              <span className="text-xs font-medium text-accent/80">My Salary</span>
+              <div className="mt-1 text-base font-bold text-accent">{Math.round(dayTotals.mySalary).toLocaleString()}</div>
+              <div className="mt-0.5 text-[11px] text-accent/70">
+                {salaryPerDay != null ? `${Math.round(salaryPerDay).toLocaleString()}/day` : 'This period'}
+              </div>
+            </div>
+            <div className="rounded-xl bg-warning-bg p-3 shadow-sm ring-1 ring-inset ring-warning/10">
+              <span className="text-xs font-medium text-warning-text/80">OT Salary</span>
+              <div className="mt-1 text-base font-bold text-warning-text">{Math.round(dayTotals.otSalary).toLocaleString()}</div>
+              <div className="mt-0.5 text-[11px] text-warning-text/70">This period</div>
+            </div>
+            <div className="rounded-xl bg-good-bg p-3 shadow-sm ring-1 ring-inset ring-good/10">
+              <span className="text-xs font-medium text-good-text/80">Total Salary</span>
+              <div className="mt-1 text-base font-bold text-good-text">{Math.round(dayTotals.totalSalary).toLocaleString()}</div>
+              <div className="mt-0.5 text-[11px] text-good-text/70">Earned this period</div>
+            </div>
+            <div className="rounded-xl bg-purple-50 p-3 shadow-sm ring-1 ring-inset ring-purple-200">
+              <span className="text-xs font-medium text-purple-700/80">Overtime</span>
+              <div className="mt-1 text-base font-bold text-purple-700">{fmtHrs(dayTotals.overtime)}</div>
+              <div className="mt-0.5 text-[11px] text-purple-700/70">This period</div>
+            </div>
+            <div className="rounded-xl bg-info-bg p-3 shadow-sm ring-1 ring-inset ring-info/10">
+              <span className="text-xs font-medium text-info-text/80">Total Hours</span>
+              <div className="mt-1 text-base font-bold text-info-text">{fmtHrs(dayTotals.hours)}</div>
+              <div className="mt-0.5 text-[11px] text-info-text/70">This period</div>
+            </div>
+            {(() => {
+              const scored = dayTotals.presentDays + dayTotals.absentDays;
+              const attendancePct = scored ? Math.round((dayTotals.presentDays / scored) * 1000) / 10 : 0;
+              return (
+                <div
+                  className={`rounded-xl p-3 shadow-sm ring-1 ring-inset ${
+                    attendancePct >= 75
+                      ? 'bg-good-bg ring-good/10'
+                      : attendancePct >= 50
+                        ? 'bg-warning-bg ring-warning/10'
+                        : 'bg-critical-bg ring-critical/10'
+                  }`}
+                >
+                  <span
+                    className={`text-xs font-medium ${
+                      attendancePct >= 75 ? 'text-good-text/80' : attendancePct >= 50 ? 'text-warning-text/80' : 'text-critical-text/80'
+                    }`}
+                  >
+                    Attendance
+                  </span>
+                  <div
+                    className={`mt-1 text-base font-bold ${
+                      attendancePct >= 75 ? 'text-good-text' : attendancePct >= 50 ? 'text-warning-text' : 'text-critical-text'
+                    }`}
+                  >
+                    {attendancePct}%
+                  </div>
+                  <div
+                    className={`mt-0.5 text-[11px] ${
+                      attendancePct >= 75 ? 'text-good-text/70' : attendancePct >= 50 ? 'text-warning-text/70' : 'text-critical-text/70'
+                    }`}
+                  >
+                    {dayTotals.presentDays}P / {dayTotals.absentDays}A
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             {/* Phones get the same dense per-day table as My Calendar/My
                 Payroll instead of one card per day — the My/OT Salary
