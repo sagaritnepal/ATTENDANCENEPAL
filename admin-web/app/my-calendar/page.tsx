@@ -488,10 +488,10 @@ export default function MyCalendarPage() {
                         <td className="truncate px-0.5 py-0.5 text-slate-600">
                           {row.onLeave ? '—' : `${fmtTime(row.checkIn)} – ${fmtTime(row.checkOut)}`}
                         </td>
-                        <td className="truncate px-0.5 py-0.5 font-medium text-warning-text">
+                        <td className="whitespace-normal break-words px-0.5 py-0.5 font-medium leading-tight text-warning-text">
                           {row.present && row.lateMinutes > 0 ? formatHoursMinutes(row.lateMinutes) : <span className="text-slate-300">—</span>}
                         </td>
-                        <td className="truncate px-0.5 py-0.5 font-medium text-critical-text">
+                        <td className="whitespace-normal break-words px-0.5 py-0.5 font-medium leading-tight text-critical-text">
                           {row.present && row.earlyMinutes > 0 ? (
                             formatHoursMinutes(row.earlyMinutes)
                           ) : (
@@ -509,8 +509,8 @@ export default function MyCalendarPage() {
                             <span className="text-slate-300">—</span>
                           )}
                         </td>
-                        <td className="truncate px-0.5 py-0.5 text-info-text">{row.present ? fmtHrs(row.overtime) : '—'}</td>
-                        <td className="truncate px-0.5 py-0.5 text-slate-600">{row.present ? fmtHrs(row.hours) : '—'}</td>
+                        <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight text-info-text">{row.present ? fmtHrs(row.overtime) : '—'}</td>
+                        <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight text-slate-600">{row.present ? fmtHrs(row.hours) : '—'}</td>
                       </tr>
                     );
                   })}
@@ -540,15 +540,15 @@ export default function MyCalendarPage() {
                           <td className="truncate px-0.5 py-1 font-semibold" colSpan={2}>
                             Total
                           </td>
-                          <td className="truncate px-0.5 py-1 font-semibold text-warning-text">
+                          <td className="whitespace-normal break-words px-0.5 py-1 font-semibold leading-tight text-warning-text">
                             {sumLate > 0 ? formatHoursMinutes(sumLate) : '—'}
                           </td>
-                          <td className="truncate px-0.5 py-1 font-semibold text-critical-text">
+                          <td className="whitespace-normal break-words px-0.5 py-1 font-semibold leading-tight text-critical-text">
                             {sumEarly > 0 ? formatHoursMinutes(sumEarly) : '—'}
                           </td>
                           <td className="px-0.5 py-1" />
-                          <td className="truncate px-0.5 py-1 font-semibold text-info-text">{fmtHrs(sumOvertime)}</td>
-                          <td className="truncate px-0.5 py-1 font-semibold">{fmtHrs(sumHours)}</td>
+                          <td className="whitespace-normal break-words px-0.5 py-1 font-semibold leading-tight text-info-text">{fmtHrs(sumOvertime)}</td>
+                          <td className="whitespace-normal break-words px-0.5 py-1 font-semibold leading-tight">{fmtHrs(sumHours)}</td>
                         </tr>
                         <tr className="border-t border-slate-200 bg-slate-50 text-ink">
                           <td className="truncate px-0.5 py-1 font-semibold" colSpan={4}>
@@ -583,7 +583,7 @@ export default function MyCalendarPage() {
                       <YAxis tick={{ fontSize: 9, fill: '#0d9488' }} axisLine={false} tickLine={false} allowDecimals={false} width={22} />
                       <Tooltip
                         contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
-                        formatter={(v: number) => [`${v.toFixed(1)} hrs`, 'Hours']}
+                        formatter={(v: number) => [fmtHrs(v), 'Hours']}
                       />
                       <Line
                         type="monotone"
