@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, Image, Modal } from 'react-native';
 import { supabase } from '../lib/supabase';
 import type { AttendanceLog, Employee, LeaveRequest, Shift } from '../types';
 import { colors } from '../theme';
 import StatCard from '../components/StatCard';
-import { dateKey, isLate, presentEmployeeIds } from '../lib/metrics';
+import SimpleLineChart from '../components/SimpleLineChart';
+import SimplePieChart from '../components/SimplePieChart';
+import { dateKey, firstCheckIn, isLate, presentEmployeeIds } from '../lib/metrics';
 import {
   applyOvernightShiftCorrection,
   computeDayStatusForResolvedShift,
@@ -14,6 +16,28 @@ import {
 } from '../lib/shift';
 
 type EmployeeLite = Pick<Employee, 'name' | 'profile_photo_url'>;
+type DetailRow = { id: string; primary: string; secondary?: string };
+type DetailKey = 'total' | 'present' | 'late' | 'leave' | 'absent' | 'hours' | 'overtime';
+
+const DEPT_COLORS: Record<string, string> = {
+  Engineering: '#0d9488',
+  Operations: '#2563eb',
+  Marketing: '#f97316',
+  Sales: '#a855f7',
+  Support: '#ec4899',
+};
+const OTHER_COLOR = '#94a3b8';
+const WEEKDAY_LABEL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function last7Days(): string[] {
+  const days: string[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - i);
+    days.push(d.toISOString().slice(0, 10));
+  }
+  return days;
+}
 
 export default function DashboardScreen({ navigation }: any) {
   const [feed, setFeed] = useState<AttendanceLog[]>([]);
@@ -23,6 +47,7 @@ export default function DashboardScreen({ navigation }: any) {
   const [onLeave, setOnLeave] = useState<LeaveRequest[]>([]);
   const [todayRoster, setTodayRoster] = useState<{ employee_id: string; shift_id: string | null }[]>([]);
   const [weekLogs, setWeekLogs] = useState<AttendanceLog[]>([]);
+  const [detailKey, setDetailKey] = useState<DetailKey | null>(null);
 
   useEffect(() => {
     const since = new Date();
@@ -100,20 +125,58 @@ export default function DashboardScreen({ navigation }: any) {
     return map;
   }, [todayRoster, today]);
 
-  const lateCount = useMemo(() => {
-    let count = 0;
+  const lateEmployees = useMemo(() => {
+    const rows: DetailRow[] = [];
     for (const emp of activeEmployees) {
       const empLogs = todayLogs.filter(l => l.employee_id === emp.id);
-      if (!empLogs.length) continue;
-      if (isLate(emp, shifts, empLogs, today, dailyShiftByDate)) count++;
+      if (!empLogs.length || !isLate(emp, shifts, empLogs, today, dailyShiftByDate)) continue;
+      const checkIn = firstCheckIn(empLogs);
+      rows.push({
+        id: emp.id,
+        primary: emp.name,
+        secondary: checkIn ? `In at ${new Date(checkIn.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : undefined,
+      });
     }
-    return count;
+    return rows;
   }, [activeEmployees, todayLogs, shifts, today, dailyShiftByDate]);
+  const lateCount = lateEmployees.length;
 
-  const absentCount = useMemo(
-    () => activeEmployees.filter(emp => !presentIds.has(emp.id) && !onLeaveIds.has(emp.id)).length,
+  const absentRows = useMemo<DetailRow[]>(
+    () =>
+      activeEmployees
+        .filter(emp => !presentIds.has(emp.id) && !onLeaveIds.has(emp.id))
+        .map(emp => ({ id: emp.id, primary: emp.name, secondary: emp.department ?? undefined })),
     [activeEmployees, presentIds, onLeaveIds]
   );
+  const absentCount = absentRows.length;
+
+  const totalEmployeeRows = useMemo<DetailRow[]>(
+    () => activeEmployees.map(emp => ({ id: emp.id, primary: emp.name, secondary: emp.department ?? emp.employee_code })),
+    [activeEmployees]
+  );
+
+  const presentRows = useMemo<DetailRow[]>(() => {
+    const rows: DetailRow[] = [];
+    for (const emp of activeEmployees) {
+      if (!presentIds.has(emp.id)) continue;
+      const checkIn = firstCheckIn(todayLogs.filter(l => l.employee_id === emp.id));
+      rows.push({
+        id: emp.id,
+        primary: emp.name,
+        secondary: checkIn ? `In at ${new Date(checkIn.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : undefined,
+      });
+    }
+    return rows;
+  }, [activeEmployees, presentIds, todayLogs]);
+
+  const leaveRows = useMemo<DetailRow[]>(() => {
+    const byId = new Map(employees.map(e => [e.id, e.name]));
+    return onLeave.map(l => ({
+      id: l.id,
+      primary: byId.get(l.employee_id) ?? 'Unknown',
+      secondary: `${l.leave_type} · until ${l.end_date}`,
+    }));
+  }, [onLeave, employees]);
 
   const todayDayStatus = useMemo(() => {
     const map = new Map<string, ReturnType<typeof computeDayStatusForResolvedShift>>();
@@ -136,6 +199,36 @@ export default function DashboardScreen({ navigation }: any) {
     return map;
   }, [activeEmployees, weekLogs, shifts, dailyShiftByDate, today]);
 
+  const workHoursRows = useMemo<DetailRow[]>(() => {
+    const entries: { id: string; name: string; hours: number }[] = [];
+    for (const emp of activeEmployees) {
+      const status = todayDayStatus.get(emp.id);
+      if (!status?.hasOut) continue;
+      entries.push({ id: emp.id, name: emp.name, hours: status.totalMinutes / 60 });
+    }
+    return entries.sort((a, b) => b.hours - a.hours).map(e => ({ id: e.id, primary: e.name, secondary: `${e.hours.toFixed(1)} hrs` }));
+  }, [activeEmployees, todayDayStatus]);
+
+  const overtimeRows = useMemo<DetailRow[]>(() => {
+    const entries: { id: string; name: string; ot: number }[] = [];
+    for (const emp of activeEmployees) {
+      const status = todayDayStatus.get(emp.id);
+      if (!status || status.overtimeMinutes <= 0) continue;
+      entries.push({ id: emp.id, name: emp.name, ot: status.overtimeMinutes / 60 });
+    }
+    return entries.sort((a, b) => b.ot - a.ot).map(e => ({ id: e.id, primary: e.name, secondary: `${e.ot.toFixed(1)} hrs OT` }));
+  }, [activeEmployees, todayDayStatus]);
+
+  const detailPanels: Record<DetailKey, { title: string; rows: DetailRow[]; emptyText: string }> = {
+    total: { title: 'Total Employees', rows: totalEmployeeRows, emptyText: 'No active employees.' },
+    present: { title: 'Present Today', rows: presentRows, emptyText: 'Nobody has checked in yet today.' },
+    late: { title: 'Late Arrivals', rows: lateEmployees, emptyText: 'No late arrivals today.' },
+    leave: { title: 'On Leave Today', rows: leaveRows, emptyText: 'Nobody is on approved leave today.' },
+    absent: { title: 'Absent Today', rows: absentRows, emptyText: 'No one is absent — everyone is present or on leave.' },
+    hours: { title: 'Total Work Hours', rows: workHoursRows, emptyText: 'No work hours recorded yet today.' },
+    overtime: { title: 'Overtime', rows: overtimeRows, emptyText: 'No overtime recorded today.' },
+  };
+
   const todayWorkHours = useMemo(() => {
     let sum = 0;
     for (const status of todayDayStatus.values()) if (status.hasOut) sum += status.totalMinutes / 60;
@@ -148,6 +241,23 @@ export default function DashboardScreen({ navigation }: any) {
     return sum;
   }, [todayDayStatus]);
 
+  const trend = useMemo(() => {
+    return last7Days().map(day => {
+      const count = presentEmployeeIds(weekLogs, day).size;
+      const weekday = WEEKDAY_LABEL[new Date(day + 'T00:00:00Z').getUTCDay()];
+      return { label: weekday, value: count };
+    });
+  }, [weekLogs]);
+
+  const deptBreakdown = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const emp of activeEmployees) {
+      const key = emp.department && DEPT_COLORS[emp.department] ? emp.department : emp.department ? 'Other' : 'Unassigned';
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).map(([name, value]) => ({ name, value, color: DEPT_COLORS[name] ?? OTHER_COLOR }));
+  }, [activeEmployees]);
+
   return (
     <View style={styles.container}>
       <FlatList
@@ -157,14 +267,25 @@ export default function DashboardScreen({ navigation }: any) {
         ListHeaderComponent={
           <>
             <View style={styles.statsGrid}>
-              <StatCard label="Total Employees" value={String(activeEmployees.length)} hint="Active rosters" />
-              <StatCard label="Present Today" value={String(presentIds.size)} hint={`${attendancePct}% attendance`} />
-              <StatCard label="Late Arrivals" value={String(lateCount)} hint="Past grace period" />
-              <StatCard label="On Leave" value={String(onLeaveIds.size)} hint="Approved today" />
-              <StatCard label="Absent Today" value={String(absentCount)} hint="No punch, not on leave" />
-              <StatCard label="Total Work Hours" value={todayWorkHours.toFixed(1)} hint="Today, all staff" />
-              <StatCard label="Overtime" value={`${todayOvertimeHours.toFixed(1)} hrs`} hint="Today, all staff" />
+              <StatCard label="Total Employees" value={String(activeEmployees.length)} hint="Active rosters" onPress={() => setDetailKey('total')} />
+              <StatCard label="Present Today" value={String(presentIds.size)} hint={`${attendancePct}% attendance`} onPress={() => setDetailKey('present')} />
+              <StatCard label="Late Arrivals" value={String(lateCount)} hint="Past grace period" onPress={() => setDetailKey('late')} />
+              <StatCard label="On Leave" value={String(onLeaveIds.size)} hint="Approved today" onPress={() => setDetailKey('leave')} />
+              <StatCard label="Absent Today" value={String(absentCount)} hint="No punch, not on leave" onPress={() => setDetailKey('absent')} />
+              <StatCard label="Total Work Hours" value={todayWorkHours.toFixed(1)} hint="Today, all staff" onPress={() => setDetailKey('hours')} />
+              <StatCard label="Overtime" value={`${todayOvertimeHours.toFixed(1)} hrs`} hint="Today, all staff" onPress={() => setDetailKey('overtime')} />
             </View>
+
+            <View style={styles.chartCard}>
+              <Text style={styles.chartTitle}>Weekly Attendance Trend</Text>
+              <SimpleLineChart data={trend} />
+            </View>
+
+            <View style={styles.chartCard}>
+              <Text style={styles.chartTitle}>Department Breakdown</Text>
+              {deptBreakdown.length === 0 ? <Text style={styles.empty}>No employees yet.</Text> : <SimplePieChart data={deptBreakdown} />}
+            </View>
+
             <TouchableOpacity
               style={styles.viewLogsButton}
               onPress={() => navigation.getParent()?.navigate('Attendance' as never)}
@@ -201,6 +322,30 @@ export default function DashboardScreen({ navigation }: any) {
         }}
         ListEmptyComponent={<Text style={styles.empty}>No punches yet.</Text>}
       />
+
+      <Modal visible={!!detailKey} transparent animationType="fade" onRequestClose={() => setDetailKey(null)}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setDetailKey(null)}>
+          <TouchableOpacity activeOpacity={1} style={styles.detailSheet}>
+            {detailKey && (
+              <>
+                <Text style={styles.detailTitle}>{detailPanels[detailKey].title}</Text>
+                <FlatList
+                  data={detailPanels[detailKey].rows}
+                  keyExtractor={r => r.id}
+                  style={{ maxHeight: 400 }}
+                  renderItem={({ item }) => (
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailPrimary}>{item.primary}</Text>
+                      {item.secondary ? <Text style={styles.detailSecondary}>{item.secondary}</Text> : null}
+                    </View>
+                  )}
+                  ListEmptyComponent={<Text style={styles.empty}>{detailPanels[detailKey].emptyText}</Text>}
+                />
+              </>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -208,6 +353,8 @@ export default function DashboardScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.slate50, padding: 16 },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  chartCard: { backgroundColor: colors.white, borderRadius: 12, borderWidth: 1, borderColor: colors.slate200, padding: 12, marginBottom: 12 },
+  chartTitle: { fontSize: 13, fontWeight: '700', color: colors.ink, marginBottom: 8 },
   viewLogsButton: { backgroundColor: colors.accent, borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginBottom: 16, marginTop: 4 },
   viewLogsText: { color: colors.white, fontWeight: '700', fontSize: 14 },
   heading: { fontSize: 16, fontWeight: '700', color: colors.ink, marginBottom: 10 },
@@ -241,4 +388,10 @@ const styles = StyleSheet.create({
   typeInText: { fontSize: 11, fontWeight: '700', color: colors.goodText },
   typeOutText: { fontSize: 11, fontWeight: '700', color: colors.infoText },
   empty: { textAlign: 'center', marginTop: 40, color: colors.slate400 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', padding: 20 },
+  detailSheet: { backgroundColor: colors.white, borderRadius: 16, padding: 20, maxHeight: '75%' },
+  detailTitle: { fontSize: 16, fontWeight: '700', color: colors.ink, marginBottom: 12 },
+  detailRow: { paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.slate100, flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
+  detailPrimary: { fontSize: 13, fontWeight: '600', color: colors.ink },
+  detailSecondary: { fontSize: 11, color: colors.slate500 },
 });

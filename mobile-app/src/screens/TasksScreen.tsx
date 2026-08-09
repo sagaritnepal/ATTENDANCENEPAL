@@ -7,6 +7,7 @@ import { colors } from '../theme';
 import Badge from '../components/Badge';
 import { formatAdDate } from '../lib/calendar';
 import { useCalendarSystem } from '../lib/CalendarSystemContext';
+import Leaderboard from '../components/Leaderboard';
 
 const STATUS_TONE: Record<TaskStatus, 'good' | 'warning' | 'critical' | 'info' | 'neutral'> = {
   pending: 'neutral',
@@ -162,6 +163,11 @@ export default function TasksScreen() {
           </View>
         )}
         ListEmptyComponent={<Text style={styles.empty}>No {filter !== 'All' ? filter.replace('_', ' ') : ''} tasks.</Text>}
+        ListFooterComponent={
+          <View style={{ marginTop: 8 }}>
+            <Leaderboard />
+          </View>
+        }
       />
 
       <Modal visible={showForm} transparent animationType="fade" onRequestClose={() => setShowForm(false)}>

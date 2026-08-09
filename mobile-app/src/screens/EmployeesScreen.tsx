@@ -5,9 +5,27 @@ import type { Branch, Department, Employee, Profile, Shift } from '../types';
 import { resolveShift, formatShiftHours } from '../lib/shift';
 import { colors } from '../theme';
 import Badge from '../components/Badge';
-import { ChevronIcon, KeyIcon, ResignedIcon as UserMinusIcon } from '../components/icons';
+import { ChevronIcon, KeyIcon } from '../components/icons';
+import { createLogin, fetchAccounts, resetPassword, updateLoginEmail } from '../lib/accountsApi';
 
 const EMPTY_ADD_FORM = { employee_code: '', name: '', phone: '', email: '', address: '', designation: '', fingerprint_id: '', date_of_joining: '' };
+const PASSWORD_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+function generatePassword(length = 10) {
+  let out = '';
+  for (let i = 0; i < length; i++) out += PASSWORD_CHARS[Math.floor(Math.random() * PASSWORD_CHARS.length)];
+  return out;
+}
+
+const COLS = [
+  { key: 'id', label: 'ID', width: 48 },
+  { key: 'employee', label: 'Employee', width: 170 },
+  { key: 'username', label: 'Username', width: 160 },
+  { key: 'branch', label: 'Branch', width: 110 },
+  { key: 'shift', label: 'Shift', width: 120 },
+  { key: 'bio', label: 'Bio Enrollment', width: 110 },
+  { key: 'actions', label: 'Actions', width: 220 },
+] as const;
+const TABLE_WIDTH = COLS.reduce((s, c) => s + c.width, 0);
 
 export default function EmployeesScreen({ route, navigation }: any) {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -16,6 +34,7 @@ export default function EmployeesScreen({ route, navigation }: any) {
   const [profiles, setProfiles] = useState<Pick<Profile, 'id' | 'employee_id' | 'role'>[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [departmentOptions, setDepartmentOptions] = useState<Department[]>([]);
+  const [loginEmailByEmployee, setLoginEmailByEmployee] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState(route?.params?.filter ?? 'All');
@@ -27,6 +46,29 @@ export default function EmployeesScreen({ route, navigation }: any) {
   const [addBranchId, setAddBranchId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+
+  const [branchPickerFor, setBranchPickerFor] = useState<Employee | null>(null);
+  const [editingUsernameId, setEditingUsernameId] = useState<string | null>(null);
+  const [usernameDraft, setUsernameDraft] = useState('');
+  const [savingUsername, setSavingUsername] = useState(false);
+
+  const [loginModalEmployee, setLoginModalEmployee] = useState<Employee | null>(null);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [creatingLogin, setCreatingLogin] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginResult, setLoginResult] = useState<{ email: string; password: string } | null>(null);
+
+  const [resetModalEmployee, setResetModalEmployee] = useState<Employee | null>(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState('');
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetResult, setResetResult] = useState<string | null>(null);
+
+  const [forceDeleteEmployee, setForceDeleteEmployee] = useState<Employee | null>(null);
+  const [forceDeleteConfirmText, setForceDeleteConfirmText] = useState('');
+  const [forceDeleting, setForceDeleting] = useState(false);
+  const [forceDeleteError, setForceDeleteError] = useState<string | null>(null);
 
   function reload() {
     supabase
@@ -48,7 +90,40 @@ export default function EmployeesScreen({ route, navigation }: any) {
       .then(({ data }) => setProfiles((data as any) ?? []));
     supabase.from('branches').select('*').order('name').then(({ data }) => setBranches((data as Branch[]) ?? []));
     supabase.from('departments').select('*').order('name').then(({ data }) => setDepartmentOptions((data as Department[]) ?? []));
+    fetchAccounts().then(setLoginEmailByEmployee);
   }
+
+  useEffect(reload, []);
+  useEffect(() => {
+    if (route?.params?.filter) setFilter(route.params.filter);
+  }, [route?.params?.filter]);
+
+  const linkedEmployeeIds = useMemo(
+    () => new Set(profiles.map(p => p.employee_id).filter((id): id is string => Boolean(id))),
+    [profiles]
+  );
+  const departments = useMemo(() => Array.from(new Set(employees.map(e => e.department).filter(Boolean))) as string[], [employees]);
+  const filterOptions = ['All', ...departments, 'Unenrolled', 'Resigned'];
+
+  const filtered = useMemo(() => {
+    let list = employees;
+    if (filter === 'Resigned') {
+      list = list.filter(e => e.status !== 'active');
+    } else {
+      list = list.filter(e => e.status === 'active');
+      if (filter === 'Unenrolled') list = list.filter(e => !e.fingerprint_id);
+      else if (filter !== 'All') list = list.filter(e => e.department === filter);
+    }
+    const term = search.trim().toLowerCase();
+    if (term) {
+      list = list.filter(e =>
+        [e.name, e.employee_code, e.phone, e.email, e.department, e.designation, e.fingerprint_id]
+          .filter(Boolean)
+          .some(v => (v as string).toLowerCase().includes(term))
+      );
+    }
+    return [...list].sort((a, b) => (b as any).created_at?.localeCompare((a as any).created_at ?? '') ?? 0);
+  }, [employees, filter, search]);
 
   async function handleAddEmployee() {
     if (!addForm.employee_code.trim() || !addForm.name.trim()) {
@@ -82,43 +157,6 @@ export default function EmployeesScreen({ route, navigation }: any) {
     reload();
   }
 
-  useEffect(reload, []);
-
-  useEffect(() => {
-    if (route?.params?.filter) setFilter(route.params.filter);
-  }, [route?.params?.filter]);
-
-  const linkedEmployeeIds = useMemo(
-    () => new Set(profiles.map(p => p.employee_id).filter((id): id is string => Boolean(id))),
-    [profiles]
-  );
-
-  const departments = useMemo(
-    () => Array.from(new Set(employees.map(e => e.department).filter(Boolean))) as string[],
-    [employees]
-  );
-  const filterOptions = ['All', ...departments, 'Unenrolled', 'Resigned'];
-
-  const filtered = useMemo(() => {
-    let list = employees;
-    if (filter === 'Resigned') {
-      list = list.filter(e => e.status !== 'active');
-    } else {
-      list = list.filter(e => e.status === 'active');
-      if (filter === 'Unenrolled') list = list.filter(e => !e.fingerprint_id);
-      else if (filter !== 'All') list = list.filter(e => e.department === filter);
-    }
-    const term = search.trim().toLowerCase();
-    if (term) {
-      list = list.filter(e =>
-        [e.name, e.employee_code, e.phone, e.email, e.department, e.designation, e.fingerprint_id]
-          .filter(Boolean)
-          .some(v => (v as string).toLowerCase().includes(term))
-      );
-    }
-    return [...list].sort((a, b) => (b as any).created_at?.localeCompare((a as any).created_at ?? '') ?? 0);
-  }, [employees, filter, search]);
-
   async function handleMarkResigned(emp: Employee) {
     Alert.alert('Mark Resigned', `Mark ${emp.name} as resigned? They'll be removed from active views but their history is kept.`, [
       { text: 'Cancel', style: 'cancel' },
@@ -136,7 +174,6 @@ export default function EmployeesScreen({ route, navigation }: any) {
       },
     ]);
   }
-
   async function handleRestore(emp: Employee) {
     Alert.alert('Restore', `Restore ${emp.name} to active? They'll show up in active views again.`, [
       { text: 'Cancel', style: 'cancel' },
@@ -150,7 +187,6 @@ export default function EmployeesScreen({ route, navigation }: any) {
       },
     ]);
   }
-
   async function handleRemove(emp: Employee) {
     Alert.alert('Remove employee', `Remove ${emp.name}?`, [
       { text: 'Cancel', style: 'cancel' },
@@ -172,6 +208,101 @@ export default function EmployeesScreen({ route, navigation }: any) {
         },
       },
     ]);
+  }
+
+  async function applyBranchChange(employeeId: string, branchId: string | null) {
+    const { error } = await supabase.from('employees').update({ branch_id: branchId }).eq('id', employeeId);
+    if (error) Alert.alert('Could not update branch', error.message);
+    reload();
+  }
+
+  function startEditUsername(emp: Employee) {
+    setEditingUsernameId(emp.id);
+    setUsernameDraft(loginEmailByEmployee[emp.id] ?? '');
+  }
+  async function saveUsername(emp: Employee) {
+    const email = usernameDraft.trim();
+    if (!email) {
+      Alert.alert('Username cannot be empty.');
+      return;
+    }
+    if (email === (loginEmailByEmployee[emp.id] ?? '')) {
+      setEditingUsernameId(null);
+      return;
+    }
+    setSavingUsername(true);
+    const result = await updateLoginEmail(emp.id, email);
+    setSavingUsername(false);
+    if (!result.ok) {
+      Alert.alert(
+        'Could not update the username',
+        /already been registered|already exists|duplicate/i.test(result.error ?? '')
+          ? 'That username is already used by another login — usernames must be unique.'
+          : result.error
+      );
+      return;
+    }
+    setEditingUsernameId(null);
+    reload();
+  }
+
+  function openLoginModal(emp: Employee) {
+    setLoginEmail(emp.email ?? '');
+    setLoginPassword(generatePassword());
+    setLoginError(null);
+    setLoginResult(null);
+    setLoginModalEmployee(emp);
+  }
+  async function handleCreateLogin() {
+    if (!loginModalEmployee) return;
+    setCreatingLogin(true);
+    setLoginError(null);
+    const result = await createLogin(loginModalEmployee.id, loginEmail, loginPassword);
+    setCreatingLogin(false);
+    if (!result.ok) {
+      setLoginError(result.error ?? 'Could not create the login.');
+      return;
+    }
+    setLoginResult({ email: loginEmail, password: loginPassword });
+    reload();
+  }
+
+  function openResetModal(emp: Employee) {
+    setResetPasswordValue(generatePassword());
+    setResetError(null);
+    setResetResult(null);
+    setResetModalEmployee(emp);
+  }
+  async function handleResetPassword() {
+    if (!resetModalEmployee) return;
+    setResettingPassword(true);
+    setResetError(null);
+    const result = await resetPassword(resetModalEmployee.id, resetPasswordValue);
+    setResettingPassword(false);
+    if (!result.ok) {
+      setResetError(result.error ?? 'Could not reset the password.');
+      return;
+    }
+    setResetResult(resetPasswordValue);
+  }
+
+  function openForceDelete(emp: Employee) {
+    setForceDeleteEmployee(emp);
+    setForceDeleteConfirmText('');
+    setForceDeleteError(null);
+  }
+  async function handleForceDelete() {
+    if (!forceDeleteEmployee) return;
+    setForceDeleting(true);
+    setForceDeleteError(null);
+    const { error } = await supabase.rpc('admin_force_delete_employee', { p_employee_id: forceDeleteEmployee.id });
+    setForceDeleting(false);
+    if (error) {
+      setForceDeleteError(error.message);
+      return;
+    }
+    setForceDeleteEmployee(null);
+    reload();
   }
 
   if (loading) {
@@ -197,144 +328,203 @@ export default function EmployeesScreen({ route, navigation }: any) {
           </TouchableOpacity>
         )}
       </View>
-      <TextInput
-        style={styles.search}
-        placeholder="Search employees…"
-        placeholderTextColor={colors.slate400}
-        value={search}
-        onChangeText={setSearch}
-      />
-      <FlatList
-        data={filtered}
-        keyExtractor={item => item.id}
-        contentContainerStyle={styles.list}
-        renderItem={({ item }) => {
-          const shift = resolveShift(item, shifts);
-          const registered = Boolean(item.branch_id) && (rosterEmployeeIds.has(item.id) || shift.id !== 'default');
-          const hasLogin = linkedEmployeeIds.has(item.id);
-          return (
-            <View style={styles.card}>
-              <TouchableOpacity style={styles.cardHeader} onPress={() => navigation.navigate('EmployeeDetail', { employeeId: item.id })}>
-                <View style={styles.avatar}>
-                  {item.profile_photo_url ? (
-                    <Image source={{ uri: item.profile_photo_url }} style={styles.avatarImg} />
-                  ) : (
-                    <Text style={styles.avatarText}>{item.name.slice(0, 1).toUpperCase()}</Text>
-                  )}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.name}>{item.name}</Text>
-                  <Text style={styles.meta}>{item.phone ?? '—'}</Text>
-                  {item.email ? <Text style={styles.meta}>{item.email}</Text> : null}
-                  <Text style={styles.meta}>
-                    {[item.designation, item.department].filter(Boolean).join(' · ') || '—'}
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                  <Badge tone={registered ? 'good' : 'warning'}>{registered ? 'Registered' : 'Unregistered'}</Badge>
-                  {hasLogin && <Badge tone="good">Login Active</Badge>}
-                </View>
-              </TouchableOpacity>
+      <TextInput style={styles.search} placeholder="Search employees…" placeholderTextColor={colors.slate400} value={search} onChangeText={setSearch} />
 
-              <View style={styles.infoGrid}>
-                <View style={styles.infoCell}>
-                  <Text style={styles.infoLabel}>ID</Text>
-                  <Text style={styles.infoValue}>{item.fingerprint_id ?? '—'}</Text>
-                </View>
-                <View style={styles.infoCell}>
-                  <Text style={styles.infoLabel}>Shift</Text>
-                  <Text style={styles.infoValue} numberOfLines={1}>
-                    {rosterEmployeeIds.has(item.id) ? 'Custom Roster' : shift.name}
-                  </Text>
-                  {!rosterEmployeeIds.has(item.id) && <Text style={styles.infoSub}>{formatShiftHours(shift)}</Text>}
-                </View>
-              </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator style={{ flex: 1 }} contentContainerStyle={{ width: TABLE_WIDTH, flexGrow: 1 }}>
+        <View style={{ flex: 1 }}>
+          <View style={styles.tableHeader}>
+            {COLS.map(c => (
+              <Text key={c.key} style={[styles.th, { width: c.width }]}>
+                {c.label}
+              </Text>
+            ))}
+          </View>
+          <FlatList
+            data={filtered}
+            keyExtractor={item => item.id}
+            renderItem={({ item, index }) => {
+              const shift = resolveShift(item, shifts);
+              const registered = Boolean(item.branch_id) && (rosterEmployeeIds.has(item.id) || shift.id !== 'default');
+              const hasLogin = linkedEmployeeIds.has(item.id);
+              return (
+                <View style={[styles.tr, index % 2 === 1 && styles.trAlt]}>
+                  <Text style={[styles.td, { width: 48, fontWeight: '700', color: colors.ink }]}>{item.fingerprint_id ?? '—'}</Text>
 
-              <View style={styles.actionsRow}>
-                {item.status === 'active' ? (
-                  <TouchableOpacity style={[styles.actionTile, styles.actionWarning]} onPress={() => handleMarkResigned(item)}>
-                    <UserMinusIcon size={14} color={colors.warningText} />
-                    <Text style={[styles.actionText, { color: colors.warningText }]}>Mark Resigned</Text>
+                  <TouchableOpacity style={{ width: 170, flexDirection: 'row', gap: 8 }} onPress={() => navigation.navigate('EmployeeDetail', { employeeId: item.id })}>
+                    <View style={styles.avatar}>
+                      {item.profile_photo_url ? <Image source={{ uri: item.profile_photo_url }} style={styles.avatarImg} /> : <Text style={styles.avatarText}>{item.name.slice(0, 1).toUpperCase()}</Text>}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.td, styles.tdName]} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <Text style={styles.tdSub} numberOfLines={1}>
+                        {item.phone ?? '—'}
+                      </Text>
+                      <Text style={styles.tdSub} numberOfLines={1}>
+                        {[item.designation, item.department].filter(Boolean).join(' · ') || '—'}
+                      </Text>
+                    </View>
                   </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity style={[styles.actionTile, styles.actionAccent]} onPress={() => handleRestore(item)}>
-                    <KeyIcon size={14} color={colors.accent} />
-                    <Text style={[styles.actionText, { color: colors.accent }]}>Restore</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity style={[styles.actionTile, styles.actionCritical]} onPress={() => handleRemove(item)}>
-                  <Text style={[styles.actionText, { color: colors.criticalText }]}>Remove</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          );
-        }}
-        ListEmptyComponent={<Text style={styles.empty}>No employees match this filter.</Text>}
-      />
 
+                  <View style={{ width: 160 }}>
+                    {hasLogin ? (
+                      editingUsernameId === item.id ? (
+                        <View style={{ gap: 4 }}>
+                          <TextInput style={styles.usernameInput} value={usernameDraft} onChangeText={setUsernameDraft} autoFocus keyboardType="email-address" autoCapitalize="none" />
+                          <View style={{ flexDirection: 'row', gap: 10 }}>
+                            <TouchableOpacity onPress={() => setEditingUsernameId(null)}>
+                              <Text style={styles.cancelLink}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => saveUsername(item)} disabled={savingUsername}>
+                              <Text style={styles.saveLink}>{savingUsername ? 'Saving…' : 'Save'}</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ) : (
+                        <TouchableOpacity onPress={() => startEditUsername(item)}>
+                          <Text style={[styles.td, styles.tdName]} numberOfLines={1}>
+                            {loginEmailByEmployee[item.id] ?? '—'}
+                          </Text>
+                          <Text style={styles.editHint}>tap to edit</Text>
+                        </TouchableOpacity>
+                      )
+                    ) : (
+                      <Text style={styles.dim}>—</Text>
+                    )}
+                  </View>
+
+                  <TouchableOpacity style={{ width: 110 }} onPress={() => setBranchPickerFor(item)}>
+                    <View style={[styles.branchChip, !item.branch_id && styles.branchChipWarn]}>
+                      <Text style={styles.branchChipText} numberOfLines={1}>
+                        {branches.find(b => b.id === item.branch_id)?.name ?? 'Unassigned'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <View style={{ width: 120 }}>
+                    {rosterEmployeeIds.has(item.id) ? (
+                      <View style={styles.shiftPill}>
+                        <Text style={styles.shiftPillText}>Custom Roster</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.shiftPillNeutral}>
+                        <Text style={styles.td} numberOfLines={1}>
+                          {shift.name}
+                        </Text>
+                        <Text style={styles.tdSub}>{formatShiftHours(shift)}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={{ width: 110, gap: 4 }}>
+                    <Badge tone={registered ? 'good' : 'warning'}>{registered ? 'Registered' : 'Unregistered'}</Badge>
+                    {hasLogin && <Badge tone="good">Login Active</Badge>}
+                  </View>
+
+                  <View style={{ width: 220, flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+                    {hasLogin ? (
+                      <TouchableOpacity style={[styles.actionTile, styles.actionAccent]} onPress={() => openResetModal(item)}>
+                        <KeyIcon size={12} color={colors.accent} />
+                        <Text style={[styles.actionText, { color: colors.accent }]}>Reset</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity style={[styles.actionTile, styles.actionAccent]} onPress={() => openLoginModal(item)}>
+                        <KeyIcon size={12} color={colors.accent} />
+                        <Text style={[styles.actionText, { color: colors.accent }]}>Login</Text>
+                      </TouchableOpacity>
+                    )}
+                    {item.status === 'active' ? (
+                      <TouchableOpacity style={[styles.actionTile, styles.actionWarning]} onPress={() => handleMarkResigned(item)}>
+                        <Text style={[styles.actionText, { color: colors.warningText }]}>Resign</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity style={[styles.actionTile, styles.actionAccent]} onPress={() => handleRestore(item)}>
+                        <Text style={[styles.actionText, { color: colors.accent }]}>Restore</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity style={[styles.actionTile, styles.actionCritical]} onPress={() => handleRemove(item)}>
+                      <Text style={[styles.actionText, { color: colors.criticalText }]}>Remove</Text>
+                    </TouchableOpacity>
+                    {item.status !== 'active' && (
+                      <TouchableOpacity style={[styles.actionTile, styles.actionCritical]} onPress={() => openForceDelete(item)}>
+                        <Text style={[styles.actionText, { color: colors.criticalText }]}>Delete forever</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              );
+            }}
+            ListEmptyComponent={<Text style={styles.empty}>No employees match this filter.</Text>}
+          />
+        </View>
+      </ScrollView>
+
+      {/* Add Employee modal */}
       <Modal visible={showAddForm} transparent animationType="fade" onRequestClose={() => setShowAddForm(false)}>
         <TouchableOpacity style={styles.modalBackdropCenter} activeOpacity={1} onPress={() => setShowAddForm(false)}>
           <TouchableOpacity activeOpacity={1} style={styles.formSheet}>
             <ScrollView>
               <View>
-                  <Text style={styles.formTitle}>Add Employee</Text>
-                  <Text style={styles.label}>Employee code</Text>
-                  <TextInput style={styles.input} value={addForm.employee_code} onChangeText={v => setAddForm(f => ({ ...f, employee_code: v }))} />
-                  <Text style={styles.label}>Full name</Text>
-                  <TextInput style={styles.input} value={addForm.name} onChangeText={v => setAddForm(f => ({ ...f, name: v }))} />
-                  <Text style={styles.label}>Phone</Text>
-                  <TextInput style={styles.input} value={addForm.phone} onChangeText={v => setAddForm(f => ({ ...f, phone: v }))} keyboardType="phone-pad" />
-                  <Text style={styles.label}>Email</Text>
-                  <TextInput style={styles.input} value={addForm.email} onChangeText={v => setAddForm(f => ({ ...f, email: v }))} keyboardType="email-address" />
-                  <Text style={styles.label}>Address</Text>
-                  <TextInput style={styles.input} value={addForm.address} onChangeText={v => setAddForm(f => ({ ...f, address: v }))} />
-                  <Text style={styles.label}>Designation</Text>
-                  <TextInput style={styles.input} value={addForm.designation} onChangeText={v => setAddForm(f => ({ ...f, designation: v }))} />
-                  <Text style={styles.label}>Fingerprint / Biometric ID</Text>
-                  <TextInput style={styles.input} value={addForm.fingerprint_id} onChangeText={v => setAddForm(f => ({ ...f, fingerprint_id: v }))} />
-                  <Text style={styles.label}>Date of joining (YYYY-MM-DD)</Text>
-                  <TextInput style={styles.input} value={addForm.date_of_joining} onChangeText={v => setAddForm(f => ({ ...f, date_of_joining: v }))} placeholder="2026-01-15" placeholderTextColor={colors.slate400} />
+                <Text style={styles.formTitle}>Add Employee</Text>
+                <Text style={styles.label}>Employee code</Text>
+                <TextInput style={styles.input} value={addForm.employee_code} onChangeText={v => setAddForm(f => ({ ...f, employee_code: v }))} />
+                <Text style={styles.label}>Full name</Text>
+                <TextInput style={styles.input} value={addForm.name} onChangeText={v => setAddForm(f => ({ ...f, name: v }))} />
+                <Text style={styles.label}>Phone</Text>
+                <TextInput style={styles.input} value={addForm.phone} onChangeText={v => setAddForm(f => ({ ...f, phone: v }))} keyboardType="phone-pad" />
+                <Text style={styles.label}>Email</Text>
+                <TextInput style={styles.input} value={addForm.email} onChangeText={v => setAddForm(f => ({ ...f, email: v }))} keyboardType="email-address" />
+                <Text style={styles.label}>Address</Text>
+                <TextInput style={styles.input} value={addForm.address} onChangeText={v => setAddForm(f => ({ ...f, address: v }))} />
+                <Text style={styles.label}>Designation</Text>
+                <TextInput style={styles.input} value={addForm.designation} onChangeText={v => setAddForm(f => ({ ...f, designation: v }))} />
+                <Text style={styles.label}>Fingerprint / Biometric ID</Text>
+                <TextInput style={styles.input} value={addForm.fingerprint_id} onChangeText={v => setAddForm(f => ({ ...f, fingerprint_id: v }))} />
+                <Text style={styles.label}>Date of joining (YYYY-MM-DD)</Text>
+                <TextInput style={styles.input} value={addForm.date_of_joining} onChangeText={v => setAddForm(f => ({ ...f, date_of_joining: v }))} placeholder="2026-01-15" placeholderTextColor={colors.slate400} />
 
-                  <Text style={styles.label}>Department</Text>
-                  <View style={styles.chipsRow}>
-                    <TouchableOpacity style={[styles.pickChip, addDepartment === null && styles.pickChipActive]} onPress={() => setAddDepartment(null)}>
-                      <Text style={[styles.pickChipText, addDepartment === null && styles.pickChipTextActive]}>Unassigned</Text>
+                <Text style={styles.label}>Department</Text>
+                <View style={styles.chipsRow}>
+                  <TouchableOpacity style={[styles.pickChip, addDepartment === null && styles.pickChipActive]} onPress={() => setAddDepartment(null)}>
+                    <Text style={[styles.pickChipText, addDepartment === null && styles.pickChipTextActive]}>Unassigned</Text>
+                  </TouchableOpacity>
+                  {departmentOptions.map(d => (
+                    <TouchableOpacity key={d.id} style={[styles.pickChip, addDepartment === d.name && styles.pickChipActive]} onPress={() => setAddDepartment(d.name)}>
+                      <Text style={[styles.pickChipText, addDepartment === d.name && styles.pickChipTextActive]}>{d.name}</Text>
                     </TouchableOpacity>
-                    {departmentOptions.map(d => (
-                      <TouchableOpacity key={d.id} style={[styles.pickChip, addDepartment === d.name && styles.pickChipActive]} onPress={() => setAddDepartment(d.name)}>
-                        <Text style={[styles.pickChipText, addDepartment === d.name && styles.pickChipTextActive]}>{d.name}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  <Text style={styles.label}>Branch</Text>
-                  <View style={styles.chipsRow}>
-                    <TouchableOpacity style={[styles.pickChip, addBranchId === null && styles.pickChipActive]} onPress={() => setAddBranchId(null)}>
-                      <Text style={[styles.pickChipText, addBranchId === null && styles.pickChipTextActive]}>Unassigned</Text>
-                    </TouchableOpacity>
-                    {branches.map(b => (
-                      <TouchableOpacity key={b.id} style={[styles.pickChip, addBranchId === b.id && styles.pickChipActive]} onPress={() => setAddBranchId(b.id)}>
-                        <Text style={[styles.pickChipText, addBranchId === b.id && styles.pickChipTextActive]}>{b.name}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  {!addBranchId && <Text style={styles.hint}>GPS check-in won't work until set.</Text>}
-
-                  {addError && <Text style={styles.errorText}>{addError}</Text>}
-                  <View style={styles.formActions}>
-                    <TouchableOpacity onPress={() => setShowAddForm(false)} style={styles.cancelBtn}>
-                      <Text style={styles.cancelBtnText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={handleAddEmployee} disabled={saving} style={styles.saveModalBtn}>
-                      <Text style={styles.saveModalBtnText}>{saving ? 'Saving…' : 'Save employee'}</Text>
-                    </TouchableOpacity>
-                  </View>
+                  ))}
                 </View>
+
+                <Text style={styles.label}>Branch</Text>
+                <View style={styles.chipsRow}>
+                  <TouchableOpacity style={[styles.pickChip, addBranchId === null && styles.pickChipActive]} onPress={() => setAddBranchId(null)}>
+                    <Text style={[styles.pickChipText, addBranchId === null && styles.pickChipTextActive]}>Unassigned</Text>
+                  </TouchableOpacity>
+                  {branches.map(b => (
+                    <TouchableOpacity key={b.id} style={[styles.pickChip, addBranchId === b.id && styles.pickChipActive]} onPress={() => setAddBranchId(b.id)}>
+                      <Text style={[styles.pickChipText, addBranchId === b.id && styles.pickChipTextActive]}>{b.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {!addBranchId && <Text style={styles.hint}>GPS check-in won't work until set.</Text>}
+
+                {addError && <Text style={styles.errorText}>{addError}</Text>}
+                <View style={styles.formActions}>
+                  <TouchableOpacity onPress={() => setShowAddForm(false)} style={styles.cancelBtn}>
+                    <Text style={styles.cancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleAddEmployee} disabled={saving} style={styles.saveModalBtn}>
+                    <Text style={styles.saveModalBtnText}>{saving ? 'Saving…' : 'Save employee'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </ScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
 
+      {/* Filter modal */}
       <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setFilterOpen(false)}>
           <View style={styles.modalSheet}>
@@ -355,6 +545,147 @@ export default function EmployeesScreen({ route, navigation }: any) {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* Branch picker */}
+      <Modal visible={!!branchPickerFor} transparent animationType="fade" onRequestClose={() => setBranchPickerFor(null)}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setBranchPickerFor(null)}>
+          <View style={styles.modalSheet}>
+            <FlatList
+              data={[{ id: '', name: 'Unassigned' } as any, ...branches]}
+              keyExtractor={item => item.id || 'unassigned'}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.modalOption}
+                  onPress={() => {
+                    if (branchPickerFor) applyBranchChange(branchPickerFor.id, item.id || null);
+                    setBranchPickerFor(null);
+                  }}
+                >
+                  <Text style={styles.modalOptionText}>{item.name}</Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Create login modal */}
+      <Modal visible={!!loginModalEmployee} transparent animationType="fade" onRequestClose={() => setLoginModalEmployee(null)}>
+        <TouchableOpacity style={styles.modalBackdropCenter} activeOpacity={1} onPress={() => setLoginModalEmployee(null)}>
+          <TouchableOpacity activeOpacity={1} style={styles.formSheet}>
+            {loginResult ? (
+              <>
+                <Text style={styles.formTitle}>Login created</Text>
+                <Text style={styles.hint}>Share these with {loginModalEmployee?.name} so they can sign in on the mobile app. This password won't be shown again.</Text>
+                <View style={styles.resultBox}>
+                  <Text style={styles.resultLabel}>Email</Text>
+                  <Text style={styles.resultValue}>{loginResult.email}</Text>
+                  <Text style={[styles.resultLabel, { marginTop: 8 }]}>Password</Text>
+                  <Text style={styles.resultValue}>{loginResult.password}</Text>
+                </View>
+                <TouchableOpacity style={[styles.saveModalBtn, { alignSelf: 'flex-end' }]} onPress={() => setLoginModalEmployee(null)}>
+                  <Text style={styles.saveModalBtnText}>Done</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.formTitle}>Create Login</Text>
+                <Text style={styles.hint}>{loginModalEmployee?.name} will use this to sign in on the mobile app.</Text>
+                <Text style={styles.label}>Email</Text>
+                <TextInput style={styles.input} value={loginEmail} onChangeText={setLoginEmail} keyboardType="email-address" autoCapitalize="none" />
+                <Text style={styles.label}>Temporary password</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TextInput style={[styles.input, { flex: 1 }]} value={loginPassword} onChangeText={setLoginPassword} />
+                  <TouchableOpacity style={styles.regenBtn} onPress={() => setLoginPassword(generatePassword())}>
+                    <Text style={styles.regenBtnText}>Regenerate</Text>
+                  </TouchableOpacity>
+                </View>
+                {loginError && <Text style={styles.errorText}>{loginError}</Text>}
+                <View style={styles.formActions}>
+                  <TouchableOpacity onPress={() => setLoginModalEmployee(null)} style={styles.cancelBtn}>
+                    <Text style={styles.cancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleCreateLogin} disabled={creatingLogin} style={styles.saveModalBtn}>
+                    <Text style={styles.saveModalBtnText}>{creatingLogin ? 'Creating…' : 'Create login'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Reset password modal */}
+      <Modal visible={!!resetModalEmployee} transparent animationType="fade" onRequestClose={() => setResetModalEmployee(null)}>
+        <TouchableOpacity style={styles.modalBackdropCenter} activeOpacity={1} onPress={() => setResetModalEmployee(null)}>
+          <TouchableOpacity activeOpacity={1} style={styles.formSheet}>
+            {resetResult ? (
+              <>
+                <Text style={styles.formTitle}>Password reset</Text>
+                <Text style={styles.hint}>Share this with {resetModalEmployee?.name}. Their old password no longer works. This won't be shown again.</Text>
+                <View style={styles.resultBox}>
+                  <Text style={styles.resultLabel}>New password</Text>
+                  <Text style={styles.resultValue}>{resetResult}</Text>
+                </View>
+                <TouchableOpacity style={[styles.saveModalBtn, { alignSelf: 'flex-end' }]} onPress={() => setResetModalEmployee(null)}>
+                  <Text style={styles.saveModalBtnText}>Done</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.formTitle}>Reset Password</Text>
+                <Text style={styles.hint}>Sets a new password for {resetModalEmployee?.name}'s login. Their current password stops working immediately.</Text>
+                <Text style={styles.label}>New password</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TextInput style={[styles.input, { flex: 1 }]} value={resetPasswordValue} onChangeText={setResetPasswordValue} />
+                  <TouchableOpacity style={styles.regenBtn} onPress={() => setResetPasswordValue(generatePassword())}>
+                    <Text style={styles.regenBtnText}>Regenerate</Text>
+                  </TouchableOpacity>
+                </View>
+                {resetError && <Text style={styles.errorText}>{resetError}</Text>}
+                <View style={styles.formActions}>
+                  <TouchableOpacity onPress={() => setResetModalEmployee(null)} style={styles.cancelBtn}>
+                    <Text style={styles.cancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleResetPassword} disabled={resettingPassword} style={styles.saveModalBtn}>
+                    <Text style={styles.saveModalBtnText}>{resettingPassword ? 'Resetting…' : 'Reset password'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Force delete modal */}
+      <Modal visible={!!forceDeleteEmployee} transparent animationType="fade" onRequestClose={() => setForceDeleteEmployee(null)}>
+        <TouchableOpacity style={styles.modalBackdropCenter} activeOpacity={1} onPress={() => setForceDeleteEmployee(null)}>
+          <TouchableOpacity activeOpacity={1} style={[styles.formSheet, { borderWidth: 2, borderColor: colors.criticalBg }]}>
+            <Text style={[styles.formTitle, { color: colors.criticalText }]}>Permanently delete {forceDeleteEmployee?.name}?</Text>
+            <Text style={styles.hint}>
+              This erases their attendance logs, payroll history, tasks, leave requests, corrections, and CV entries — everything, not just their profile. There is no undo. Their
+              sign-in account (if any) is kept but unlinked, not deleted.
+            </Text>
+            <Text style={styles.label}>
+              Type <Text style={{ fontWeight: '700', color: colors.ink }}>{forceDeleteEmployee?.name}</Text> to confirm
+            </Text>
+            <TextInput style={styles.input} value={forceDeleteConfirmText} onChangeText={setForceDeleteConfirmText} autoFocus />
+            {forceDeleteError && <Text style={styles.errorText}>{forceDeleteError}</Text>}
+            <View style={styles.formActions}>
+              <TouchableOpacity onPress={() => setForceDeleteEmployee(null)} style={styles.cancelBtn}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleForceDelete}
+                disabled={forceDeleting || forceDeleteConfirmText !== forceDeleteEmployee?.name}
+                style={[styles.saveModalBtn, { backgroundColor: colors.critical, opacity: forceDeleteConfirmText !== forceDeleteEmployee?.name ? 0.5 : 1 }]}
+              >
+                <Text style={styles.saveModalBtnText}>{forceDeleting ? 'Deleting…' : 'Permanently delete'}</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -365,65 +696,36 @@ const styles = StyleSheet.create({
   filterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 16 },
   addBtn: { backgroundColor: colors.accent, borderRadius: 10, paddingHorizontal: 16, justifyContent: 'center' },
   addBtnText: { color: colors.white, fontSize: 13, fontWeight: '700' },
-  filterBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: colors.slate200,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: colors.white,
-  },
+  filterBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: colors.slate200, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: colors.white },
   filterBtnText: { fontSize: 13, fontWeight: '600', color: colors.ink },
-  search: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.slate200,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: colors.white,
-    color: colors.ink,
-  },
-  list: { padding: 16, paddingTop: 8 },
-  card: {
-    backgroundColor: colors.white,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: colors.slate200,
-  },
-  cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  avatar: {
-    height: 40,
-    width: 40,
-    borderRadius: 20,
-    backgroundColor: colors.accentLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
+  search: { marginHorizontal: 16, marginTop: 8, marginBottom: 8, borderWidth: 1, borderColor: colors.slate200, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: colors.white, color: colors.ink },
+  tableHeader: { flexDirection: 'row', backgroundColor: colors.slate50, borderBottomWidth: 1, borderBottomColor: colors.slate200, paddingVertical: 8, paddingHorizontal: 8, marginHorizontal: 8 },
+  th: { fontSize: 9, fontWeight: '700', color: colors.slate500, textTransform: 'uppercase', paddingHorizontal: 4 },
+  tr: { flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 8, marginHorizontal: 8, borderBottomWidth: 1, borderBottomColor: colors.slate100, alignItems: 'flex-start' },
+  trAlt: { backgroundColor: colors.white },
+  td: { fontSize: 11, color: colors.slate500, paddingHorizontal: 4 },
+  tdName: { color: colors.ink, fontWeight: '600' },
+  tdSub: { fontSize: 9, color: colors.slate400, paddingHorizontal: 4, marginTop: 1 },
+  dim: { fontSize: 11, color: colors.slate400, paddingHorizontal: 4 },
+  avatar: { height: 30, width: 30, borderRadius: 15, backgroundColor: colors.accentLight, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarImg: { height: '100%', width: '100%' },
-  avatarText: { color: colors.accent, fontWeight: '700', fontSize: 16 },
-  name: { fontSize: 15, fontWeight: '600', color: colors.ink },
-  meta: { fontSize: 12, color: colors.slate500, marginTop: 2 },
-  infoGrid: { flexDirection: 'row', gap: 16, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.slate200 },
-  infoCell: { flex: 1 },
-  infoLabel: { fontSize: 10, color: colors.slate400, textTransform: 'uppercase' },
-  infoValue: { fontSize: 13, fontWeight: '700', color: colors.ink, marginTop: 2 },
-  infoSub: { fontSize: 10, color: colors.slate400 },
-  actionsRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  actionTile: { flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', borderRadius: 8, paddingVertical: 8, borderWidth: 1 },
+  avatarText: { color: colors.accent, fontWeight: '700', fontSize: 12 },
+  usernameInput: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4, fontSize: 11, color: colors.ink },
+  editHint: { fontSize: 8, color: colors.slate400, paddingHorizontal: 4 },
+  cancelLink: { fontSize: 10, color: colors.slate500, fontWeight: '600' },
+  saveLink: { fontSize: 10, color: colors.accent, fontWeight: '700' },
+  branchChip: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 },
+  branchChipWarn: { borderColor: colors.warning },
+  branchChipText: { fontSize: 10, color: colors.slate500 },
+  shiftPill: { backgroundColor: colors.accentLight, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4, alignItems: 'center' },
+  shiftPillText: { fontSize: 10, fontWeight: '700', color: colors.accent },
+  shiftPillNeutral: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 },
+  actionTile: { flexDirection: 'row', gap: 3, alignItems: 'center', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 5, borderWidth: 1 },
   actionAccent: { backgroundColor: colors.accentLight, borderColor: colors.accent },
   actionWarning: { backgroundColor: colors.warningBg, borderColor: colors.warning },
   actionCritical: { backgroundColor: colors.criticalBg, borderColor: colors.critical },
-  actionText: { fontSize: 11, fontWeight: '700' },
-  empty: { textAlign: 'center', marginTop: 40, color: colors.slate400 },
+  actionText: { fontSize: 9, fontWeight: '700' },
+  empty: { textAlign: 'center', marginTop: 40, color: colors.slate400, width: 400 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' },
   modalSheet: { backgroundColor: colors.white, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingVertical: 8, maxHeight: '60%' },
   modalOption: { paddingHorizontal: 20, paddingVertical: 14 },
@@ -433,7 +735,7 @@ const styles = StyleSheet.create({
   formTitle: { fontSize: 16, fontWeight: '700', color: colors.ink, marginBottom: 4 },
   label: { fontSize: 12, fontWeight: '600', color: colors.slate500, marginBottom: 4, marginTop: 8 },
   input: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, fontSize: 14, color: colors.ink },
-  hint: { fontSize: 11, color: colors.slate400, marginTop: 4 },
+  hint: { fontSize: 11, color: colors.slate400, marginTop: 4, marginBottom: 8, lineHeight: 16 },
   chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   pickChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: colors.slate200, backgroundColor: colors.white },
   pickChipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
@@ -445,4 +747,9 @@ const styles = StyleSheet.create({
   cancelBtnText: { fontSize: 13, fontWeight: '600', color: colors.slate500 },
   saveModalBtn: { backgroundColor: colors.accent, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10 },
   saveModalBtnText: { color: colors.white, fontSize: 13, fontWeight: '700' },
+  regenBtn: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 10, paddingHorizontal: 12, justifyContent: 'center' },
+  regenBtnText: { fontSize: 11, fontWeight: '600', color: colors.slate500 },
+  resultBox: { backgroundColor: colors.slate50, borderRadius: 10, padding: 12, marginVertical: 8 },
+  resultLabel: { fontSize: 10, color: colors.slate400, textTransform: 'uppercase' },
+  resultValue: { fontSize: 14, fontWeight: '700', color: colors.ink, marginTop: 2 },
 });

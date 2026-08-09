@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity, Switch, Modal } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity, Switch, Modal, FlatList } from 'react-native';
 import { supabase } from '../lib/supabase';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '../types';
 import {
@@ -30,6 +30,9 @@ type Row = {
   lateDays: number;
   earlyDays: number;
 };
+
+const COLS_WIDTH = { id: 46, employee: 140, days: 60, hours: 60, overtime: 56, lateEarly: 70, salary: 90, calc: 100, otSalary: 130, total: 90 };
+const TABLE_WIDTH = Object.values(COLS_WIDTH).reduce((a, b) => a + b, 0);
 
 export default function PayrollScreen({ navigation }: any) {
   const { system } = useCalendarSystem();
@@ -219,164 +222,154 @@ export default function PayrollScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={byEmployee}
-        keyExtractor={item => item.id}
-        contentContainerStyle={{ padding: 16 }}
-        ListHeaderComponent={
-          <>
-            <View style={styles.statsGrid}>
-              <View style={[styles.statCard, { backgroundColor: colors.warningBg }]}>
-                <Text style={[styles.statLabel, { color: colors.warningText }]}>Overtime Salary</Text>
-                <Text style={[styles.statValue, { color: colors.warningText }]}>{Math.round(totals.totalOvertimeSalary).toLocaleString()}</Text>
-                <View style={styles.otInputsRow}>
-                  <TextInput style={styles.otInput} value={otHoursPerDay} onChangeText={setOtHoursPerDay} keyboardType="numeric" />
-                  <Text style={styles.otInputLabel}>h/day ×</Text>
-                  <TextInput style={styles.otInput} value={otMultiplier} onChangeText={setOtMultiplier} keyboardType="numeric" />
-                  <Text style={styles.otInputLabel}>x</Text>
-                </View>
-              </View>
-              <View style={[styles.statCard, { backgroundColor: colors.goodBg }]}>
-                <Text style={[styles.statLabel, { color: colors.goodText }]}>Total Salary Payable</Text>
-                <Text style={[styles.statValue, { color: colors.goodText }]}>{Math.round(totals.totalSalaryPayable).toLocaleString()}</Text>
-                <Text style={[styles.statHint, { color: colors.goodText }]}>Earned so far this period</Text>
-              </View>
-              <View style={[styles.statCard, { backgroundColor: colors.infoBg }]}>
-                <Text style={[styles.statLabel, { color: colors.infoText }]}>Total Employees Salary</Text>
-                <Text style={[styles.statValue, { color: colors.infoText }]}>{Math.round(totals.totalEmployeeSalary).toLocaleString()}</Text>
-                <Text style={[styles.statHint, { color: colors.infoText }]}>Full monthly salary, all staff</Text>
-              </View>
-              <View style={[styles.statCard, { backgroundColor: colors.accentLight }]}>
-                <Text style={[styles.statLabel, { color: colors.accent }]}>Total Payable Hours</Text>
-                <Text style={[styles.statValue, { color: colors.accent }]}>{fmtHrs(totals.totalHours)}</Text>
-                <Text style={[styles.statHint, { color: colors.accent }]}>Across {employees.length} staff</Text>
-              </View>
-              <View
-                style={[
-                  styles.statCard,
-                  { backgroundColor: totals.attendancePct >= 75 ? colors.goodBg : totals.attendancePct >= 50 ? colors.warningBg : colors.criticalBg },
-                ]}
-              >
-                <Text style={[styles.statLabel, { color: totals.attendancePct >= 75 ? colors.goodText : totals.attendancePct >= 50 ? colors.warningText : colors.criticalText }]}>
-                  Avg Attendance
-                </Text>
-                <Text style={[styles.statValue, { color: totals.attendancePct >= 75 ? colors.goodText : totals.attendancePct >= 50 ? colors.warningText : colors.criticalText }]}>
-                  {totals.attendancePct}%
-                </Text>
-                <Text style={[styles.statHint, { color: totals.attendancePct >= 75 ? colors.goodText : totals.attendancePct >= 50 ? colors.warningText : colors.criticalText }]}>
-                  Worked vs possible days
-                </Text>
-              </View>
-              <View style={[styles.statCard, { backgroundColor: '#f3e8ff' }]}>
-                <Text style={[styles.statLabel, { color: '#7e22ce' }]}>Overtime Tracked</Text>
-                <Text style={[styles.statValue, { color: '#7e22ce' }]}>{fmtHrs(totals.overtimeHours)}</Text>
-                <Text style={[styles.statHint, { color: '#7e22ce' }]}>This period</Text>
-              </View>
+      <ScrollView contentContainerStyle={{ padding: 16 }}>
+        <View style={styles.statsGrid}>
+          <View style={[styles.statCard, { backgroundColor: colors.warningBg }]}>
+            <Text style={[styles.statLabel, { color: colors.warningText }]}>Overtime Salary</Text>
+            <Text style={[styles.statValue, { color: colors.warningText }]}>{Math.round(totals.totalOvertimeSalary).toLocaleString()}</Text>
+            <View style={styles.otInputsRow}>
+              <TextInput style={styles.otInput} value={otHoursPerDay} onChangeText={setOtHoursPerDay} keyboardType="numeric" />
+              <Text style={styles.otInputLabel}>h/day ×</Text>
+              <TextInput style={styles.otInput} value={otMultiplier} onChangeText={setOtMultiplier} keyboardType="numeric" />
+              <Text style={styles.otInputLabel}>x</Text>
             </View>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: colors.goodBg }]}>
+            <Text style={[styles.statLabel, { color: colors.goodText }]}>Total Salary Payable</Text>
+            <Text style={[styles.statValue, { color: colors.goodText }]}>{Math.round(totals.totalSalaryPayable).toLocaleString()}</Text>
+            <Text style={[styles.statHint, { color: colors.goodText }]}>Earned so far this period</Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: colors.infoBg }]}>
+            <Text style={[styles.statLabel, { color: colors.infoText }]}>Total Employees Salary</Text>
+            <Text style={[styles.statValue, { color: colors.infoText }]}>{Math.round(totals.totalEmployeeSalary).toLocaleString()}</Text>
+            <Text style={[styles.statHint, { color: colors.infoText }]}>Full monthly salary, all staff</Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: colors.accentLight }]}>
+            <Text style={[styles.statLabel, { color: colors.accent }]}>Total Payable Hours</Text>
+            <Text style={[styles.statValue, { color: colors.accent }]}>{fmtHrs(totals.totalHours)}</Text>
+            <Text style={[styles.statHint, { color: colors.accent }]}>Across {employees.length} staff</Text>
+          </View>
+          <View
+            style={[
+              styles.statCard,
+              { backgroundColor: totals.attendancePct >= 75 ? colors.goodBg : totals.attendancePct >= 50 ? colors.warningBg : colors.criticalBg },
+            ]}
+          >
+            <Text style={[styles.statLabel, { color: totals.attendancePct >= 75 ? colors.goodText : totals.attendancePct >= 50 ? colors.warningText : colors.criticalText }]}>
+              Avg Attendance
+            </Text>
+            <Text style={[styles.statValue, { color: totals.attendancePct >= 75 ? colors.goodText : totals.attendancePct >= 50 ? colors.warningText : colors.criticalText }]}>
+              {totals.attendancePct}%
+            </Text>
+            <Text style={[styles.statHint, { color: totals.attendancePct >= 75 ? colors.goodText : totals.attendancePct >= 50 ? colors.warningText : colors.criticalText }]}>
+              Worked vs possible days
+            </Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: '#f3e8ff' }]}>
+            <Text style={[styles.statLabel, { color: '#7e22ce' }]}>Overtime Tracked</Text>
+            <Text style={[styles.statValue, { color: '#7e22ce' }]}>{fmtHrs(totals.overtimeHours)}</Text>
+            <Text style={[styles.statHint, { color: '#7e22ce' }]}>This period</Text>
+          </View>
+        </View>
 
-            <View style={styles.periodBar}>
-              <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.periodArrow}>
-                <View style={{ transform: [{ rotate: '90deg' }] }}>
-                  <ChevronIcon size={16} color={colors.accent} />
-                </View>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setMonthPickerOpen(true)} style={{ flex: 1, alignItems: 'center' }}>
-                <Text style={styles.periodLabel}>{period.label}</Text>
-                <Text style={styles.periodSub}>
-                  {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)} ({daysInRange}d)
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => changeMonth(1)} style={styles.periodArrow}>
-                <View style={{ transform: [{ rotate: '-90deg' }] }}>
-                  <ChevronIcon size={16} color={colors.accent} />
-                </View>
-              </TouchableOpacity>
-            </View>
-          </>
-        }
-        renderItem={({ item }) => (
-          <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('PayrollDetail', { employeeId: item.id })}>
-            <View style={styles.cardTop}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{item.name}</Text>
-                <Text style={styles.meta}>
-                  ID {item.enrollId} · {item.days}d · {item.lateDays}L · {item.earlyDays}E
-                </Text>
-              </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={styles.totalLabel}>Total Salary</Text>
-                <Text style={styles.totalValue}>{totalSalary(item) != null ? totalSalary(item)!.toLocaleString() : '—'}</Text>
-              </View>
-            </View>
-
-            <View style={styles.grid2}>
-              <View style={styles.gridCell}>
-                <Text style={styles.gridLabel}>Total Hours</Text>
-                <Text style={styles.gridValue}>{fmtHrs(item.hours)}</Text>
-              </View>
-              <View style={styles.gridCell}>
-                <Text style={styles.gridLabel}>Overtime</Text>
-                <Text style={styles.gridValue}>{fmtHrs(item.overtime)}</Text>
-              </View>
-              <View style={styles.gridCell}>
-                <Text style={styles.gridLabel}>Salary</Text>
-                {editingSalaryId === item.id ? (
-                  <View style={{ gap: 4 }}>
-                    <TextInput
-                      style={styles.salaryInput}
-                      keyboardType="numeric"
-                      autoFocus
-                      value={pendingSalary[item.id] ?? (item.salary != null ? String(item.salary) : '')}
-                      onChangeText={v => setPendingSalary(p => ({ ...p, [item.id]: v }))}
-                    />
-                    <View style={{ flexDirection: 'row', gap: 12 }}>
-                      <TouchableOpacity onPress={() => setEditingSalaryId(null)}>
-                        <Text style={styles.cancelLink}>Cancel</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => saveSalaryRow(item.id)} disabled={savingRowId === item.id}>
-                        <Text style={styles.saveLink}>{savingRowId === item.id ? 'Saving…' : 'Save'}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ) : (
-                  <TouchableOpacity onPress={() => setEditingSalaryId(item.id)}>
-                    <Text style={styles.gridValue}>{item.salary != null ? item.salary.toLocaleString() : '— (tap to set)'}</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-              <View style={styles.gridCell}>
-                <Text style={styles.gridLabel}>Calculated Salary</Text>
-                <Text style={styles.gridValue}>
-                  {calculatedSalary(item) != null ? calculatedSalary(item)!.toLocaleString() : '—'}
-                  {overtimeSalary(item) != null ? <Text style={styles.dim}> ({overtimeSalary(item)!.toLocaleString()})</Text> : null}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.otRow}>
-              <Text style={styles.gridLabel}>Overtime Salary</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Switch
-                  value={overtimeEnabled[item.id] ?? true}
-                  onValueChange={v => setOvertimeEnabled(m => ({ ...m, [item.id]: v }))}
-                  trackColor={{ false: colors.slate200, true: colors.good }}
-                />
-                <Text style={styles.gridValue}>{overtimeSalary(item) != null ? overtimeSalary(item)!.toLocaleString() : '—'}</Text>
-              </View>
+        <View style={styles.periodBar}>
+          <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.periodArrow}>
+            <View style={{ transform: [{ rotate: '90deg' }] }}>
+              <ChevronIcon size={16} color={colors.accent} />
             </View>
           </TouchableOpacity>
-        )}
-        ListEmptyComponent={<Text style={styles.empty}>{loading ? 'Loading…' : 'No active employees.'}</Text>}
-        ListFooterComponent={
-          byEmployee.length > 0 ? (
-            <View style={styles.footerBar}>
-              <Text style={{ color: colors.goodText, fontWeight: '700', fontSize: 12 }}>{totals.workedDays} present days</Text>
-              <Text style={{ color: colors.slate400 }}> · </Text>
-              <Text style={{ color: colors.criticalText, fontWeight: '700', fontSize: 12 }}>{totals.absentDays} absent days</Text>
+          <TouchableOpacity onPress={() => setMonthPickerOpen(true)} style={{ flex: 1, alignItems: 'center' }}>
+            <Text style={styles.periodLabel}>{period.label}</Text>
+            <Text style={styles.periodSub}>
+              {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)} ({daysInRange}d)
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => changeMonth(1)} style={styles.periodArrow}>
+            <View style={{ transform: [{ rotate: '-90deg' }] }}>
+              <ChevronIcon size={16} color={colors.accent} />
             </View>
-          ) : null
-        }
-      />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ width: TABLE_WIDTH }}>
+          <View>
+            <View style={styles.tableHeader}>
+              <Text style={[styles.th, { width: COLS_WIDTH.id }]}>ID</Text>
+              <Text style={[styles.th, { width: COLS_WIDTH.employee }]}>Employee</Text>
+              <Text style={[styles.th, { width: COLS_WIDTH.days }]}>Days</Text>
+              <Text style={[styles.th, { width: COLS_WIDTH.hours }]}>Hours</Text>
+              <Text style={[styles.th, { width: COLS_WIDTH.overtime }]}>OT</Text>
+              <Text style={[styles.th, { width: COLS_WIDTH.lateEarly }]}>Late/Early</Text>
+              <Text style={[styles.th, { width: COLS_WIDTH.salary }]}>Salary</Text>
+              <Text style={[styles.th, { width: COLS_WIDTH.calc }]}>Calculated</Text>
+              <Text style={[styles.th, { width: COLS_WIDTH.otSalary }]}>OT Salary</Text>
+              <Text style={[styles.th, { width: COLS_WIDTH.total }]}>Total</Text>
+            </View>
+
+            {byEmployee.map((item, index) => (
+              <View key={item.id} style={[styles.tr, index % 2 === 1 && styles.trAlt]}>
+                <Text style={[styles.td, { width: COLS_WIDTH.id }]}>{item.enrollId}</Text>
+                <TouchableOpacity style={{ width: COLS_WIDTH.employee }} onPress={() => navigation.navigate('PayrollDetail', { employeeId: item.id })}>
+                  <Text style={[styles.td, styles.tdName]} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                </TouchableOpacity>
+                <Text style={[styles.td, { width: COLS_WIDTH.days }]}>{item.days}</Text>
+                <Text style={[styles.td, { width: COLS_WIDTH.hours }]}>{fmtHrs(item.hours)}</Text>
+                <Text style={[styles.td, { width: COLS_WIDTH.overtime, color: colors.infoText }]}>{fmtHrs(item.overtime)}</Text>
+                <Text style={[styles.td, { width: COLS_WIDTH.lateEarly }]}>
+                  <Text style={{ color: colors.warningText }}>{item.lateDays}L</Text> <Text style={{ color: colors.criticalText }}>{item.earlyDays}E</Text>
+                </Text>
+                <View style={{ width: COLS_WIDTH.salary }}>
+                  {editingSalaryId === item.id ? (
+                    <View style={{ gap: 4 }}>
+                      <TextInput
+                        style={styles.salaryInput}
+                        keyboardType="numeric"
+                        autoFocus
+                        value={pendingSalary[item.id] ?? (item.salary != null ? String(item.salary) : '')}
+                        onChangeText={v => setPendingSalary(p => ({ ...p, [item.id]: v }))}
+                      />
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TouchableOpacity onPress={() => setEditingSalaryId(null)}>
+                          <Text style={styles.cancelLink}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => saveSalaryRow(item.id)} disabled={savingRowId === item.id}>
+                          <Text style={styles.saveLink}>{savingRowId === item.id ? '…' : 'Save'}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ) : (
+                    <TouchableOpacity onPress={() => setEditingSalaryId(item.id)}>
+                      <Text style={styles.td}>{item.salary != null ? item.salary.toLocaleString() : 'Set'}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <Text style={[styles.td, { width: COLS_WIDTH.calc }]}>{calculatedSalary(item) != null ? calculatedSalary(item)!.toLocaleString() : '—'}</Text>
+                <View style={{ width: COLS_WIDTH.otSalary, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Switch
+                    value={overtimeEnabled[item.id] ?? true}
+                    onValueChange={v => setOvertimeEnabled(m => ({ ...m, [item.id]: v }))}
+                    trackColor={{ false: colors.slate200, true: colors.good }}
+                    style={{ transform: [{ scale: 0.8 }] }}
+                  />
+                  <Text style={styles.td}>{overtimeSalary(item) != null ? overtimeSalary(item)!.toLocaleString() : '—'}</Text>
+                </View>
+                <Text style={[styles.td, styles.tdBold, { width: COLS_WIDTH.total }]}>{totalSalary(item) != null ? totalSalary(item)!.toLocaleString() : '—'}</Text>
+              </View>
+            ))}
+            {byEmployee.length === 0 && <Text style={styles.empty}>{loading ? 'Loading…' : 'No active employees.'}</Text>}
+          </View>
+        </ScrollView>
+
+        {byEmployee.length > 0 && (
+          <View style={styles.footerBar}>
+            <Text style={{ color: colors.goodText, fontWeight: '700', fontSize: 12 }}>{totals.workedDays} present days</Text>
+            <Text style={{ color: colors.slate400 }}> · </Text>
+            <Text style={{ color: colors.criticalText, fontWeight: '700', fontSize: 12 }}>{totals.absentDays} absent days</Text>
+          </View>
+        )}
+      </ScrollView>
 
       <Modal visible={monthPickerOpen} transparent animationType="fade" onRequestClose={() => setMonthPickerOpen(false)}>
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setMonthPickerOpen(false)}>
@@ -419,22 +412,17 @@ const styles = StyleSheet.create({
   periodArrow: { padding: 8 },
   periodLabel: { fontSize: 14, fontWeight: '700', color: colors.ink },
   periodSub: { fontSize: 10, color: colors.slate400, marginTop: 2 },
-  card: { backgroundColor: colors.white, borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: colors.slate200 },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  name: { fontSize: 14, fontWeight: '700', color: colors.ink },
-  meta: { fontSize: 11, color: colors.slate500, marginTop: 2 },
-  totalLabel: { fontSize: 10, color: colors.slate400, textTransform: 'uppercase' },
-  totalValue: { fontSize: 16, fontWeight: '700', color: colors.goodText },
-  grid2: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.slate200 },
-  gridCell: { width: '50%', marginBottom: 8 },
-  gridLabel: { fontSize: 10, color: colors.slate400, textTransform: 'uppercase' },
-  gridValue: { fontSize: 13, color: colors.ink, marginTop: 2 },
-  dim: { color: colors.slate400, fontSize: 11 },
-  salaryInput: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, fontSize: 13, color: colors.ink, width: 100 },
-  cancelLink: { fontSize: 11, color: colors.slate500, fontWeight: '600' },
-  saveLink: { fontSize: 11, color: colors.accent, fontWeight: '700' },
-  otRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-  empty: { textAlign: 'center', marginTop: 40, color: colors.slate400 },
+  tableHeader: { flexDirection: 'row', backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.slate200, paddingVertical: 8, paddingHorizontal: 4, borderTopLeftRadius: 10, borderTopRightRadius: 10 },
+  th: { fontSize: 9, fontWeight: '700', color: colors.slate500, textTransform: 'uppercase', paddingHorizontal: 4 },
+  tr: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 4, backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.slate100 },
+  trAlt: { backgroundColor: colors.slate50 },
+  td: { fontSize: 11, color: colors.slate500, paddingHorizontal: 4 },
+  tdName: { color: colors.ink, fontWeight: '600' },
+  tdBold: { fontWeight: '700', color: colors.goodText },
+  salaryInput: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4, fontSize: 11, color: colors.ink, width: 80 },
+  cancelLink: { fontSize: 10, color: colors.slate500, fontWeight: '600' },
+  saveLink: { fontSize: 10, color: colors.accent, fontWeight: '700' },
+  empty: { textAlign: 'center', marginTop: 20, marginBottom: 20, color: colors.slate400, width: 300 },
   footerBar: { flexDirection: 'row', justifyContent: 'center', paddingVertical: 12 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' },
   modalSheet: { backgroundColor: colors.white, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingVertical: 8, maxHeight: '60%' },

@@ -6,6 +6,8 @@ import { colors } from '../theme';
 import Badge from '../components/Badge';
 import { formatAdDate } from '../lib/calendar';
 import { useCalendarSystem } from '../lib/CalendarSystemContext';
+import Leaderboard from '../components/Leaderboard';
+import SimpleBarChart from '../components/SimpleBarChart';
 
 const STATUS_TONE: Record<TaskStatus, 'good' | 'warning' | 'critical' | 'info' | 'neutral'> = {
   pending: 'neutral',
@@ -220,6 +222,22 @@ export default function MyTasksScreen() {
           );
         }}
         ListEmptyComponent={<Text style={styles.empty}>No tasks yet.</Text>}
+        ListFooterComponent={
+          <View style={{ marginTop: 8, gap: 16 }}>
+            {taskHours.size > 0 && (
+              <View style={styles.chartCard}>
+                <Text style={styles.chartTitle}>Hours by Task</Text>
+                <SimpleBarChart
+                  data={Array.from(taskHours.entries()).map(([taskId, mins]) => ({
+                    label: tasks.find(t => t.id === taskId)?.title ?? 'Deleted task',
+                    value: Math.round((mins / 60) * 10) / 10,
+                  }))}
+                />
+              </View>
+            )}
+            <Leaderboard highlightEmployeeId={employeeId ?? undefined} />
+          </View>
+        }
       />
 
       <Modal visible={showForm} transparent animationType="fade" onRequestClose={() => setShowForm(false)}>
@@ -255,6 +273,8 @@ const styles = StyleSheet.create({
   warn: { color: colors.warningText, fontSize: 13, textAlign: 'center', padding: 24 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   sectionHeading: { fontSize: 14, fontWeight: '700', color: colors.ink },
+  chartCard: { backgroundColor: colors.white, borderRadius: 12, borderWidth: 1, borderColor: colors.slate200, padding: 14 },
+  chartTitle: { fontSize: 13, fontWeight: '700', color: colors.ink, marginBottom: 10 },
   newBtn: { backgroundColor: colors.accent, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
   newBtnText: { color: colors.white, fontSize: 12, fontWeight: '700' },
   card: { backgroundColor: colors.white, borderRadius: 12, borderWidth: 1, borderColor: colors.slate200, padding: 14, marginBottom: 12 },

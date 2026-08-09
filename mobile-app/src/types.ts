@@ -100,6 +100,7 @@ export type PayrollSummary = {
 export type AttendanceLog = {
   id: string;
   employee_id: string;
+  device_id?: string | null;
   punch_time: string;
   punch_type: '0' | '1';
   method: PunchMethod;
@@ -128,6 +129,15 @@ export type Task = {
   reviewed_by: string | null;
   reviewed_at: string | null;
   created_at: string;
+};
+
+export type LeaderboardRow = {
+  employee_id: string;
+  name: string;
+  department: string | null;
+  total_points: number;
+  tasks_completed: number;
+  profile_photo_url: string | null;
 };
 
 export type TaskTimeLog = {

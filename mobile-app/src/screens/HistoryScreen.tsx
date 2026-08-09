@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, FlatList, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, Modal } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
-import type { AttendanceLog, Employee, PayrollSummary, Shift } from '../types';
+import type { AttendanceLog, Device, Employee, PayrollSummary, Shift } from '../types';
 import {
   applyOvernightShiftCorrection,
   computeDayStatusForResolvedShift,
@@ -15,11 +15,15 @@ import {
 import { colors } from '../theme';
 import { formatDdMmYyyy } from '../lib/calendar';
 import { useCalendarSystem } from '../lib/CalendarSystemContext';
+import DateRangePicker from '../components/DateRangePicker';
 
 type Row = {
   key: string;
   date: string;
+  enrollId: string;
   employeeName: string;
+  device: string;
+  shiftLabel: string;
   checkIn: string | null;
   checkOut: string | null;
   hours: number;
@@ -28,6 +32,20 @@ type Row = {
   earlyMinutes: number;
   overtime: number;
 };
+
+const COLS = [
+  { key: 'date', label: 'Date', width: 64 },
+  { key: 'enrollId', label: 'ID', width: 48 },
+  { key: 'employeeName', label: 'Employee', width: 120 },
+  { key: 'shiftLabel', label: 'Shift', width: 130 },
+  { key: 'inOut', label: 'In / Out', width: 100 },
+  { key: 'lateEarly', label: 'Late/Early', width: 90 },
+  { key: 'hours', label: 'Work Hrs', width: 64 },
+  { key: 'overtime', label: 'OT', width: 56 },
+  { key: 'status', label: 'Status', width: 64 },
+  { key: 'device', label: 'Device', width: 110 },
+] as const;
+const EMPLOYEE_COLS = COLS.filter(c => c.key !== 'employeeName' && c.key !== 'enrollId');
 
 function fmtHrs(hours: number) {
   return formatHoursMinutes(Math.round(hours * 60));
@@ -41,11 +59,6 @@ function isoDaysAgo(n: number) {
   return d.toISOString().slice(0, 10);
 }
 
-const RANGE_PRESETS = [
-  { label: 'Today', days: 0 },
-  { label: '7 Days', days: 6 },
-  { label: '30 Days', days: 29 },
-];
 const STATUS_OPTIONS = ['All', 'Present', 'Absent', 'Late', 'Early'] as const;
 
 export default function HistoryScreen() {
@@ -54,8 +67,7 @@ export default function HistoryScreen() {
   const isAdmin = profile?.role === 'admin' || profile?.role === 'hr';
 
   const [from, setFrom] = useState(isoDaysAgo(6));
-  const [to] = useState(isoDaysAgo(0));
-  const [rangeLabel, setRangeLabel] = useState('7 Days');
+  const [to, setTo] = useState(isoDaysAgo(0));
   const [status, setStatus] = useState<(typeof STATUS_OPTIONS)[number]>('All');
   const [statusOpen, setStatusOpen] = useState(false);
   const [employeeId, setEmployeeId] = useState('all');
@@ -63,6 +75,7 @@ export default function HistoryScreen() {
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [dailyShiftRows, setDailyShiftRows] = useState<{ employee_id: string; work_date: string; shift_id: string | null }[]>([]);
@@ -71,6 +84,7 @@ export default function HistoryScreen() {
   useEffect(() => {
     if (isAdmin) {
       supabase.from('employees').select('*').eq('status', 'active').order('name').then(({ data }) => setEmployees((data as Employee[]) ?? []));
+      supabase.from('devices').select('*').then(({ data }) => setDevices((data as Device[]) ?? []));
     }
     supabase.from('shifts').select('*').then(({ data }) => setShifts((data as Shift[]) ?? []));
   }, [isAdmin]);
@@ -93,9 +107,6 @@ export default function HistoryScreen() {
     () => (employeeId === 'all' ? employees : employees.filter(e => e.id === employeeId)),
     [employees, employeeId]
   );
-  // Employee-role users only ever see their own rows via RLS — there's no
-  // employees table access to resolve a shift against, so build a
-  // single-employee list from their own profile's linked employee record.
   const selfEmployee = useMemo(() => {
     if (isAdmin || !profile?.employee_id) return null;
     return employees.find(e => e.id === profile.employee_id) ?? null;
@@ -123,6 +134,8 @@ export default function HistoryScreen() {
     }
     return map;
   }, [dailyShiftRows]);
+
+  const deviceName = (id: string | null | undefined) => devices.find(d => d.id === id)?.name ?? 'Mobile / QR / Selfie';
 
   const rows: Row[] = useMemo(() => {
     const activeEmployees = isAdmin ? scopedEmployees : selfEmployee ? [selfEmployee] : [];
@@ -153,12 +166,16 @@ export default function HistoryScreen() {
         const summary = day === today ? undefined : summaries.find(s => s.employee_id === emp.id && s.work_date === day);
         const dayLogs = (logsByEmployeeDay.get(emp.id)?.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
         const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate);
+        const shiftLabel = isWeekOff(resolved) ? 'Week Off' : `${resolved.name} (${resolved.start_time.slice(0, 5)}–${resolved.end_time.slice(0, 5)})`;
 
         if (summary) {
           out.push({
             key: `${emp.id}-${day}`,
             date: day,
+            enrollId: emp.fingerprint_id ?? '—',
             employeeName: emp.name,
+            device: deviceName(dayLogs[0]?.device_id ?? null),
+            shiftLabel,
             checkIn: summary.check_in,
             checkOut: summary.check_out,
             hours: summary.total_hours,
@@ -172,7 +189,10 @@ export default function HistoryScreen() {
           out.push({
             key: `${emp.id}-${day}`,
             date: day,
+            enrollId: emp.fingerprint_id ?? '—',
             employeeName: emp.name,
+            device: deviceName(dayLogs[0].device_id ?? null),
+            shiftLabel,
             checkIn: live.checkIn.punch_time,
             checkOut: live.checkOut?.punch_time ?? null,
             hours: live.totalMinutes / 60,
@@ -185,7 +205,10 @@ export default function HistoryScreen() {
           out.push({
             key: `${emp.id}-${day}`,
             date: day,
+            enrollId: emp.fingerprint_id ?? '—',
             employeeName: emp.name,
+            device: 'N/A',
+            shiftLabel,
             checkIn: null,
             checkOut: null,
             hours: 0,
@@ -200,7 +223,8 @@ export default function HistoryScreen() {
     return out
       .filter(r => status === 'All' || (status === 'Early' ? r.earlyMinutes > 0 : r.status === status))
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [isAdmin, scopedEmployees, selfEmployee, summaries, logs, shifts, from, to, status, dailyShiftByDate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, scopedEmployees, selfEmployee, summaries, logs, shifts, from, to, status, dailyShiftByDate, devices]);
 
   const totals = useMemo(() => {
     const workHours = rows.reduce((sum, r) => sum + r.hours, 0);
@@ -211,6 +235,9 @@ export default function HistoryScreen() {
     const absentDays = rows.filter(r => !r.checkIn && r.status !== 'Upcoming').length;
     return { workHours, overtimeHours, lateMinutes, earlyMinutes, presentDays, absentDays };
   }, [rows]);
+
+  const cols = isAdmin ? COLS : EMPLOYEE_COLS;
+  const tableWidth = cols.reduce((s, c) => s + c.width, 0);
 
   if (loading && rows.length === 0) {
     return (
@@ -223,20 +250,7 @@ export default function HistoryScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.filterBar}>
-        <View style={styles.presetRow}>
-          {RANGE_PRESETS.map(p => (
-            <TouchableOpacity
-              key={p.label}
-              style={[styles.presetBtn, rangeLabel === p.label && styles.presetBtnActive]}
-              onPress={() => {
-                setFrom(isoDaysAgo(p.days));
-                setRangeLabel(p.label);
-              }}
-            >
-              <Text style={[styles.presetText, rangeLabel === p.label && styles.presetTextActive]}>{p.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <DateRangePicker from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t); }} />
         <View style={styles.filterChipsRow}>
           {isAdmin && (
             <TouchableOpacity style={styles.chip} onPress={() => setEmployeeOpen(true)}>
@@ -251,63 +265,86 @@ export default function HistoryScreen() {
         </View>
       </View>
 
-      <View style={styles.tableHeader}>
-        {isAdmin && <Text style={[styles.th, { flex: 0.26 }]}>Employee</Text>}
-        <Text style={[styles.th, { flex: 0.12 }]}>Date</Text>
-        <Text style={[styles.th, { flex: 0.2 }]}>In / Out</Text>
-        <Text style={[styles.th, { flex: 0.17 }]}>Late/Early</Text>
-        <Text style={[styles.th, { flex: 0.11 }]}>Status</Text>
-        <Text style={[styles.th, { flex: 0.1 }]}>OT</Text>
-        <Text style={[styles.th, { flex: 0.1 }]}>Hrs</Text>
-      </View>
-
-      <FlatList
-        data={rows}
-        keyExtractor={item => item.key}
-        renderItem={({ item, index }) => (
-          <View style={[styles.tr, index % 2 === 1 && styles.trAlt]}>
-            {isAdmin && (
-              <Text style={[styles.td, styles.tdName, { flex: 0.26 }]} numberOfLines={1}>
-                {item.employeeName}
+      <ScrollView horizontal showsHorizontalScrollIndicator style={{ flex: 1 }} contentContainerStyle={{ width: tableWidth, flexGrow: 1 }}>
+        <View style={{ flex: 1 }}>
+          <View style={styles.tableHeader}>
+            {cols.map(c => (
+              <Text key={c.key} style={[styles.th, { width: c.width }]}>
+                {c.label}
               </Text>
-            )}
-            <Text style={[styles.td, { flex: 0.12 }]}>{formatDdMmYyyy(item.date, system).slice(0, 5)}</Text>
-            <Text style={[styles.td, { flex: 0.2 }]}>
-              {fmtTime(item.checkIn)}-{fmtTime(item.checkOut)}
-            </Text>
-            <Text style={[styles.td, { flex: 0.17 }]}>
-              {item.lateMinutes === 0 && item.earlyMinutes === 0 && <Text style={styles.dim}>—</Text>}
-              {item.lateMinutes > 0 && <Text style={{ color: colors.warningText }}>L{formatHoursMinutes(item.lateMinutes)}</Text>}
-              {item.earlyMinutes > 0 && <Text style={{ color: colors.criticalText }}> E{formatHoursMinutes(item.earlyMinutes)}</Text>}
-            </Text>
-            <Text style={[styles.td, { flex: 0.11 }, item.checkIn ? { color: colors.goodText } : item.status === 'Upcoming' ? styles.dim : { color: colors.criticalText }]}>
-              {item.checkIn ? 'Present' : item.status === 'Upcoming' ? 'Upcoming' : 'Absent'}
-            </Text>
-            <Text style={[styles.td, { flex: 0.1, color: colors.infoText }]}>{fmtHrs(item.overtime)}</Text>
-            <Text style={[styles.td, { flex: 0.1 }]}>{fmtHrs(item.hours)}</Text>
+            ))}
           </View>
-        )}
-        ListEmptyComponent={<Text style={styles.empty}>No records in this range.</Text>}
-        ListFooterComponent={
-          rows.length > 0 ? (
-            <View style={styles.footerRow}>
-              {isAdmin && <Text style={[styles.tf, { flex: 0.26 }]}>Total</Text>}
-              <Text style={[styles.tf, { flex: 0.12 }]} />
-              <Text style={[styles.tf, { flex: 0.2 }]}>
-                <Text style={{ color: colors.goodText }}>{totals.presentDays}P</Text> / <Text style={{ color: colors.criticalText }}>{totals.absentDays}A</Text>
-              </Text>
-              <Text style={[styles.tf, { flex: 0.17 }]}>
-                {totals.lateMinutes > 0 && <Text style={{ color: colors.warningText }}>L{formatHoursMinutes(totals.lateMinutes)}</Text>}
-                {totals.earlyMinutes > 0 && <Text style={{ color: colors.criticalText }}> E{formatHoursMinutes(totals.earlyMinutes)}</Text>}
-                {totals.lateMinutes === 0 && totals.earlyMinutes === 0 && '—'}
-              </Text>
-              <Text style={[styles.tf, { flex: 0.11 }]} />
-              <Text style={[styles.tf, { flex: 0.1, color: colors.infoText }]}>{fmtHrs(totals.overtimeHours)}</Text>
-              <Text style={[styles.tf, { flex: 0.1 }]}>{fmtHrs(totals.workHours)}</Text>
-            </View>
-          ) : null
-        }
-      />
+
+          <FlatList
+            data={rows}
+            keyExtractor={item => item.key}
+            renderItem={({ item, index }) => (
+              <View style={[styles.tr, index % 2 === 1 && styles.trAlt]}>
+                {isAdmin && (
+                  <>
+                    <Text style={[styles.td, { width: 64 }]}>{formatDdMmYyyy(item.date, system).slice(0, 5)}</Text>
+                    <Text style={[styles.td, { width: 48 }]}>{item.enrollId}</Text>
+                    <Text style={[styles.td, styles.tdName, { width: 120 }]} numberOfLines={1}>
+                      {item.employeeName}
+                    </Text>
+                  </>
+                )}
+                {!isAdmin && <Text style={[styles.td, { width: 64 }]}>{formatDdMmYyyy(item.date, system).slice(0, 5)}</Text>}
+                <Text style={[styles.td, { width: 130 }]} numberOfLines={1}>
+                  {item.shiftLabel}
+                </Text>
+                <Text style={[styles.td, { width: 100 }]}>
+                  {fmtTime(item.checkIn)}-{fmtTime(item.checkOut)}
+                </Text>
+                <Text style={[styles.td, { width: 90 }]}>
+                  {item.lateMinutes === 0 && item.earlyMinutes === 0 && <Text style={styles.dim}>—</Text>}
+                  {item.lateMinutes > 0 && <Text style={{ color: colors.warningText }}>L{formatHoursMinutes(item.lateMinutes)}</Text>}
+                  {item.earlyMinutes > 0 && <Text style={{ color: colors.criticalText }}> E{formatHoursMinutes(item.earlyMinutes)}</Text>}
+                </Text>
+                <Text style={[styles.td, { width: 64 }]}>{fmtHrs(item.hours)}</Text>
+                <Text style={[styles.td, { width: 56, color: colors.infoText }]}>{fmtHrs(item.overtime)}</Text>
+                <Text
+                  style={[
+                    styles.td,
+                    { width: 64 },
+                    item.checkIn ? { color: colors.goodText } : item.status === 'Upcoming' ? styles.dim : { color: colors.criticalText },
+                  ]}
+                >
+                  {item.checkIn ? 'Present' : item.status === 'Upcoming' ? 'Upcoming' : 'Absent'}
+                </Text>
+                <Text style={[styles.td, { width: 110 }]} numberOfLines={1}>
+                  {item.device}
+                </Text>
+              </View>
+            )}
+            ListEmptyComponent={<Text style={styles.empty}>No records in this range.</Text>}
+            ListFooterComponent={
+              rows.length > 0 ? (
+                <View style={styles.footerRow}>
+                  {isAdmin ? (
+                    <Text style={[styles.tf, { width: 64 + 48 + 120 }]}>Total</Text>
+                  ) : (
+                    <Text style={[styles.tf, { width: 64 }]}>Total</Text>
+                  )}
+                  <Text style={[styles.tf, { width: 130 }]} />
+                  <Text style={[styles.tf, { width: 100 }]}>
+                    <Text style={{ color: colors.goodText }}>{totals.presentDays}P</Text> <Text style={{ color: colors.criticalText }}>{totals.absentDays}A</Text>
+                  </Text>
+                  <Text style={[styles.tf, { width: 90 }]}>
+                    {totals.lateMinutes > 0 && <Text style={{ color: colors.warningText }}>L{formatHoursMinutes(totals.lateMinutes)}</Text>}
+                    {totals.earlyMinutes > 0 && <Text style={{ color: colors.criticalText }}> E{formatHoursMinutes(totals.earlyMinutes)}</Text>}
+                    {totals.lateMinutes === 0 && totals.earlyMinutes === 0 && '—'}
+                  </Text>
+                  <Text style={[styles.tf, { width: 64 }]}>{fmtHrs(totals.workHours)}</Text>
+                  <Text style={[styles.tf, { width: 56, color: colors.infoText }]}>{fmtHrs(totals.overtimeHours)}</Text>
+                  <Text style={[styles.tf, { width: 64 }]} />
+                  <Text style={[styles.tf, { width: 110 }]} />
+                </View>
+              ) : null
+            }
+          />
+        </View>
+      </ScrollView>
 
       {isAdmin && (
         <Modal visible={employeeOpen} transparent animationType="fade" onRequestClose={() => setEmployeeOpen(false)}>
@@ -363,11 +400,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.white },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.white },
   filterBar: { backgroundColor: colors.slate50, borderBottomWidth: 1, borderBottomColor: colors.slate200, padding: 12, gap: 8 },
-  presetRow: { flexDirection: 'row', gap: 8 },
-  presetBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: colors.slate200, backgroundColor: colors.white },
-  presetBtnActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  presetText: { fontSize: 12, fontWeight: '600', color: colors.slate500 },
-  presetTextActive: { color: colors.white },
   filterChipsRow: { flexDirection: 'row', gap: 8 },
   chip: { flex: 1, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.slate200, backgroundColor: colors.white },
   chipText: { fontSize: 12, fontWeight: '600', color: colors.ink },
@@ -376,18 +408,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.slate50,
     borderBottomWidth: 1,
     borderBottomColor: colors.slate200,
-    paddingVertical: 6,
+    paddingVertical: 8,
     paddingHorizontal: 6,
   },
-  th: { fontSize: 9, fontWeight: '700', color: colors.slate500, textTransform: 'uppercase' },
-  tr: { flexDirection: 'row', paddingVertical: 6, paddingHorizontal: 6, borderBottomWidth: 1, borderBottomColor: colors.slate100 },
+  th: { fontSize: 9, fontWeight: '700', color: colors.slate500, textTransform: 'uppercase', paddingHorizontal: 2 },
+  tr: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 6, borderBottomWidth: 1, borderBottomColor: colors.slate100 },
   trAlt: { backgroundColor: colors.slate50 },
-  td: { fontSize: 10, color: colors.slate500 },
+  td: { fontSize: 10, color: colors.slate500, paddingHorizontal: 2 },
   tdName: { color: colors.ink, fontWeight: '600' },
   dim: { color: colors.slate400 },
   footerRow: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 6, backgroundColor: colors.slate50, borderTopWidth: 2, borderTopColor: colors.slate200 },
-  tf: { fontSize: 10, fontWeight: '700', color: colors.ink },
-  empty: { textAlign: 'center', marginTop: 40, color: colors.slate400 },
+  tf: { fontSize: 10, fontWeight: '700', color: colors.ink, paddingHorizontal: 2 },
+  empty: { textAlign: 'center', marginTop: 40, color: colors.slate400, width: 400 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' },
   modalSheet: { backgroundColor: colors.white, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingVertical: 8, maxHeight: '60%' },
   modalOption: { paddingHorizontal: 20, paddingVertical: 14 },

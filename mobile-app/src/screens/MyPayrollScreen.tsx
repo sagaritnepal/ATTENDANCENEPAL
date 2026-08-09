@@ -6,6 +6,7 @@ import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '../lib
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '../types';
 import { colors } from '../theme';
 import { ChevronIcon } from '../components/icons';
+import SimpleLineChart from '../components/SimpleLineChart';
 
 const OT_HOURS_PER_DAY = 8;
 const OT_MULTIPLIER = 1.5;
@@ -243,15 +244,27 @@ export default function MyPayrollScreen() {
         ListEmptyComponent={<Text style={styles.empty}>No attendance records for this month yet.</Text>}
         ListFooterComponent={
           dayRows.length > 0 ? (
-            <View style={styles.footerRow}>
-              <Text style={[styles.tf, { flex: 0.15 }]}>Total</Text>
-              <Text style={[styles.tf, { flex: 0.15 }]}>{fmtHrs(totals.totalHours)}</Text>
-              <Text style={[styles.tf, { flex: 0.15, color: colors.infoText }]}>{fmtHrs(totals.overtimeHours)}</Text>
-              <Text style={[styles.tf, { flex: 0.2 }]}>
-                <Text style={{ color: colors.goodText }}>{totals.presentDays}P</Text> <Text style={{ color: colors.criticalText }}>{totals.absentDays}A</Text>
-              </Text>
-              <Text style={[styles.tf, { flex: 0.35, color: colors.goodText }]}>{Math.round(totals.totalSalary).toLocaleString()}</Text>
-            </View>
+            <>
+              <View style={styles.footerRow}>
+                <Text style={[styles.tf, { flex: 0.15 }]}>Total</Text>
+                <Text style={[styles.tf, { flex: 0.15 }]}>{fmtHrs(totals.totalHours)}</Text>
+                <Text style={[styles.tf, { flex: 0.15, color: colors.infoText }]}>{fmtHrs(totals.overtimeHours)}</Text>
+                <Text style={[styles.tf, { flex: 0.2 }]}>
+                  <Text style={{ color: colors.goodText }}>{totals.presentDays}P</Text> <Text style={{ color: colors.criticalText }}>{totals.absentDays}A</Text>
+                </Text>
+                <Text style={[styles.tf, { flex: 0.35, color: colors.goodText }]}>{Math.round(totals.totalSalary).toLocaleString()}</Text>
+              </View>
+              <View style={styles.chartCard}>
+                <Text style={styles.sectionHeading}>Earning Trend</Text>
+                <SimpleLineChart
+                  color="#7c3aed"
+                  data={dayRows.map(row => {
+                    const earning = row.checkIn ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true) : null;
+                    return { label: row.date.slice(8, 10), value: earning ? Math.round(earning.total) : 0 };
+                  })}
+                />
+              </View>
+            </>
           ) : null
         }
       />
@@ -272,6 +285,7 @@ const styles = StyleSheet.create({
   periodArrow: { padding: 8 },
   periodLabel: { flex: 1, textAlign: 'center', fontSize: 13, fontWeight: '700', color: colors.ink },
   sectionHeading: { fontSize: 13, fontWeight: '700', color: colors.ink, marginBottom: 8 },
+  chartCard: { backgroundColor: colors.white, borderRadius: 12, borderWidth: 1, borderColor: colors.slate200, padding: 12, marginTop: 16 },
   tableHeader: { flexDirection: 'row', backgroundColor: colors.slate100, paddingVertical: 6, paddingHorizontal: 8, borderTopLeftRadius: 8, borderTopRightRadius: 8 },
   th: { fontSize: 9, fontWeight: '700', color: colors.slate500, textTransform: 'uppercase', textAlign: 'center' },
   tr: { flexDirection: 'row', paddingVertical: 6, paddingHorizontal: 8, backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.slate100 },
