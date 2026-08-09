@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
@@ -82,6 +83,14 @@ function parseCsv(text: string): string[][] {
 }
 
 export default function EmployeesPage() {
+  return (
+    <Suspense fallback={null}>
+      <EmployeesView />
+    </Suspense>
+  );
+}
+
+function EmployeesView() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [rosterEmployeeIds, setRosterEmployeeIds] = useState<Set<string>>(new Set());
@@ -224,12 +233,15 @@ export default function EmployeesPage() {
 
   useEffect(reload, []);
 
-  // Deep-link support for the sidebar's "Resigned" tab (/employees?filter=Resigned)
-  // — picked up once on mount, same as any other bookmark/shared link.
+  // Deep-link support for the sidebar's "Resigned" tab (/employees?filter=Resigned).
+  // useSearchParams (not window.location) is required here — this route
+  // doesn't remount when only its query string changes via a client-side
+  // Link, so a mount-only read of window.location.search never re-fired.
+  const searchParams = useSearchParams();
+  const filterParam = searchParams.get('filter');
   useEffect(() => {
-    const f = new URLSearchParams(window.location.search).get('filter');
-    if (f) setFilter(f);
-  }, []);
+    if (filterParam) setFilter(filterParam);
+  }, [filterParam]);
 
   // Let Escape close the Add Employee modal — the mobile/back-button
   // expectation for a modal that otherwise only closes via its own buttons.
@@ -630,12 +642,14 @@ export default function EmployeesPage() {
           >
             {importing ? 'Importing…' : '⭱ Import CSV'}
           </button>
-          <button
-            onClick={() => setShowForm(true)}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
-          >
-            + Add Employee
-          </button>
+          {filter !== 'Resigned' && (
+            <button
+              onClick={() => setShowForm(true)}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
+            >
+              + Add Employee
+            </button>
+          )}
         </div>
       </div>
 
