@@ -21,6 +21,17 @@ export type Employee = {
   profile_photo_url: string | null;
 };
 
+export type Shift = {
+  id: string;
+  name: string;
+  type: 'fixed' | 'flexible' | 'rotational';
+  start_time: string;
+  end_time: string;
+  grace_minutes: number;
+  department: string | null;
+  employee_id: string | null;
+};
+
 export type PayrollSummary = {
   id: string;
   employee_id: string;
