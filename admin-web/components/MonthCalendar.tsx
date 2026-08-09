@@ -139,23 +139,6 @@ export default function MonthCalendar({ dayStatus, leaveDates, weekOffDates, sel
             ? dayFlags(status, onLeave, onWeekOff, cell.adKey <= todayKey)
             : dayFlags(undefined, false, false, false);
           const caption = cell.inMonth ? captionFor(flags) : undefined;
-          const attendanceBg = onLeave || onWeekOff
-            ? 'bg-purple-50'
-            : flags.present || flags.late || flags.early
-              ? 'bg-good-bg'
-              : flags.checkedInOnly
-                ? 'bg-pink-50'
-                : flags.absent
-                  ? 'bg-slate-100'
-                  : '';
-          // The bottom dot's own color, so the overtime corner dot can skip
-          // itself if it would otherwise duplicate a color already showing
-          // on this same cell (checkedInOnly and overtime can't actually
-          // co-occur — overtime needs a checkout, checkedInOnly means there
-          // isn't one yet — but this keeps that guarantee explicit rather
-          // than implicit).
-          const bottomColorIsInfo = !flags.early && flags.checkedInOnly;
-          const showOvertimeDot = flags.overtime && !bottomColorIsInfo;
           return (
             <button
               key={`${cell.adKey}-${i}`}
@@ -163,7 +146,7 @@ export default function MonthCalendar({ dayStatus, leaveDates, weekOffDates, sel
               title={caption}
               className={`relative flex min-h-[52px] flex-col items-center justify-center rounded-lg text-sm sm:min-h-[60px] ${
                 !cell.inMonth ? 'text-slate-300' : cell.isToday ? 'font-bold text-accent' : 'text-ink'
-              } ${selected ? 'bg-accent text-white' : `${attendanceBg} hover:bg-slate-100`}`}
+              } ${selected ? 'bg-accent text-white' : 'hover:bg-slate-100'}`}
             >
               {flags.late && (
                 <span
@@ -174,14 +157,17 @@ export default function MonthCalendar({ dayStatus, leaveDates, weekOffDates, sel
                   Late
                 </span>
               )}
-              {showOvertimeDot && (
+              {flags.overtime && (
                 <span
-                  title="Overtime"
-                  className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-info'}`}
-                />
+                  className={`absolute right-1 top-1 rounded-full px-1 py-px text-[8px] font-bold uppercase leading-none shadow-sm ${
+                    selected ? 'bg-white text-accent' : 'bg-info text-white'
+                  }`}
+                >
+                  OT
+                </span>
               )}
               <span>{cell.displayDay}</span>
-              {flags.early ? (
+              {flags.early && (
                 <span
                   className={`absolute bottom-1 rounded-full px-1.5 py-px text-[8px] font-bold uppercase leading-none shadow-sm ${
                     selected ? 'bg-white text-accent' : 'bg-critical text-white'
@@ -189,15 +175,7 @@ export default function MonthCalendar({ dayStatus, leaveDates, weekOffDates, sel
                 >
                   Early
                 </span>
-              ) : flags.leave || flags.weekOff ? (
-                <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-purple-500'}`} />
-              ) : flags.absent ? (
-                <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-slate-400'}`} />
-              ) : flags.present ? (
-                <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-good'}`} />
-              ) : flags.checkedInOnly ? (
-                <span className={`absolute bottom-1.5 h-1.5 w-1.5 rounded-full ${selected ? 'bg-white' : 'bg-pink-500'}`} />
-              ) : null}
+              )}
             </button>
           );
         })}
@@ -205,25 +183,13 @@ export default function MonthCalendar({ dayStatus, leaveDates, weekOffDates, sel
 
       <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-good" /> Present
-        </span>
-        <span className="flex items-center gap-1.5">
           <span className="rounded-full bg-warning px-1.5 py-px text-[8px] font-bold uppercase leading-none text-white">Late</span> Late in
         </span>
         <span className="flex items-center gap-1.5">
           <span className="rounded-full bg-critical px-1.5 py-px text-[8px] font-bold uppercase leading-none text-white">Early</span> Early out
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-pink-500" /> Checked in
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-info" /> Overtime
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-purple-500" /> On leave / Week Off
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-slate-400" /> Absent
+          <span className="rounded-full bg-info px-1.5 py-px text-[8px] font-bold uppercase leading-none text-white">OT</span> Overtime
         </span>
       </div>
     </div>
