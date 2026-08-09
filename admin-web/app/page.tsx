@@ -6,9 +6,9 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
-import type { AttendanceLog, Device, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
+import type { AttendanceLog, Device, Employee, LeaveRequest, Shift } from '@/lib/types';
 import { dateKey, firstCheckIn, isLate, last7Days, presentEmployeeIds, WEEKDAY_LABEL } from '@/lib/metrics';
-import type { DailyShiftByDate } from '@/lib/shift';
+import { applyOvernightShiftCorrection, computeDayStatusForResolvedShift, resolveShiftForDate, type DailyShiftByDate } from '@/lib/shift';
 
 const DEPT_COLORS: Record<string, string> = {
   Engineering: '#0d9488',
@@ -29,7 +29,6 @@ export default function DashboardPage() {
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [onLeave, setOnLeave] = useState<LeaveRequest[]>([]);
-  const [todaySummaries, setTodaySummaries] = useState<PayrollSummary[]>([]);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [todayRoster, setTodayRoster] = useState<{ employee_id: string; shift_id: string | null }[]>([]);
   const [detailKey, setDetailKey] = useState<DetailKey | null>(null);
@@ -49,11 +48,6 @@ export default function DashboardPage() {
       .lte('start_date', today)
       .gte('end_date', today)
       .then(({ data }) => setOnLeave(data ?? []));
-    supabase
-      .from('payroll_summaries')
-      .select('*')
-      .eq('work_date', today)
-      .then(({ data }) => setTodaySummaries(data ?? []));
     supabase
       .from('employee_daily_shifts')
       .select('employee_id, shift_id')
@@ -161,20 +155,51 @@ export default function DashboardPage() {
   );
   const absentCount = absentRows.length;
 
+  // payroll_summaries only gets a row for a date once the nightly job (or a
+  // manual "Recalculate month") has processed it — for TODAY that row never
+  // exists yet, so Total Work Hours/Overtime must be computed live from raw
+  // punches instead, same as My Calendar and the Attendance Report already
+  // do, rather than reading a table that's always empty for today.
+  const todayDayStatus = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof computeDayStatusForResolvedShift>>();
+    for (const emp of activeEmployees) {
+      const empLogs = logs.filter(l => l.employee_id === emp.id);
+      if (empLogs.length === 0) continue;
+      const byDate = new Map<string, AttendanceLog[]>();
+      for (const log of empLogs) {
+        const key = dateKey(log.punch_time);
+        const list = byDate.get(key);
+        if (list) list.push(log);
+        else byDate.set(key, [log]);
+      }
+      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate);
+      const dayLogs = byDate.get(today);
+      if (!dayLogs || dayLogs.length === 0) continue;
+      const resolved = resolveShiftForDate(emp, shifts, today, dailyShiftByDate);
+      map.set(emp.id, computeDayStatusForResolvedShift(dayLogs, resolved));
+    }
+    return map;
+  }, [activeEmployees, logs, shifts, dailyShiftByDate, today]);
+
   const workHoursRows = useMemo<DetailRow[]>(() => {
-    const byId = new Map(employees.map(e => [e.id, e.name]));
-    return [...todaySummaries]
-      .sort((a, b) => Number(b.total_hours) - Number(a.total_hours))
-      .map(s => ({ id: s.id, primary: byId.get(s.employee_id) ?? 'Unknown', secondary: `${Number(s.total_hours).toFixed(1)} hrs` }));
-  }, [todaySummaries, employees]);
+    const entries: { id: string; name: string; hours: number }[] = [];
+    for (const emp of activeEmployees) {
+      const status = todayDayStatus.get(emp.id);
+      if (!status?.hasOut) continue;
+      entries.push({ id: emp.id, name: emp.name, hours: status.totalMinutes / 60 });
+    }
+    return entries.sort((a, b) => b.hours - a.hours).map(e => ({ id: e.id, primary: e.name, secondary: `${e.hours.toFixed(1)} hrs` }));
+  }, [activeEmployees, todayDayStatus]);
 
   const overtimeRows = useMemo<DetailRow[]>(() => {
-    const byId = new Map(employees.map(e => [e.id, e.name]));
-    return todaySummaries
-      .filter(s => Number(s.overtime_hours) > 0)
-      .sort((a, b) => Number(b.overtime_hours) - Number(a.overtime_hours))
-      .map(s => ({ id: s.id, primary: byId.get(s.employee_id) ?? 'Unknown', secondary: `${Number(s.overtime_hours).toFixed(1)} hrs OT` }));
-  }, [todaySummaries, employees]);
+    const entries: { id: string; name: string; ot: number }[] = [];
+    for (const emp of activeEmployees) {
+      const status = todayDayStatus.get(emp.id);
+      if (!status || status.overtimeMinutes <= 0) continue;
+      entries.push({ id: emp.id, name: emp.name, ot: status.overtimeMinutes / 60 });
+    }
+    return entries.sort((a, b) => b.ot - a.ot).map(e => ({ id: e.id, primary: e.name, secondary: `${e.ot.toFixed(1)} hrs OT` }));
+  }, [activeEmployees, todayDayStatus]);
 
   const detailPanels: Record<DetailKey, { title: string; rows: DetailRow[]; emptyText: string }> = {
     total: { title: 'Total Employees', rows: totalEmployeeRows, emptyText: 'No active employees.' },
@@ -186,8 +211,19 @@ export default function DashboardPage() {
     overtime: { title: 'Overtime', rows: overtimeRows, emptyText: 'No overtime recorded today.' },
   };
 
-  const todayWorkHours = useMemo(() => todaySummaries.reduce((sum, s) => sum + Number(s.total_hours), 0), [todaySummaries]);
-  const todayOvertimeHours = useMemo(() => todaySummaries.reduce((sum, s) => sum + Number(s.overtime_hours), 0), [todaySummaries]);
+  const todayWorkHours = useMemo(() => {
+    let sum = 0;
+    for (const status of todayDayStatus.values()) {
+      if (status.hasOut) sum += status.totalMinutes / 60;
+    }
+    return sum;
+  }, [todayDayStatus]);
+
+  const todayOvertimeHours = useMemo(() => {
+    let sum = 0;
+    for (const status of todayDayStatus.values()) sum += status.overtimeMinutes / 60;
+    return sum;
+  }, [todayDayStatus]);
 
   const trend = useMemo(() => {
     return last7Days().map(day => {
