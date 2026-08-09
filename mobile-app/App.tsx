@@ -14,6 +14,7 @@ import DashboardScreen from './src/screens/DashboardScreen';
 import LeaveRequestScreen from './src/screens/LeaveRequestScreen';
 import EmployeesScreen from './src/screens/EmployeesScreen';
 import PayrollScreen from './src/screens/PayrollScreen';
+import { colors } from './src/theme';
 
 // Employee-facing flow — still a plain stack, unchanged.
 export type EmployeeStackParamList = {
@@ -164,11 +165,16 @@ export default function App() {
           ) : profile?.role === 'admin' ? (
             <AdminTab.Navigator
               screenOptions={{
-                headerStyle: { backgroundColor: '#023c69' },
-                headerTintColor: '#fff',
+                // Matches admin-web's TopBar: white header, dark text, no
+                // colored band — the web app never puts a solid brand color
+                // behind its page titles.
+                headerStyle: { backgroundColor: colors.white },
+                headerTintColor: colors.ink,
                 headerTitleStyle: { fontWeight: '700' },
-                tabBarActiveTintColor: '#0d9488',
-                tabBarInactiveTintColor: '#94a3b8',
+                headerShadowVisible: true,
+                tabBarStyle: { backgroundColor: colors.white, borderTopColor: colors.slate200 },
+                tabBarActiveTintColor: colors.accent,
+                tabBarInactiveTintColor: colors.slate400,
               }}
             >
               <AdminTab.Screen
@@ -193,7 +199,13 @@ export default function App() {
               />
             </AdminTab.Navigator>
           ) : (
-            <EmployeeStack.Navigator>
+            <EmployeeStack.Navigator
+              screenOptions={{
+                headerStyle: { backgroundColor: colors.white },
+                headerTintColor: colors.ink,
+                headerTitleStyle: { fontWeight: '700' },
+              }}
+            >
               <EmployeeStack.Screen name="CheckIn" component={CheckInScreen} options={{ title: 'Check In / Out' }} />
               <EmployeeStack.Screen name="History" component={HistoryScreen} options={{ title: 'My Attendance' }} />
               <EmployeeStack.Screen name="Leave" component={LeaveRequestScreen} options={{ title: 'Leave Requests' }} />
@@ -210,16 +222,19 @@ export default function App() {
 // unusably wide layout, centering it as a phone-width card instead.
 const styles = StyleSheet.create({
   webOuter: (Platform.OS === 'web'
-    ? { flex: 1, alignItems: 'center', backgroundColor: '#e2e8f0', minHeight: '100vh' }
+    ? { flex: 1, alignItems: 'center', backgroundColor: colors.slate200, minHeight: '100vh' }
     : { flex: 1 }) as object,
   webInner: (Platform.OS === 'web'
-    ? { flex: 1, width: '100%', maxWidth: 480, backgroundColor: '#fff', boxShadow: '0 0 24px rgba(0,0,0,0.08)' }
+    ? { flex: 1, width: '100%', maxWidth: 480, backgroundColor: colors.white, boxShadow: '0 0 24px rgba(0,0,0,0.08)' }
     : { flex: 1 }) as object,
   lockScreen: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#023c69',
+    // The web app has no equivalent screen — this borrows the sidebar's real
+    // dark navy instead of a made-up color, so it still reads as "this app"
+    // rather than an unrelated shade.
+    backgroundColor: colors.sidebar,
     paddingHorizontal: 32,
   },
   lockIcon: {
@@ -232,8 +247,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   lockIconGlyph: { fontSize: 32 },
-  lockTitle: { fontSize: 20, fontWeight: '700', color: '#fff', marginBottom: 6 },
+  lockTitle: { fontSize: 20, fontWeight: '700', color: colors.white, marginBottom: 6 },
   lockSubtitle: { fontSize: 14, color: 'rgba(255,255,255,0.7)', textAlign: 'center', marginBottom: 24 },
-  unlockButton: { backgroundColor: '#0d9488', paddingHorizontal: 32, paddingVertical: 12, borderRadius: 10 },
-  unlockButtonText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  unlockButton: { backgroundColor: colors.accent, paddingHorizontal: 32, paddingVertical: 12, borderRadius: 10 },
+  unlockButtonText: { color: colors.white, fontSize: 15, fontWeight: '600' },
 });

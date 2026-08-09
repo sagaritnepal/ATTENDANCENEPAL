@@ -7,7 +7,7 @@
     "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
     "splash": {
-      "backgroundColor": "#023c69"
+      "backgroundColor": "#ffffff"
     },
     "ios": {
       "supportsTablet": true,
