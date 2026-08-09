@@ -5,6 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
     "splash": {
       "backgroundColor": "#023c69"
     },
@@ -18,7 +19,11 @@
     "android": {
       "package": "com.attendancenepal.mobile",
       "versionCode": 1,
-      "permissions": ["CAMERA", "ACCESS_FINE_LOCATION"]
+      "permissions": ["CAMERA", "ACCESS_FINE_LOCATION"],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+      }
     },
     "web": {
       "bundler": "metro"
