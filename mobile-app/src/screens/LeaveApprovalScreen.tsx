@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase';
 import type { Employee, LeaveRequest } from '../types';
 import { colors } from '../theme';
 import Badge from '../components/Badge';
+import { formatAdDate } from '../lib/calendar';
+import { useCalendarSystem } from '../lib/CalendarSystemContext';
 
 const FILTERS = ['pending', 'approved', 'rejected', 'All'] as const;
 
@@ -12,6 +14,7 @@ function daysBetween(start: string, end: string) {
 }
 
 export default function LeaveApprovalScreen() {
+  const { system } = useCalendarSystem();
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>('pending');
@@ -57,7 +60,7 @@ export default function LeaveApprovalScreen() {
               <Badge tone={r.status === 'approved' ? 'good' : r.status === 'rejected' ? 'critical' : 'warning'}>{r.status}</Badge>
             </View>
             <Text style={styles.dates}>
-              {r.start_date} → {r.end_date} <Text style={styles.dim}>· {daysBetween(r.start_date, r.end_date)}d</Text>
+              {formatAdDate(r.start_date, system)} → {formatAdDate(r.end_date, system)} <Text style={styles.dim}>· {daysBetween(r.start_date, r.end_date)}d</Text>
             </Text>
             {r.reason ? <Text style={styles.reason}>{r.reason}</Text> : null}
             {r.status === 'pending' && (

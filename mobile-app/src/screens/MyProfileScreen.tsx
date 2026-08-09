@@ -3,6 +3,8 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Image,
 import { supabase } from '../lib/supabase';
 import type { Branch, Employee } from '../types';
 import { colors } from '../theme';
+import { formatAdDate } from '../lib/calendar';
+import { useCalendarSystem } from '../lib/CalendarSystemContext';
 
 const EMPTY_FORM = { name: '', email: '', phone: '', address: '' };
 const EMPTY_EMERGENCY = { emergency_contact_name: '', emergency_contact_relationship: '', emergency_contact_phone: '' };
@@ -15,6 +17,7 @@ function tenureDays(dateOfJoining: string | null, resignedAt: string | null) {
 }
 
 export default function MyProfileScreen() {
+  const { system } = useCalendarSystem();
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -165,7 +168,7 @@ export default function MyProfileScreen() {
             <DetailRow label="Current Salary" value={employee.salary != null ? employee.salary.toLocaleString() : null} />
             <DetailRow label="PAN No." value={employee.pan_no} />
             <DetailRow label="SSF No." value={employee.ssf_no} />
-            <DetailRow label="Date of joining" value={employee.date_of_joining} />
+            <DetailRow label="Date of joining" value={employee.date_of_joining ? formatAdDate(employee.date_of_joining, system) : null} />
             <DetailRow label={employee.resigned_at ? 'Days worked' : 'Days with company'} value={days !== null ? `${days} days` : null} />
             <Text style={styles.subheading}>Emergency contact</Text>
             <DetailRow

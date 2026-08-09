@@ -6,6 +6,9 @@ import { selectDayPunches } from '../lib/shift';
 import type { AttendanceGpsRequest, AttendanceLog, CorrectionRequest } from '../types';
 import { colors } from '../theme';
 import Badge from '../components/Badge';
+import { formatAdDate, localDateKey } from '../lib/calendar';
+import type { CalendarSystem } from '../lib/calendar';
+import { useCalendarSystem } from '../lib/CalendarSystemContext';
 
 type ViewMode = 'menu' | 'fix';
 type PunchModal = {
@@ -28,12 +31,12 @@ function statusTone(status: string) {
 function formatTime(value: string | null) {
   return value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
 }
-function formatDateTime(value: string) {
-  const d = new Date(value);
-  return `${d.toLocaleDateString()} · ${formatTime(value)}`;
+function formatDateTime(value: string, system: CalendarSystem) {
+  return `${formatAdDate(localDateKey(value), system)} · ${formatTime(value)}`;
 }
 
 export default function CheckInScreen({ navigation }: any) {
+  const { system } = useCalendarSystem();
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>('menu');
   const [busy, setBusy] = useState(false);
@@ -251,7 +254,7 @@ export default function CheckInScreen({ navigation }: any) {
         renderItem={({ item }) => (
           <View style={styles.row}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle}>{item.work_date}</Text>
+              <Text style={styles.rowTitle}>{formatAdDate(item.work_date, system)}</Text>
               <Text style={styles.rowSub}>
                 In {formatTime(item.requested_check_in)} · Out {formatTime(item.requested_check_out)}
               </Text>
@@ -300,7 +303,7 @@ export default function CheckInScreen({ navigation }: any) {
                   <View key={r.id} style={styles.row}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.rowTitle}>{r.punch_type === '0' ? 'Check In' : 'Check Out'}</Text>
-                      <Text style={styles.rowSub}>{formatDateTime(r.punch_time)}</Text>
+                      <Text style={styles.rowSub}>{formatDateTime(r.punch_time, system)}</Text>
                     </View>
                     <Badge tone={statusTone(r.status)}>{r.status === 'approved' ? 'Accepted' : r.status}</Badge>
                   </View>
@@ -328,7 +331,7 @@ export default function CheckInScreen({ navigation }: any) {
               <Text style={{ fontSize: 11, fontWeight: '700', color: item.punchType === '0' ? colors.goodText : colors.warningText }}>{item.punchType === '0' ? 'IN' : 'OUT'}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle}>{formatDateTime(item.punchTime)}</Text>
+              <Text style={styles.rowTitle}>{formatDateTime(item.punchTime, system)}</Text>
               <Text style={[styles.rowSub, { textTransform: 'capitalize' }]}>{item.method}</Text>
             </View>
             <Badge tone={item.accepted ? 'good' : 'critical'}>{item.accepted ? 'Accepted' : 'Rejected'}</Badge>
@@ -341,7 +344,7 @@ export default function CheckInScreen({ navigation }: any) {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalSheet}>
             <Text style={styles.modalTitle}>Confirm {modal?.punchType === '0' ? 'Check In' : 'Check Out'}</Text>
-            <Text style={styles.modalSub}>{modal ? formatDateTime(modal.punchTime) : ''}</Text>
+            <Text style={styles.modalSub}>{modal ? formatDateTime(modal.punchTime, system) : ''}</Text>
             {modal?.status === 'locating' && <Text style={styles.modalStatus}>📍 Getting your location…</Text>}
             {modal?.status === 'ready' && <Text style={[styles.modalStatus, { color: colors.goodText }]}>📍 Location confirmed</Text>}
             {modal?.status === 'error' && (

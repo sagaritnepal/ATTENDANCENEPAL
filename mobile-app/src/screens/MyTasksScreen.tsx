@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase';
 import type { Task, TaskStatus, TaskTimeLog } from '../types';
 import { colors } from '../theme';
 import Badge from '../components/Badge';
+import { formatAdDate } from '../lib/calendar';
+import { useCalendarSystem } from '../lib/CalendarSystemContext';
 
 const STATUS_TONE: Record<TaskStatus, 'good' | 'warning' | 'critical' | 'info' | 'neutral'> = {
   pending: 'neutral',
@@ -22,6 +24,7 @@ function formatElapsed(startedAt: string, now: number) {
 }
 
 export default function MyTasksScreen() {
+  const { system } = useCalendarSystem();
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -169,7 +172,7 @@ export default function MyTasksScreen() {
               </View>
               {t.description ? <Text style={styles.desc}>{t.description}</Text> : null}
               <Text style={styles.meta}>
-                {t.points} pts{t.due_date ? ` · Due ${t.due_date}` : ''}
+                {t.points} pts{t.due_date ? ` · Due ${formatAdDate(t.due_date, system)}` : ''}
                 {hours > 0 ? ` · ${hours} hrs logged` : ''}
               </Text>
               {t.review_note ? (

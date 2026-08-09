@@ -5,6 +5,8 @@ import { nepalTodayIso } from '../lib/shift';
 import type { Employee, Task, TaskStatus } from '../types';
 import { colors } from '../theme';
 import Badge from '../components/Badge';
+import { formatAdDate } from '../lib/calendar';
+import { useCalendarSystem } from '../lib/CalendarSystemContext';
 
 const STATUS_TONE: Record<TaskStatus, 'good' | 'warning' | 'critical' | 'info' | 'neutral'> = {
   pending: 'neutral',
@@ -18,6 +20,7 @@ const FILTERS: (TaskStatus | 'All')[] = ['pending', 'in_progress', 'submitted', 
 const EMPTY_FORM = { employee_id: '', title: '', description: '', points: '10', due_date: '' };
 
 export default function TasksScreen() {
+  const { system } = useCalendarSystem();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [filter, setFilter] = useState<TaskStatus | 'All'>('submitted');
@@ -149,7 +152,7 @@ export default function TasksScreen() {
               </Text>
             ) : null}
             <Text style={styles.meta}>
-              {t.points} pts · Due {t.due_date ?? '—'}
+              {t.points} pts · Due {t.due_date ? formatAdDate(t.due_date, system) : '—'}
             </Text>
             {t.status === 'submitted' ? (
               <TouchableOpacity style={styles.reviewBtn} onPress={() => openReview(t)}>

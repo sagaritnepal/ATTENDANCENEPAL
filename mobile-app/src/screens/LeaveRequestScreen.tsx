@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase';
 import type { LeaveRequest, LeaveType } from '../types';
 import { colors } from '../theme';
 import Badge from '../components/Badge';
+import { formatAdDate } from '../lib/calendar';
+import { useCalendarSystem } from '../lib/CalendarSystemContext';
 
 const LEAVE_TYPES: LeaveType[] = ['casual', 'sick', 'annual', 'unpaid'];
 
@@ -14,6 +16,7 @@ function statusTone(status: string) {
 }
 
 export default function LeaveRequestScreen() {
+  const { system } = useCalendarSystem();
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [leaveType, setLeaveType] = useState<LeaveType>('casual');
@@ -119,7 +122,7 @@ export default function LeaveRequestScreen() {
         <View style={styles.row}>
           <View style={{ flex: 1 }}>
             <Text style={styles.rowType}>
-              {item.leave_type} · {item.start_date} → {item.end_date}
+              {item.leave_type} · {formatAdDate(item.start_date, system)} → {formatAdDate(item.end_date, system)}
             </Text>
             {item.reason ? <Text style={styles.rowReason}>{item.reason}</Text> : null}
           </View>

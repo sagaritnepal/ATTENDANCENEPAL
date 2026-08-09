@@ -5,6 +5,8 @@ import { formatHoursMinutes } from '../lib/shift';
 import type { AttendanceGpsRequest, CorrectionRequest, Employee, PayrollSummary } from '../types';
 import { colors } from '../theme';
 import Badge from '../components/Badge';
+import { formatAdDate } from '../lib/calendar';
+import { useCalendarSystem } from '../lib/CalendarSystemContext';
 
 const FILTERS = ['pending', 'approved', 'rejected', 'All'] as const;
 
@@ -21,6 +23,7 @@ type UnifiedRequest =
   | { kind: 'gps'; id: string; employee_id: string; status: string; created_at: string; data: AttendanceGpsRequest };
 
 export default function CorrectionsScreen() {
+  const { system } = useCalendarSystem();
   const [requests, setRequests] = useState<CorrectionRequest[]>([]);
   const [gpsRequests, setGpsRequests] = useState<AttendanceGpsRequest[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -97,7 +100,7 @@ export default function CorrectionsScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.otName}>{employeeName(s.employee_id)}</Text>
                       <Text style={styles.otMeta}>
-                        {s.work_date} · {fmtHrs(Number(s.overtime_hours))}
+                        {formatAdDate(s.work_date, system)} · {fmtHrs(Number(s.overtime_hours))}
                       </Text>
                     </View>
                     <TouchableOpacity style={styles.approveBtn} onPress={() => approveOvertime(s.id)}>
@@ -126,7 +129,7 @@ export default function CorrectionsScreen() {
                   <Text style={styles.name}>{employeeName(item.employee_id)}</Text>
                   <Text style={styles.type}>
                     {item.kind === 'correction' ? 'Missed Punch' : item.data.punch_type === '0' ? 'Check In' : 'Check Out'} ·{' '}
-                    {item.kind === 'correction' ? item.data.work_date : item.data.punch_time.slice(0, 10)}
+                    {formatAdDate(item.kind === 'correction' ? item.data.work_date : item.data.punch_time.slice(0, 10), system)}
                   </Text>
                 </View>
                 <Badge tone={item.status === 'approved' ? 'good' : item.status === 'rejected' ? 'critical' : 'warning'}>{item.status}</Badge>
