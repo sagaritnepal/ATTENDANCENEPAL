@@ -48,6 +48,18 @@ function toMinutes(hhmm: string) {
   return h * 60 + m;
 }
 
+export function formatShiftHours(shift: Pick<Shift, 'start_time' | 'end_time'>) {
+  const hh = (t: string) => t.slice(0, 2);
+  return `${shift.start_time.slice(0, 5)}–${shift.end_time.slice(0, 5)} (${hh(shift.start_time)}-${hh(shift.end_time)})`;
+}
+
+/** Minutes -> "Xh Ym". */
+export function formatHoursMinutes(minutes: number) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}h ${m}m`;
+}
+
 /** Asia/Kathmandu is a fixed UTC+5:45 offset (no DST). */
 const NEPAL_OFFSET_MINUTES = 5 * 60 + 45;
 

@@ -1,9 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, Button, FlatList, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { supabase } from '../lib/supabase';
 import type { LeaveRequest, LeaveType } from '../types';
+import { colors } from '../theme';
+import Badge from '../components/Badge';
 
 const LEAVE_TYPES: LeaveType[] = ['casual', 'sick', 'annual', 'unpaid'];
+
+function statusTone(status: string) {
+  if (status === 'approved') return 'good' as const;
+  if (status === 'rejected') return 'critical' as const;
+  return 'warning' as const;
+}
 
 export default function LeaveRequestScreen() {
   const [employeeId, setEmployeeId] = useState<string | null>(null);
@@ -14,6 +22,7 @@ export default function LeaveRequestScreen() {
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function reload(empId: string) {
     supabase
@@ -30,11 +39,7 @@ export default function LeaveRequestScreen() {
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) return;
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('employee_id')
-        .eq('id', data.user.id)
-        .single();
+      const { data: profile } = await supabase.from('profiles').select('employee_id').eq('id', data.user.id).single();
       if (profile?.employee_id) {
         setEmployeeId(profile.employee_id);
         reload(profile.employee_id);
@@ -45,12 +50,17 @@ export default function LeaveRequestScreen() {
   }, []);
 
   async function handleSubmit() {
-    if (!employeeId) return Alert.alert('No employee linked to this account');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
-      return Alert.alert('Use YYYY-MM-DD for both dates');
+    setError(null);
+    if (!employeeId) {
+      setError('Your account isn’t linked to an employee record yet.');
+      return;
+    }
+    if (!startDate || !endDate) {
+      setError('Pick both a start date and an end date (YYYY-MM-DD).');
+      return;
     }
     setSubmitting(true);
-    const { error } = await supabase.from('leave_requests').insert({
+    const { error: insertError } = await supabase.from('leave_requests').insert({
       employee_id: employeeId,
       leave_type: leaveType,
       start_date: startDate,
@@ -58,46 +68,48 @@ export default function LeaveRequestScreen() {
       reason: reason || null,
     });
     setSubmitting(false);
-    if (error) return Alert.alert('Request failed', error.message);
+    if (insertError) {
+      setError(insertError.message);
+      return;
+    }
     setStartDate('');
     setEndDate('');
     setReason('');
     reload(employeeId);
-    Alert.alert('Submitted', 'Your leave request is pending approval.');
   }
 
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   return (
     <FlatList
+      style={styles.container}
       contentContainerStyle={styles.list}
       ListHeaderComponent={
         <View style={styles.form}>
           <Text style={styles.label}>Type</Text>
           <View style={styles.typeRow}>
             {LEAVE_TYPES.map(t => (
-              <Text
-                key={t}
-                onPress={() => setLeaveType(t)}
-                style={[styles.typeChip, leaveType === t && styles.typeChipActive]}
-              >
-                {t}
-              </Text>
+              <TouchableOpacity key={t} style={[styles.typeChip, leaveType === t && styles.typeChipActive]} onPress={() => setLeaveType(t)}>
+                <Text style={[styles.typeChipText, leaveType === t && styles.typeChipTextActive]}>{t}</Text>
+              </TouchableOpacity>
             ))}
           </View>
-          <Text style={styles.label}>Start date (YYYY-MM-DD)</Text>
-          <TextInput style={styles.input} value={startDate} onChangeText={setStartDate} placeholder="2026-08-01" />
-          <Text style={styles.label}>End date (YYYY-MM-DD)</Text>
-          <TextInput style={styles.input} value={endDate} onChangeText={setEndDate} placeholder="2026-08-03" />
+          <Text style={styles.label}>Start date</Text>
+          <TextInput style={styles.input} value={startDate} onChangeText={setStartDate} placeholder="2026-08-01" placeholderTextColor={colors.slate400} />
+          <Text style={styles.label}>End date</Text>
+          <TextInput style={styles.input} value={endDate} onChangeText={setEndDate} placeholder="2026-08-03" placeholderTextColor={colors.slate400} />
           <Text style={styles.label}>Reason (optional)</Text>
-          <TextInput style={styles.input} value={reason} onChangeText={setReason} multiline />
-          <Button title={submitting ? 'Submitting…' : 'Submit request'} onPress={handleSubmit} disabled={submitting} />
+          <TextInput style={[styles.input, { height: 60 }]} value={reason} onChangeText={setReason} multiline placeholderTextColor={colors.slate400} />
+          {error && <Text style={styles.errorText}>{error}</Text>}
+          <TouchableOpacity style={[styles.submitBtn, submitting && { opacity: 0.6 }]} onPress={handleSubmit} disabled={submitting}>
+            <Text style={styles.submitBtnText}>{submitting ? 'Submitting…' : 'Submit request'}</Text>
+          </TouchableOpacity>
           <Text style={styles.historyHeading}>My requests</Text>
         </View>
       }
@@ -111,7 +123,7 @@ export default function LeaveRequestScreen() {
             </Text>
             {item.reason ? <Text style={styles.rowReason}>{item.reason}</Text> : null}
           </View>
-          <Text style={[styles.status, statusStyle(item.status)]}>{item.status}</Text>
+          <Badge tone={statusTone(item.status)}>{item.status}</Badge>
         </View>
       )}
       ListEmptyComponent={<Text style={styles.empty}>No leave requests yet.</Text>}
@@ -119,33 +131,34 @@ export default function LeaveRequestScreen() {
   );
 }
 
-function statusStyle(status: string) {
-  if (status === 'approved') return { color: '#0d9488' };
-  if (status === 'rejected') return { color: '#ef4444' };
-  return { color: '#f97316' };
-}
-
 const styles = StyleSheet.create({
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  container: { backgroundColor: colors.slate50 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.slate50 },
   list: { padding: 16 },
-  form: { marginBottom: 16 },
-  label: { fontSize: 12, color: '#666', marginBottom: 4, marginTop: 10 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10 },
-  typeRow: { flexDirection: 'row', gap: 8 },
-  typeChip: {
+  form: { backgroundColor: colors.white, borderRadius: 12, borderWidth: 1, borderColor: colors.slate200, padding: 14, marginBottom: 16 },
+  label: { fontSize: 12, fontWeight: '600', color: colors.slate500, marginBottom: 4, marginTop: 10 },
+  input: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 10, padding: 10, fontSize: 14, color: colors.ink },
+  typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  typeChip: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
+  typeChipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  typeChipText: { fontSize: 12, color: colors.slate500, textTransform: 'capitalize' },
+  typeChipTextActive: { color: colors.white, fontWeight: '600' },
+  errorText: { color: colors.criticalText, fontSize: 12, marginTop: 10 },
+  submitBtn: { backgroundColor: colors.accent, borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginTop: 14 },
+  submitBtnText: { color: colors.white, fontWeight: '700', fontSize: 14 },
+  historyHeading: { fontSize: 14, fontWeight: '700', color: colors.ink, marginTop: 20 },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    fontSize: 12,
-    overflow: 'hidden',
+    borderColor: colors.slate200,
+    padding: 12,
+    marginBottom: 8,
+    gap: 8,
   },
-  typeChipActive: { backgroundColor: '#0d9488', color: 'white', borderColor: '#0d9488' },
-  historyHeading: { fontSize: 16, fontWeight: '700', marginTop: 20, marginBottom: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderColor: '#eee' },
-  rowType: { fontWeight: '600', textTransform: 'capitalize' },
-  rowReason: { color: '#888', fontSize: 12, marginTop: 2 },
-  status: { fontWeight: '700', textTransform: 'uppercase', fontSize: 12 },
-  empty: { textAlign: 'center', color: '#888', marginTop: 20 },
+  rowType: { fontWeight: '600', color: colors.ink, textTransform: 'capitalize', fontSize: 13 },
+  rowReason: { color: colors.slate400, fontSize: 12, marginTop: 2 },
+  empty: { textAlign: 'center', color: colors.slate400, marginTop: 20 },
 });

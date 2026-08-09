@@ -1,0 +1,407 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, FlatList } from 'react-native';
+import { supabase } from '../lib/supabase';
+import type { AttendanceLog, Employee, LeaveRequest, Shift } from '../types';
+import {
+  applyOvernightShiftCorrection,
+  computeDayStatusForResolvedShift,
+  formatHoursMinutes,
+  resolveShiftForDate,
+  type DailyShiftByDate,
+  type DayStatus,
+} from '../lib/shift';
+import { colors } from '../theme';
+import Badge from '../components/Badge';
+import MonthCalendarGrid from '../components/MonthCalendarGrid';
+
+const WINDOW_DAYS = 400;
+
+function localDateKey(iso: string) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function datesBetween(start: string, end: string): string[] {
+  const [sy, sm, sd] = start.split('-').map(Number);
+  const [ey, em, ed] = end.split('-').map(Number);
+  const last = new Date(ey, em - 1, ed);
+  const dates: string[] = [];
+  for (let d = new Date(sy, sm - 1, sd); d <= last; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+    dates.push(localDateKey(d.toISOString()));
+  }
+  return dates;
+}
+
+type CardKey = 'hours' | 'late' | 'early' | 'overtime' | 'present' | 'absent';
+type CardEntry = { date: string; minutes: number };
+
+const CARD_STYLES: Record<CardKey, { label: string; bg: string; text: string }> = {
+  hours: { label: 'Total Work Hours', bg: colors.goodBg, text: colors.goodText },
+  late: { label: 'Late In', bg: colors.warningBg, text: colors.warningText },
+  early: { label: 'Early Out', bg: colors.criticalBg, text: colors.criticalText },
+  overtime: { label: 'Overtime', bg: colors.infoBg, text: colors.infoText },
+  present: { label: 'Present Days', bg: colors.accentLight, text: colors.accent },
+  absent: { label: 'Absent Days', bg: colors.criticalBg, text: colors.criticalText },
+};
+
+export default function CalendarScreen() {
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [employeeId, setEmployeeId] = useState('');
+  const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
+  const [logs, setLogs] = useState<AttendanceLog[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [dailyShiftRows, setDailyShiftRows] = useState<{ work_date: string; shift_id: string | null }[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [dayLogs, setDayLogs] = useState<AttendanceLog[]>([]);
+  const [visibleDates, setVisibleDates] = useState<string[]>([]);
+  const [expandedCard, setExpandedCard] = useState<CardKey | null>(null);
+  const [tab, setTab] = useState<'day' | 'leave'>('day');
+
+  useEffect(() => {
+    supabase
+      .from('employees')
+      .select('*')
+      .eq('status', 'active')
+      .order('name')
+      .then(({ data }) => {
+        setEmployees((data as Employee[]) ?? []);
+        if (data && data.length > 0) setEmployeeId(data[0].id);
+      });
+    supabase.from('shifts').select('*').then(({ data }) => setShifts((data as Shift[]) ?? []));
+  }, []);
+
+  useEffect(() => {
+    if (!employeeId) return;
+    setSelectedDate(null);
+    setExpandedCard(null);
+    const since = new Date(Date.now() - WINDOW_DAYS * 86400000).toISOString();
+    supabase
+      .from('attendance_logs')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .gte('punch_time', since)
+      .order('punch_time', { ascending: true })
+      .then(({ data }) => setLogs((data as AttendanceLog[]) ?? []));
+    supabase
+      .from('leave_requests')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .eq('status', 'approved')
+      .then(({ data }) => setLeaveRequests((data as LeaveRequest[]) ?? []));
+    supabase
+      .from('employee_daily_shifts')
+      .select('work_date, shift_id')
+      .eq('employee_id', employeeId)
+      .gte('work_date', since.slice(0, 10))
+      .then(({ data }) => setDailyShiftRows((data as any) ?? []));
+  }, [employeeId]);
+
+  const employee = useMemo(() => employees.find(e => e.id === employeeId) ?? null, [employees, employeeId]);
+
+  const dailyShiftByDate: DailyShiftByDate = useMemo(() => {
+    const map: DailyShiftByDate = new Map();
+    if (!employeeId) return map;
+    const perDate = new Map<string, string | null>();
+    for (const r of dailyShiftRows) perDate.set(r.work_date, r.shift_id);
+    map.set(employeeId, perDate);
+    return map;
+  }, [dailyShiftRows, employeeId]);
+
+  const dayStatus = useMemo(() => {
+    const byDate = new Map<string, AttendanceLog[]>();
+    for (const log of logs) {
+      const key = localDateKey(log.punch_time);
+      const list = byDate.get(key);
+      if (list) list.push(log);
+      else byDate.set(key, [log]);
+    }
+    const map = new Map<string, DayStatus>();
+    if (!employee) return map;
+    applyOvernightShiftCorrection(byDate, logs, employee, shifts, dailyShiftByDate);
+    for (const [date, dLogs] of byDate) {
+      const resolved = resolveShiftForDate(employee, shifts, date, dailyShiftByDate);
+      map.set(date, computeDayStatusForResolvedShift(dLogs, resolved));
+    }
+    return map;
+  }, [logs, employee, shifts, dailyShiftByDate]);
+
+  const leaveByDate = useMemo(() => {
+    const map = new Map<string, LeaveRequest>();
+    for (const lr of leaveRequests) for (const date of datesBetween(lr.start_date, lr.end_date)) map.set(date, lr);
+    return map;
+  }, [leaveRequests]);
+  const leaveDates = useMemo(() => new Set(leaveByDate.keys()), [leaveByDate]);
+
+  const weekOffDates = useMemo(() => {
+    const set = new Set<string>();
+    const perDate = dailyShiftByDate.get(employeeId);
+    if (!perDate) return set;
+    for (const [date, shiftId] of perDate) if (shiftId === null) set.add(date);
+    return set;
+  }, [dailyShiftByDate, employeeId]);
+
+  const monthSummary = useMemo(() => {
+    const hours: CardEntry[] = [];
+    const late: CardEntry[] = [];
+    const early: CardEntry[] = [];
+    const overtime: CardEntry[] = [];
+    const present: CardEntry[] = [];
+    const absent: CardEntry[] = [];
+    let totalWorkMinutes = 0;
+    let overtimeMinutes = 0;
+    const todayKey = localDateKey(new Date().toISOString());
+    for (const date of visibleDates) {
+      const status = dayStatus.get(date);
+      if (status) {
+        present.push({ date, minutes: 0 });
+        if (status.hasOut) {
+          hours.push({ date, minutes: status.totalMinutes });
+          totalWorkMinutes += status.totalMinutes;
+        }
+        if (status.isLate) late.push({ date, minutes: status.lateMinutes });
+        if (status.isEarly) early.push({ date, minutes: status.earlyMinutes });
+        if (status.overtimeMinutes > 0) {
+          overtime.push({ date, minutes: status.overtimeMinutes });
+          overtimeMinutes += status.overtimeMinutes;
+        }
+      } else if (date <= todayKey && !leaveDates.has(date) && !weekOffDates.has(date)) {
+        absent.push({ date, minutes: 0 });
+      }
+    }
+    const byDateDesc = (a: CardEntry, b: CardEntry) => b.date.localeCompare(a.date);
+    return {
+      totalWorkMinutes,
+      overtimeMinutes,
+      entries: { hours: hours.sort(byDateDesc), late: late.sort(byDateDesc), early: early.sort(byDateDesc), overtime: overtime.sort(byDateDesc), present: present.sort(byDateDesc), absent: absent.sort(byDateDesc) } as Record<CardKey, CardEntry[]>,
+    };
+  }, [visibleDates, dayStatus, leaveDates, weekOffDates]);
+
+  const selectedLeave = selectedDate ? leaveByDate.get(selectedDate) ?? null : null;
+  const selectedDaySummary = useMemo(() => {
+    if (dayLogs.length === 0 || !employee || !selectedDate) return null;
+    const resolved = resolveShiftForDate(employee, shifts, selectedDate, dailyShiftByDate);
+    return computeDayStatusForResolvedShift(dayLogs, resolved);
+  }, [dayLogs, employee, shifts, selectedDate, dailyShiftByDate]);
+
+  useEffect(() => {
+    if (!selectedDate || !employeeId) {
+      setDayLogs([]);
+      return;
+    }
+    const start = `${selectedDate}T00:00:00`;
+    const end = new Date(new Date(start).getTime() + 86400000).toISOString();
+    supabase
+      .from('attendance_logs')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .gte('punch_time', start)
+      .lt('punch_time', end)
+      .order('punch_time', { ascending: true })
+      .then(({ data }) => setDayLogs((data as AttendanceLog[]) ?? []));
+  }, [selectedDate, employeeId]);
+
+  function cardValue(key: CardKey) {
+    if (key === 'hours') return formatHoursMinutes(monthSummary.totalWorkMinutes);
+    if (key === 'overtime') return formatHoursMinutes(monthSummary.overtimeMinutes);
+    const count = monthSummary.entries[key].length;
+    return `${count} day${count === 1 ? '' : 's'}`;
+  }
+
+  return (
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={{ padding: 16 }}>
+        <TouchableOpacity style={styles.employeePicker} onPress={() => setEmployeePickerOpen(true)}>
+          <Text style={styles.employeePickerLabel}>Employee</Text>
+          <Text style={styles.employeePickerValue}>{employee?.name ?? 'Select…'}</Text>
+        </TouchableOpacity>
+
+        <View style={styles.statsGrid}>
+          {(Object.keys(CARD_STYLES) as CardKey[]).map(key => {
+            const style = CARD_STYLES[key];
+            const open = expandedCard === key;
+            return (
+              <TouchableOpacity
+                key={key}
+                style={[styles.statCard, { backgroundColor: style.bg }, open && styles.statCardOpen]}
+                onPress={() => setExpandedCard(open ? null : key)}
+              >
+                <Text style={[styles.statValue, { color: style.text }]}>{cardValue(key)}</Text>
+                <Text style={styles.statLabel}>{style.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {expandedCard && (
+          <View style={styles.expandedCard}>
+            <Text style={styles.expandedTitle}>{CARD_STYLES[expandedCard].label} this month</Text>
+            {monthSummary.entries[expandedCard].length === 0 ? (
+              <Text style={styles.dim}>Nothing to show for this month.</Text>
+            ) : (
+              monthSummary.entries[expandedCard].map(entry => {
+                const day = dayStatus.get(entry.date);
+                return (
+                  <View key={entry.date} style={styles.expandedRow}>
+                    <Text style={styles.expandedDate}>{entry.date}</Text>
+                    {!day && <Badge tone="critical">Absent</Badge>}
+                    {day?.isLate && <Badge tone="warning">Late</Badge>}
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
+        <MonthCalendarGrid
+          dayStatus={dayStatus}
+          leaveDates={leaveDates}
+          weekOffDates={weekOffDates}
+          selectedDate={selectedDate}
+          onSelectDate={d => {
+            setSelectedDate(d);
+            setTab('day');
+          }}
+          onMonthChange={setVisibleDates}
+        />
+
+        <View style={styles.tabBar}>
+          <TouchableOpacity style={[styles.tabBtn, tab === 'day' && styles.tabBtnActive]} onPress={() => setTab('day')}>
+            <Text style={[styles.tabText, tab === 'day' && styles.tabTextActive]}>Day Detail</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.tabBtn, tab === 'leave' && styles.tabBtnActive]} onPress={() => setTab('leave')}>
+            <Text style={[styles.tabText, tab === 'leave' && styles.tabTextActive]}>Recent Leave</Text>
+          </TouchableOpacity>
+        </View>
+
+        {tab === 'day' && (
+          <View style={styles.detailCard}>
+            {!selectedDate ? (
+              <Text style={styles.dim}>Pick a day on the calendar to see its detail.</Text>
+            ) : (
+              <>
+                <Text style={styles.detailTitle}>{selectedDate}</Text>
+                {selectedLeave && (
+                  <View style={styles.leaveBanner}>
+                    <Text style={styles.leaveBannerLabel}>On Leave</Text>
+                    <Text style={styles.leaveBannerType}>{selectedLeave.leave_type}</Text>
+                  </View>
+                )}
+                {!selectedDaySummary && !selectedLeave && <Text style={styles.dim}>No punches recorded.</Text>}
+                {selectedDaySummary && (
+                  <View style={{ gap: 10 }}>
+                    <View style={styles.grid2}>
+                      <View style={[styles.detailCell, { backgroundColor: colors.goodBg }]}>
+                        <Text style={[styles.detailCellLabel, { color: colors.goodText }]}>IN</Text>
+                        <Text style={styles.detailCellValue}>
+                          {new Date(selectedDaySummary.checkIn.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                        {selectedDaySummary.isLate && <Badge tone="warning">Late {formatHoursMinutes(selectedDaySummary.lateMinutes)}</Badge>}
+                      </View>
+                      <View style={[styles.detailCell, { backgroundColor: colors.warningBg }]}>
+                        <Text style={[styles.detailCellLabel, { color: colors.warningText }]}>OUT</Text>
+                        <Text style={styles.detailCellValue}>
+                          {selectedDaySummary.checkOut ? new Date(selectedDaySummary.checkOut.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Not yet'}
+                        </Text>
+                        {selectedDaySummary.isEarly && <Badge tone="critical">Early {formatHoursMinutes(selectedDaySummary.earlyMinutes)}</Badge>}
+                      </View>
+                    </View>
+                    <View style={styles.grid2}>
+                      <View style={[styles.detailCell, { backgroundColor: colors.goodBg }]}>
+                        <Text style={[styles.detailCellLabel, { color: colors.goodText }]}>Total Work Hours</Text>
+                        <Text style={styles.detailCellValue}>{formatHoursMinutes(selectedDaySummary.totalMinutes)}</Text>
+                      </View>
+                      <View style={[styles.detailCell, { backgroundColor: colors.infoBg }]}>
+                        <Text style={[styles.detailCellLabel, { color: colors.infoText }]}>Overtime</Text>
+                        <Text style={styles.detailCellValue}>{formatHoursMinutes(selectedDaySummary.overtimeMinutes)}</Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+              </>
+            )}
+          </View>
+        )}
+
+        {tab === 'leave' && (
+          <View style={styles.detailCard}>
+            <Text style={styles.detailTitle}>Recent Leave</Text>
+            {leaveRequests.length === 0 ? (
+              <Text style={styles.dim}>No approved leave on record.</Text>
+            ) : (
+              [...leaveRequests]
+                .sort((a, b) => b.start_date.localeCompare(a.start_date))
+                .map(lr => (
+                  <View key={lr.id} style={styles.leaveRow}>
+                    <Text style={styles.leaveRowDate}>
+                      {lr.start_date}
+                      {lr.start_date !== lr.end_date ? ` – ${lr.end_date}` : ''}
+                    </Text>
+                    <Badge tone="info">{lr.leave_type}</Badge>
+                  </View>
+                ))
+            )}
+          </View>
+        )}
+      </ScrollView>
+
+      <Modal visible={employeePickerOpen} transparent animationType="fade" onRequestClose={() => setEmployeePickerOpen(false)}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setEmployeePickerOpen(false)}>
+          <View style={styles.modalSheet}>
+            <FlatList
+              data={employees}
+              keyExtractor={item => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.modalOption}
+                  onPress={() => {
+                    setEmployeeId(item.id);
+                    setEmployeePickerOpen(false);
+                  }}
+                >
+                  <Text style={styles.modalOptionText}>{item.name}</Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.slate50 },
+  employeePicker: { backgroundColor: colors.white, borderRadius: 12, borderWidth: 1, borderColor: colors.slate200, padding: 12, marginBottom: 12 },
+  employeePickerLabel: { fontSize: 10, color: colors.slate400, textTransform: 'uppercase' },
+  employeePickerValue: { fontSize: 14, fontWeight: '700', color: colors.ink, marginTop: 2 },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  statCard: { flexBasis: '31%', borderRadius: 10, padding: 8, marginBottom: 8, borderWidth: 2, borderColor: 'transparent' },
+  statCardOpen: { borderColor: colors.accent },
+  statValue: { fontSize: 13, fontWeight: '700' },
+  statLabel: { fontSize: 9, color: colors.ink, marginTop: 2 },
+  expandedCard: { backgroundColor: colors.white, borderRadius: 12, borderWidth: 1, borderColor: colors.slate200, padding: 12, marginBottom: 12 },
+  expandedTitle: { fontSize: 13, fontWeight: '700', color: colors.ink, marginBottom: 8 },
+  expandedRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderTopWidth: 1, borderTopColor: colors.slate100 },
+  expandedDate: { fontSize: 12, color: colors.ink, fontWeight: '600' },
+  dim: { fontSize: 12, color: colors.slate400 },
+  tabBar: { flexDirection: 'row', backgroundColor: colors.white, borderRadius: 10, borderWidth: 1, borderColor: colors.slate200, padding: 4, marginTop: 12, alignSelf: 'flex-start' },
+  tabBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
+  tabBtnActive: { backgroundColor: colors.accent },
+  tabText: { fontSize: 12, fontWeight: '700', color: colors.slate500 },
+  tabTextActive: { color: colors.white },
+  detailCard: { backgroundColor: colors.white, borderRadius: 12, borderWidth: 1, borderColor: colors.slate200, padding: 14, marginTop: 10 },
+  detailTitle: { fontSize: 14, fontWeight: '700', color: colors.ink, marginBottom: 10 },
+  leaveBanner: { backgroundColor: '#f3e8ff', borderRadius: 12, padding: 10, marginBottom: 10 },
+  leaveBannerLabel: { fontSize: 11, fontWeight: '600', color: '#7e22ce' },
+  leaveBannerType: { fontSize: 15, fontWeight: '700', color: colors.ink, textTransform: 'capitalize' },
+  grid2: { flexDirection: 'row', gap: 10 },
+  detailCell: { flex: 1, borderRadius: 12, padding: 10 },
+  detailCellLabel: { fontSize: 11, fontWeight: '600' },
+  detailCellValue: { fontSize: 15, fontWeight: '700', color: colors.ink, marginTop: 2, marginBottom: 4 },
+  leaveRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.slate100 },
+  leaveRowDate: { fontSize: 13, color: colors.ink },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', padding: 20 },
+  modalSheet: { backgroundColor: colors.white, borderRadius: 16, maxHeight: '60%' },
+  modalOption: { paddingHorizontal: 20, paddingVertical: 14 },
+  modalOptionText: { fontSize: 14, color: colors.ink },
+});

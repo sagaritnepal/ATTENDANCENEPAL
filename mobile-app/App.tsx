@@ -1,12 +1,13 @@
+import 'react-native-gesture-handler';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createDrawerNavigator } from '@react-navigation/drawer';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import * as LocalAuthentication from 'expo-local-authentication';
-import type { Session } from '@supabase/supabase-js';
-import { supabase } from './src/lib/supabase';
-import type { Profile } from './src/types';
+import { AuthProvider, useAuth } from './src/lib/AuthContext';
 import LoginScreen from './src/screens/LoginScreen';
 import CheckInScreen from './src/screens/CheckInScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
@@ -14,34 +15,163 @@ import DashboardScreen from './src/screens/DashboardScreen';
 import LeaveRequestScreen from './src/screens/LeaveRequestScreen';
 import EmployeesScreen from './src/screens/EmployeesScreen';
 import PayrollScreen from './src/screens/PayrollScreen';
+import TasksScreen from './src/screens/TasksScreen';
+import DevicesScreen from './src/screens/DevicesScreen';
+import LeaveApprovalScreen from './src/screens/LeaveApprovalScreen';
+import CorrectionsScreen from './src/screens/CorrectionsScreen';
+import BranchesScreen from './src/screens/BranchesScreen';
+import CalendarScreen from './src/screens/CalendarScreen';
+import ShiftsScreen from './src/screens/ShiftsScreen';
+import MyCalendarScreen from './src/screens/MyCalendarScreen';
+import MyPayrollScreen from './src/screens/MyPayrollScreen';
+import MyTasksScreen from './src/screens/MyTasksScreen';
+import MyProfileScreen from './src/screens/MyProfileScreen';
+import AdminHeader from './src/navigation/AdminHeader';
+import AdminSidebarContent from './src/navigation/AdminSidebarContent';
 import { colors } from './src/theme';
+import { CalendarIcon, CardIcon, CheckCircleIcon, PersonIcon, TaskIcon } from './src/components/icons';
 
-// Employee-facing flow — still a plain stack, unchanged.
-export type EmployeeStackParamList = {
+// Employee-facing flow mirrors admin-web's EmployeeShell: a 5-tab bottom bar
+// (Check In/Out, Calendar, Payroll, Tasks, Profile) with Leave reached as a
+// sub-page pushed from Check In/Out, not its own tab — same as the web.
+export type EmployeeTabParamList = {
   CheckIn: undefined;
-  History: undefined;
+  Calendar: undefined;
+  Payroll: undefined;
+  Tasks: undefined;
+  Profile: undefined;
+};
+const EmployeeTab = createBottomTabNavigator<EmployeeTabParamList>();
+
+export type EmployeeStackParamList = {
+  EmployeeTabs: undefined;
   Leave: undefined;
 };
 const EmployeeStack = createNativeStackNavigator<EmployeeStackParamList>();
 
-// Admin flow — was a single Dashboard+History pair with no visible way to
-// switch between them (looked like "the app only has one page"). A bottom
-// tab bar makes every admin page visible and one tap away, same idea as the
-// web portal's sidebar, without pulling in a drawer navigator's extra
-// native dependencies (reanimated/gesture-handler) for something this
-// simple.
-export type AdminTabParamList = {
-  Dashboard: undefined;
-  Employees: undefined;
-  Attendance: undefined;
-  Payroll: undefined;
-};
-const AdminTab = createBottomTabNavigator<AdminTabParamList>();
+function EmployeeTabNavigator() {
+  return (
+    <EmployeeTab.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.white },
+        headerTintColor: colors.ink,
+        headerTitleStyle: { fontWeight: '700' },
+        tabBarStyle: { backgroundColor: colors.white, borderTopColor: colors.slate200 },
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.slate400,
+        tabBarLabelStyle: { fontSize: 10 },
+      }}
+    >
+      <EmployeeTab.Screen
+        name="CheckIn"
+        component={CheckInScreen}
+        options={{ title: 'Check In/Out', tabBarLabel: 'Check In/Out', tabBarIcon: ({ color, size }) => <CheckCircleIcon size={size} color={color} /> }}
+      />
+      <EmployeeTab.Screen
+        name="Calendar"
+        component={MyCalendarScreen}
+        options={{ title: 'Calendar', tabBarIcon: ({ color, size }) => <CalendarIcon size={size} color={color} /> }}
+      />
+      <EmployeeTab.Screen
+        name="Payroll"
+        component={MyPayrollScreen}
+        options={{ title: 'Payroll', tabBarIcon: ({ color, size }) => <CardIcon size={size} color={color} /> }}
+      />
+      <EmployeeTab.Screen
+        name="Tasks"
+        component={MyTasksScreen}
+        options={{ title: 'My Tasks', tabBarIcon: ({ color, size }) => <TaskIcon size={size} color={color} /> }}
+      />
+      <EmployeeTab.Screen
+        name="Profile"
+        component={MyProfileScreen}
+        options={{ title: 'Profile', tabBarIcon: ({ color, size }) => <PersonIcon size={size} color={color} /> }}
+      />
+    </EmployeeTab.Navigator>
+  );
+}
 
-export default function App() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
+// Admin flow mirrors admin-web's AppShell: a left sidebar (here, a slide-out
+// drawer since a phone has no room for a permanent one) with the same nav
+// groups, and every screen wrapped in its own single-screen stack purely so
+// each one gets the same shared header (menu button + title + bell +
+// device count + account avatar) instead of the drawer's own header.
+const Drawer = createDrawerNavigator();
+const DashboardStack = createNativeStackNavigator();
+const EmployeesAdminStack = createNativeStackNavigator();
+const AttendanceAdminStack = createNativeStackNavigator();
+const PayrollAdminStack = createNativeStackNavigator();
+const TasksAdminStack = createNativeStackNavigator();
+const DevicesAdminStack = createNativeStackNavigator();
+
+function DashboardStackScreen() {
+  return (
+    <DashboardStack.Navigator screenOptions={{ header: props => <AdminHeader {...props} /> }}>
+      <DashboardStack.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Live Dashboard' }} />
+    </DashboardStack.Navigator>
+  );
+}
+function EmployeesStackScreen() {
+  return (
+    <EmployeesAdminStack.Navigator screenOptions={{ header: props => <AdminHeader {...props} /> }}>
+      <EmployeesAdminStack.Screen name="EmployeesList" component={EmployeesScreen} options={{ title: 'Employees' }} />
+      <EmployeesAdminStack.Screen name="Shifts" component={ShiftsScreen} options={{ title: 'Shift Roster Management' }} />
+      <EmployeesAdminStack.Screen name="Branches" component={BranchesScreen} options={{ title: 'Branch / Department' }} />
+    </EmployeesAdminStack.Navigator>
+  );
+}
+function AttendanceStackScreen() {
+  return (
+    <AttendanceAdminStack.Navigator screenOptions={{ header: props => <AdminHeader {...props} /> }}>
+      <AttendanceAdminStack.Screen name="AttendanceList" component={HistoryScreen} options={{ title: 'Attendance' }} />
+      <AttendanceAdminStack.Screen name="Leave" component={LeaveApprovalScreen} options={{ title: 'Leave Requests' }} />
+      <AttendanceAdminStack.Screen name="Corrections" component={CorrectionsScreen} options={{ title: 'Attendance Corrections' }} />
+      <AttendanceAdminStack.Screen name="Calendar" component={CalendarScreen} options={{ title: 'Attendance Calendar' }} />
+    </AttendanceAdminStack.Navigator>
+  );
+}
+function PayrollStackScreen() {
+  return (
+    <PayrollAdminStack.Navigator screenOptions={{ header: props => <AdminHeader {...props} /> }}>
+      <PayrollAdminStack.Screen name="Payroll" component={PayrollScreen} options={{ title: 'Payroll' }} />
+    </PayrollAdminStack.Navigator>
+  );
+}
+function TasksStackScreen() {
+  return (
+    <TasksAdminStack.Navigator screenOptions={{ header: props => <AdminHeader {...props} /> }}>
+      <TasksAdminStack.Screen name="Tasks" component={TasksScreen} options={{ title: 'Tasks & Rewards' }} />
+    </TasksAdminStack.Navigator>
+  );
+}
+function DevicesStackScreen() {
+  return (
+    <DevicesAdminStack.Navigator screenOptions={{ header: props => <AdminHeader {...props} /> }}>
+      <DevicesAdminStack.Screen name="Devices" component={DevicesScreen} options={{ title: 'Biometric Sync Devices' }} />
+    </DevicesAdminStack.Navigator>
+  );
+}
+
+function AdminDrawerNavigator() {
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
+  return (
+    <Drawer.Navigator
+      drawerContent={props => <AdminSidebarContent {...props} />}
+      screenOptions={{ headerShown: false, drawerType: 'front', overlayColor: 'rgba(0,0,0,0.4)', drawerStyle: { width: 240 } }}
+    >
+      <Drawer.Screen name="Dashboard" component={DashboardStackScreen} />
+      <Drawer.Screen name="Employees" component={EmployeesStackScreen} />
+      <Drawer.Screen name="Attendance" component={AttendanceStackScreen} />
+      <Drawer.Screen name="Payroll" component={PayrollStackScreen} />
+      <Drawer.Screen name="Tasks" component={TasksStackScreen} />
+      {isAdmin && <Drawer.Screen name="Devices" component={DevicesStackScreen} />}
+    </Drawer.Navigator>
+  );
+}
+
+function AppInner() {
+  const { session, profile, loading } = useAuth();
 
   // Only ever true on a device that actually has biometrics set up — a
   // phone with no fingerprint/face enrolled never locks at all instead of
@@ -105,30 +235,6 @@ export default function App() {
     return () => sub.remove();
   }, [biometricAvailable, authenticate]);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-    });
-    return () => sub.subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (!session) {
-      setProfile(null);
-      return;
-    }
-    supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', session.user.id)
-      .single()
-      .then(({ data }) => setProfile(data as Profile));
-  }, [session]);
-
   if (loading) {
     return (
       <View style={styles.webOuter}>
@@ -162,42 +268,8 @@ export default function App() {
         <NavigationContainer>
           {!session ? (
             <LoginScreen />
-          ) : profile?.role === 'admin' ? (
-            <AdminTab.Navigator
-              screenOptions={{
-                // Matches admin-web's TopBar: white header, dark text, no
-                // colored band — the web app never puts a solid brand color
-                // behind its page titles.
-                headerStyle: { backgroundColor: colors.white },
-                headerTintColor: colors.ink,
-                headerTitleStyle: { fontWeight: '700' },
-                headerShadowVisible: true,
-                tabBarStyle: { backgroundColor: colors.white, borderTopColor: colors.slate200 },
-                tabBarActiveTintColor: colors.accent,
-                tabBarInactiveTintColor: colors.slate400,
-              }}
-            >
-              <AdminTab.Screen
-                name="Dashboard"
-                component={DashboardScreen}
-                options={{ title: 'Live Dashboard', tabBarIcon: ({ color, size }) => <Text style={{ fontSize: size, color }}>🏠</Text> }}
-              />
-              <AdminTab.Screen
-                name="Employees"
-                component={EmployeesScreen}
-                options={{ title: 'Employees', tabBarIcon: ({ color, size }) => <Text style={{ fontSize: size, color }}>👥</Text> }}
-              />
-              <AdminTab.Screen
-                name="Attendance"
-                component={HistoryScreen}
-                options={{ title: 'Attendance', tabBarIcon: ({ color, size }) => <Text style={{ fontSize: size, color }}>🕐</Text> }}
-              />
-              <AdminTab.Screen
-                name="Payroll"
-                component={PayrollScreen}
-                options={{ title: 'Payroll', tabBarIcon: ({ color, size }) => <Text style={{ fontSize: size, color }}>💰</Text> }}
-              />
-            </AdminTab.Navigator>
+          ) : profile?.role === 'admin' || profile?.role === 'hr' ? (
+            <AdminDrawerNavigator />
           ) : (
             <EmployeeStack.Navigator
               screenOptions={{
@@ -206,14 +278,23 @@ export default function App() {
                 headerTitleStyle: { fontWeight: '700' },
               }}
             >
-              <EmployeeStack.Screen name="CheckIn" component={CheckInScreen} options={{ title: 'Check In / Out' }} />
-              <EmployeeStack.Screen name="History" component={HistoryScreen} options={{ title: 'My Attendance' }} />
+              <EmployeeStack.Screen name="EmployeeTabs" component={EmployeeTabNavigator} options={{ headerShown: false }} />
               <EmployeeStack.Screen name="Leave" component={LeaveRequestScreen} options={{ title: 'Leave Requests' }} />
             </EmployeeStack.Navigator>
           )}
         </NavigationContainer>
       </View>
     </View>
+  );
+}
+
+export default function App() {
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <AppInner />
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
 

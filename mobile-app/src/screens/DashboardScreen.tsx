@@ -2,8 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { supabase } from '../lib/supabase';
 import type { AttendanceLog, Employee, LeaveRequest, Shift } from '../types';
-import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
-import type { AdminTabParamList } from '../../App';
 import { colors } from '../theme';
 import StatCard from '../components/StatCard';
 import { dateKey, isLate, presentEmployeeIds } from '../lib/metrics';
@@ -15,11 +13,9 @@ import {
   type DailyShiftByDate,
 } from '../lib/shift';
 
-type Props = BottomTabScreenProps<AdminTabParamList, 'Dashboard'>;
-
 type EmployeeLite = Pick<Employee, 'name' | 'profile_photo_url'>;
 
-export default function DashboardScreen({ navigation }: Props) {
+export default function DashboardScreen({ navigation }: any) {
   const [feed, setFeed] = useState<AttendanceLog[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [employeeLookup, setEmployeeLookup] = useState<Record<string, EmployeeLite>>({});
@@ -169,7 +165,10 @@ export default function DashboardScreen({ navigation }: Props) {
               <StatCard label="Total Work Hours" value={todayWorkHours.toFixed(1)} hint="Today, all staff" />
               <StatCard label="Overtime" value={`${todayOvertimeHours.toFixed(1)} hrs`} hint="Today, all staff" />
             </View>
-            <TouchableOpacity style={styles.viewLogsButton} onPress={() => navigation.navigate('Attendance')}>
+            <TouchableOpacity
+              style={styles.viewLogsButton}
+              onPress={() => navigation.getParent()?.navigate('Attendance' as never)}
+            >
               <Text style={styles.viewLogsText}>View Full Logs</Text>
             </TouchableOpacity>
             <Text style={styles.heading}>Live Biometric Feed</Text>

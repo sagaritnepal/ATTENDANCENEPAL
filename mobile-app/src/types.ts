@@ -3,7 +3,7 @@ export type PunchMethod = 'zkteco' | 'gps' | 'qr' | 'selfie';
 export type Profile = {
   id: string;
   employee_id: string | null;
-  role: 'admin' | 'employee';
+  role: 'admin' | 'hr' | 'employee';
 };
 
 export type Employee = {
@@ -14,11 +14,62 @@ export type Employee = {
   designation: string | null;
   phone: string | null;
   email: string | null;
+  address: string | null;
   branch_id: string | null;
   fingerprint_id: string | null;
+  username: string | null;
   status: 'active' | 'inactive';
   salary: number | null;
   profile_photo_url: string | null;
+  date_of_joining: string | null;
+  resigned_at: string | null;
+  pan_no: string | null;
+  ssf_no: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_relationship: string | null;
+  emergency_contact_phone: string | null;
+  skills: string[];
+};
+
+export type Branch = {
+  id: string;
+  name: string;
+  branch_code: string;
+  latitude: number;
+  longitude: number;
+  radius_meters: number;
+};
+
+export type Department = {
+  id: string;
+  name: string;
+};
+
+export type BranchDepartment = {
+  branch_id: string;
+  department_id: string;
+};
+
+export type Device = {
+  id: string;
+  name: string;
+  branch_id: string;
+  ip_address: string;
+  port: number;
+  serial_number: string | null;
+  status: 'online' | 'offline';
+  last_sync: string | null;
+};
+
+export type DeviceSyncEvent = {
+  id: string;
+  device_id: string;
+  sync_type: 'users' | 'logs';
+  status: 'pending' | 'running' | 'success' | 'failed' | 'cancelled';
+  requested_at: string;
+  completed_at: string | null;
+  summary: string | null;
+  error: string | null;
 };
 
 export type Shift = {
@@ -36,10 +87,14 @@ export type PayrollSummary = {
   id: string;
   employee_id: string;
   work_date: string;
+  check_in: string | null;
+  check_out: string | null;
   total_hours: number;
   overtime_hours: number;
   is_late: boolean;
   late_minutes: number;
+  is_early_departure: boolean;
+  early_departure_minutes: number;
 };
 
 export type AttendanceLog = {
@@ -54,6 +109,36 @@ export type AttendanceLog = {
   match_score?: number | null;
 };
 
+export type TaskStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'rejected';
+export type TaskSource = 'assigned' | 'self';
+
+export type Task = {
+  id: string;
+  title: string;
+  description: string | null;
+  assigned_to: string;
+  assigned_by: string | null;
+  points: number;
+  status: TaskStatus;
+  source: TaskSource;
+  due_date: string | null;
+  work_notes: string | null;
+  review_note: string | null;
+  submitted_at: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+};
+
+export type TaskTimeLog = {
+  id: string;
+  task_id: string;
+  employee_id: string;
+  started_at: string;
+  ended_at: string | null;
+  created_at: string;
+};
+
 export type LeaveType = 'sick' | 'casual' | 'annual' | 'unpaid';
 
 export type LeaveRequest = {
@@ -64,5 +149,36 @@ export type LeaveRequest = {
   end_date: string;
   reason: string | null;
   status: 'pending' | 'approved' | 'rejected';
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+};
+
+export type CorrectionRequest = {
+  id: string;
+  employee_id: string;
+  work_date: string;
+  requested_check_in: string | null;
+  requested_check_out: string | null;
+  reason: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  lat: number | null;
+  lng: number | null;
+};
+
+export type AttendanceGpsRequest = {
+  id: string;
+  employee_id: string;
+  punch_type: '0' | '1';
+  punch_time: string;
+  lat: number | null;
+  lng: number | null;
+  accuracy_m: number | null;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewed_by: string | null;
+  reviewed_at: string | null;
   created_at: string;
 };

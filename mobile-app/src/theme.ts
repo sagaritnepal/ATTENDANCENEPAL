@@ -5,6 +5,7 @@ export const colors = {
   ink: '#0f172a',
   sidebar: '#0f172a',
   slate50: '#f8fafc',
+  slate100: '#f1f5f9',
   slate200: '#e2e8f0',
   slate400: '#94a3b8',
   slate500: '#64748b',
