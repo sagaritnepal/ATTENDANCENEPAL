@@ -519,12 +519,16 @@ export default function MyCalendarPage() {
                   {(() => {
                     let sumHours = 0;
                     let sumOvertime = 0;
+                    let sumLate = 0;
+                    let sumEarly = 0;
                     let presentCount = 0;
                     let absentCount = 0;
                     for (const row of tableRows) {
                       if (row.present) {
                         sumHours += row.hours;
                         sumOvertime += row.overtime;
+                        sumLate += row.lateMinutes;
+                        sumEarly += row.earlyMinutes;
                         presentCount += 1;
                       } else if (row.absent) {
                         absentCount += 1;
@@ -533,8 +537,14 @@ export default function MyCalendarPage() {
                     return (
                       <>
                         <tr className="border-t-2 border-slate-200 bg-slate-50 text-ink">
-                          <td className="truncate px-0.5 py-1 font-semibold" colSpan={4}>
+                          <td className="truncate px-0.5 py-1 font-semibold" colSpan={2}>
                             Total
+                          </td>
+                          <td className="truncate px-0.5 py-1 font-semibold text-warning-text">
+                            {sumLate > 0 ? formatHoursMinutes(sumLate) : '—'}
+                          </td>
+                          <td className="truncate px-0.5 py-1 font-semibold text-critical-text">
+                            {sumEarly > 0 ? formatHoursMinutes(sumEarly) : '—'}
                           </td>
                           <td className="px-0.5 py-1" />
                           <td className="truncate px-0.5 py-1 font-semibold text-info-text">{fmtHrs(sumOvertime)}</td>
