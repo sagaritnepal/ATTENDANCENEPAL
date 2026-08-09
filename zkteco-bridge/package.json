@@ -4,7 +4,8 @@
   "description": "Standalone worker that polls ZKTeco K40 terminals over TCP/IP and upserts punches into Supabase.",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "start:push-server": "node push-server.js"
   },
   "license": "MIT",
   "dependencies": {
