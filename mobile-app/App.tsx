@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import * as LocalAuthentication from 'expo-local-authentication';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './src/lib/supabase';
@@ -11,16 +12,30 @@ import CheckInScreen from './src/screens/CheckInScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import LeaveRequestScreen from './src/screens/LeaveRequestScreen';
+import EmployeesScreen from './src/screens/EmployeesScreen';
+import PayrollScreen from './src/screens/PayrollScreen';
 
-export type RootStackParamList = {
-  Login: undefined;
+// Employee-facing flow — still a plain stack, unchanged.
+export type EmployeeStackParamList = {
   CheckIn: undefined;
   History: undefined;
-  Dashboard: undefined;
   Leave: undefined;
 };
+const EmployeeStack = createNativeStackNavigator<EmployeeStackParamList>();
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
+// Admin flow — was a single Dashboard+History pair with no visible way to
+// switch between them (looked like "the app only has one page"). A bottom
+// tab bar makes every admin page visible and one tap away, same idea as the
+// web portal's sidebar, without pulling in a drawer navigator's extra
+// native dependencies (reanimated/gesture-handler) for something this
+// simple.
+export type AdminTabParamList = {
+  Dashboard: undefined;
+  Employees: undefined;
+  Attendance: undefined;
+  Payroll: undefined;
+};
+const AdminTab = createBottomTabNavigator<AdminTabParamList>();
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -144,22 +159,46 @@ export default function App() {
     <View style={styles.webOuter}>
       <View style={styles.webInner}>
         <NavigationContainer>
-          <Stack.Navigator>
-            {!session ? (
-              <Stack.Screen name="Login" component={LoginScreen} options={{ title: 'Sign in' }} />
-            ) : profile?.role === 'admin' ? (
-              <>
-                <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Live Dashboard' }} />
-                <Stack.Screen name="History" component={HistoryScreen} options={{ title: 'Attendance Logs' }} />
-              </>
-            ) : (
-              <>
-                <Stack.Screen name="CheckIn" component={CheckInScreen} options={{ title: 'Check In / Out' }} />
-                <Stack.Screen name="History" component={HistoryScreen} options={{ title: 'My Attendance' }} />
-                <Stack.Screen name="Leave" component={LeaveRequestScreen} options={{ title: 'Leave Requests' }} />
-              </>
-            )}
-          </Stack.Navigator>
+          {!session ? (
+            <LoginScreen />
+          ) : profile?.role === 'admin' ? (
+            <AdminTab.Navigator
+              screenOptions={{
+                headerStyle: { backgroundColor: '#023c69' },
+                headerTintColor: '#fff',
+                headerTitleStyle: { fontWeight: '700' },
+                tabBarActiveTintColor: '#0d9488',
+                tabBarInactiveTintColor: '#94a3b8',
+              }}
+            >
+              <AdminTab.Screen
+                name="Dashboard"
+                component={DashboardScreen}
+                options={{ title: 'Live Dashboard', tabBarIcon: ({ color, size }) => <Text style={{ fontSize: size, color }}>🏠</Text> }}
+              />
+              <AdminTab.Screen
+                name="Employees"
+                component={EmployeesScreen}
+                options={{ title: 'Employees', tabBarIcon: ({ color, size }) => <Text style={{ fontSize: size, color }}>👥</Text> }}
+              />
+              <AdminTab.Screen
+                name="Attendance"
+                component={HistoryScreen}
+                options={{ title: 'Attendance', tabBarIcon: ({ color, size }) => <Text style={{ fontSize: size, color }}>🕐</Text> }}
+              />
+              <AdminTab.Screen
+                name="Payroll"
+                component={PayrollScreen}
+                options={{ title: 'Payroll', tabBarIcon: ({ color, size }) => <Text style={{ fontSize: size, color }}>💰</Text> }}
+              />
+            </AdminTab.Navigator>
+          ) : (
+            <EmployeeStack.Navigator>
+              <EmployeeStack.Screen name="CheckIn" component={CheckInScreen} options={{ title: 'Check In / Out' }} />
+              <EmployeeStack.Screen name="History" component={HistoryScreen} options={{ title: 'My Attendance' }} />
+              <EmployeeStack.Screen name="Leave" component={LeaveRequestScreen} options={{ title: 'Leave Requests' }} />
+            </EmployeeStack.Navigator>
+          )}
         </NavigationContainer>
       </View>
     </View>

@@ -2,10 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, Button } from 'react-native';
 import { supabase } from '../lib/supabase';
 import type { AttendanceLog } from '../types';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../App';
+import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
+import type { AdminTabParamList } from '../../App';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
+type Props = BottomTabScreenProps<AdminTabParamList, 'Dashboard'>;
 
 export default function DashboardScreen({ navigation }: Props) {
   const [feed, setFeed] = useState<AttendanceLog[]>([]);
@@ -36,7 +36,7 @@ export default function DashboardScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      <Button title="View Full Logs" onPress={() => navigation.navigate('History')} />
+      <Button title="View Full Logs" onPress={() => navigation.navigate('Attendance')} />
       <Text style={styles.heading}>Live Punch Feed</Text>
       <FlatList
         data={feed}

@@ -11,8 +11,24 @@ export type Employee = {
   employee_code: string;
   name: string;
   department: string | null;
+  designation: string | null;
+  phone: string | null;
+  email: string | null;
   branch_id: string | null;
+  fingerprint_id: string | null;
+  status: 'active' | 'inactive';
+  salary: number | null;
   profile_photo_url: string | null;
+};
+
+export type PayrollSummary = {
+  id: string;
+  employee_id: string;
+  work_date: string;
+  total_hours: number;
+  overtime_hours: number;
+  is_late: boolean;
+  late_minutes: number;
 };
 
 export type AttendanceLog = {

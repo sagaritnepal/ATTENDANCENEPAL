@@ -5,10 +5,10 @@ import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'ex
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { supabase } from '../lib/supabase';
 import type { PunchMethod } from '../types';
-import type { RootStackParamList } from '../../App';
+import type { EmployeeStackParamList } from '../../App';
 
 type Mode = 'menu' | 'qr-scan' | 'selfie';
-type Props = NativeStackScreenProps<RootStackParamList, 'CheckIn'>;
+type Props = NativeStackScreenProps<EmployeeStackParamList, 'CheckIn'>;
 
 export default function CheckInScreen({ navigation }: Props) {
   const [employeeId, setEmployeeId] = useState<string | null>(null);
