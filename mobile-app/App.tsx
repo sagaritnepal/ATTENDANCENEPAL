@@ -8,12 +8,15 @@ import { createDrawerNavigator } from '@react-navigation/drawer';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { AuthProvider, useAuth } from './src/lib/AuthContext';
+import { CalendarSystemProvider } from './src/lib/CalendarSystemContext';
 import LoginScreen from './src/screens/LoginScreen';
 import CheckInScreen from './src/screens/CheckInScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import LeaveRequestScreen from './src/screens/LeaveRequestScreen';
 import EmployeesScreen from './src/screens/EmployeesScreen';
+import EmployeeDetailScreen from './src/screens/EmployeeDetailScreen';
+import AdminPayrollDetailScreen from './src/screens/AdminPayrollDetailScreen';
 import PayrollScreen from './src/screens/PayrollScreen';
 import TasksScreen from './src/screens/TasksScreen';
 import DevicesScreen from './src/screens/DevicesScreen';
@@ -115,6 +118,7 @@ function EmployeesStackScreen() {
   return (
     <EmployeesAdminStack.Navigator screenOptions={{ header: props => <AdminHeader {...props} /> }}>
       <EmployeesAdminStack.Screen name="EmployeesList" component={EmployeesScreen} options={{ title: 'Employees' }} />
+      <EmployeesAdminStack.Screen name="EmployeeDetail" component={EmployeeDetailScreen} options={{ title: 'Employee Details' }} />
       <EmployeesAdminStack.Screen name="Shifts" component={ShiftsScreen} options={{ title: 'Shift Roster Management' }} />
       <EmployeesAdminStack.Screen name="Branches" component={BranchesScreen} options={{ title: 'Branch / Department' }} />
     </EmployeesAdminStack.Navigator>
@@ -134,6 +138,7 @@ function PayrollStackScreen() {
   return (
     <PayrollAdminStack.Navigator screenOptions={{ header: props => <AdminHeader {...props} /> }}>
       <PayrollAdminStack.Screen name="Payroll" component={PayrollScreen} options={{ title: 'Payroll' }} />
+      <PayrollAdminStack.Screen name="PayrollDetail" component={AdminPayrollDetailScreen} options={{ title: 'Payroll Detail' }} />
     </PayrollAdminStack.Navigator>
   );
 }
@@ -292,7 +297,9 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
-        <AppInner />
+        <CalendarSystemProvider>
+          <AppInner />
+        </CalendarSystemProvider>
       </AuthProvider>
     </GestureHandlerRootView>
   );

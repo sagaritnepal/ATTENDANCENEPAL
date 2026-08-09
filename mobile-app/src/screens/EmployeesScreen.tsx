@@ -1,21 +1,32 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity, Modal, Alert, Image } from 'react-native';
+import { View, Text, FlatList, ScrollView, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity, Modal, Alert, Image } from 'react-native';
 import { supabase } from '../lib/supabase';
-import type { Employee, Profile, Shift } from '../types';
+import type { Branch, Department, Employee, Profile, Shift } from '../types';
 import { resolveShift, formatShiftHours } from '../lib/shift';
 import { colors } from '../theme';
 import Badge from '../components/Badge';
 import { ChevronIcon, KeyIcon, ResignedIcon as UserMinusIcon } from '../components/icons';
 
-export default function EmployeesScreen({ route }: any) {
+const EMPTY_ADD_FORM = { employee_code: '', name: '', phone: '', email: '', address: '', designation: '', fingerprint_id: '', date_of_joining: '' };
+
+export default function EmployeesScreen({ route, navigation }: any) {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [rosterEmployeeIds, setRosterEmployeeIds] = useState<Set<string>>(new Set());
   const [profiles, setProfiles] = useState<Pick<Profile, 'id' | 'employee_id' | 'role'>[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [departmentOptions, setDepartmentOptions] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState(route?.params?.filter ?? 'All');
   const [filterOpen, setFilterOpen] = useState(false);
+
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addForm, setAddForm] = useState(EMPTY_ADD_FORM);
+  const [addDepartment, setAddDepartment] = useState<string | null>(null);
+  const [addBranchId, setAddBranchId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   function reload() {
     supabase
@@ -35,6 +46,40 @@ export default function EmployeesScreen({ route }: any) {
       .from('profiles')
       .select('id, employee_id, role')
       .then(({ data }) => setProfiles((data as any) ?? []));
+    supabase.from('branches').select('*').order('name').then(({ data }) => setBranches((data as Branch[]) ?? []));
+    supabase.from('departments').select('*').order('name').then(({ data }) => setDepartmentOptions((data as Department[]) ?? []));
+  }
+
+  async function handleAddEmployee() {
+    if (!addForm.employee_code.trim() || !addForm.name.trim()) {
+      setAddError('Employee code and name are required.');
+      return;
+    }
+    setSaving(true);
+    setAddError(null);
+    const { error } = await supabase.from('employees').insert({
+      employee_code: addForm.employee_code,
+      name: addForm.name,
+      phone: addForm.phone || null,
+      email: addForm.email || null,
+      address: addForm.address || null,
+      department: addDepartment,
+      designation: addForm.designation || null,
+      fingerprint_id: addForm.fingerprint_id || null,
+      branch_id: addBranchId,
+      date_of_joining: addForm.date_of_joining || null,
+      status: 'active',
+    });
+    setSaving(false);
+    if (error) {
+      setAddError(error.code === '23505' ? 'That Employee ID is already in use.' : error.message);
+      return;
+    }
+    setAddForm(EMPTY_ADD_FORM);
+    setAddDepartment(null);
+    setAddBranchId(null);
+    setShowAddForm(false);
+    reload();
   }
 
   useEffect(reload, []);
@@ -140,12 +185,17 @@ export default function EmployeesScreen({ route }: any) {
   return (
     <View style={styles.container}>
       <View style={styles.filterRow}>
-        <TouchableOpacity style={styles.filterBtn} onPress={() => setFilterOpen(true)}>
+        <TouchableOpacity style={[styles.filterBtn, { flex: 1 }]} onPress={() => setFilterOpen(true)}>
           <Text style={styles.filterBtnText} numberOfLines={1}>
             {filter === 'All' ? 'All Departments' : filter === 'Unenrolled' ? 'Biometric Unenrolled' : filter === 'Resigned' ? 'Resigned Employees' : filter}
           </Text>
           <ChevronIcon size={14} />
         </TouchableOpacity>
+        {filter !== 'Resigned' && (
+          <TouchableOpacity style={styles.addBtn} onPress={() => setShowAddForm(true)}>
+            <Text style={styles.addBtnText}>+ Add</Text>
+          </TouchableOpacity>
+        )}
       </View>
       <TextInput
         style={styles.search}
@@ -164,7 +214,7 @@ export default function EmployeesScreen({ route }: any) {
           const hasLogin = linkedEmployeeIds.has(item.id);
           return (
             <View style={styles.card}>
-              <View style={styles.cardHeader}>
+              <TouchableOpacity style={styles.cardHeader} onPress={() => navigation.navigate('EmployeeDetail', { employeeId: item.id })}>
                 <View style={styles.avatar}>
                   {item.profile_photo_url ? (
                     <Image source={{ uri: item.profile_photo_url }} style={styles.avatarImg} />
@@ -184,7 +234,7 @@ export default function EmployeesScreen({ route }: any) {
                   <Badge tone={registered ? 'good' : 'warning'}>{registered ? 'Registered' : 'Unregistered'}</Badge>
                   {hasLogin && <Badge tone="good">Login Active</Badge>}
                 </View>
-              </View>
+              </TouchableOpacity>
 
               <View style={styles.infoGrid}>
                 <View style={styles.infoCell}>
@@ -222,6 +272,69 @@ export default function EmployeesScreen({ route }: any) {
         ListEmptyComponent={<Text style={styles.empty}>No employees match this filter.</Text>}
       />
 
+      <Modal visible={showAddForm} transparent animationType="fade" onRequestClose={() => setShowAddForm(false)}>
+        <TouchableOpacity style={styles.modalBackdropCenter} activeOpacity={1} onPress={() => setShowAddForm(false)}>
+          <TouchableOpacity activeOpacity={1} style={styles.formSheet}>
+            <ScrollView>
+              <View>
+                  <Text style={styles.formTitle}>Add Employee</Text>
+                  <Text style={styles.label}>Employee code</Text>
+                  <TextInput style={styles.input} value={addForm.employee_code} onChangeText={v => setAddForm(f => ({ ...f, employee_code: v }))} />
+                  <Text style={styles.label}>Full name</Text>
+                  <TextInput style={styles.input} value={addForm.name} onChangeText={v => setAddForm(f => ({ ...f, name: v }))} />
+                  <Text style={styles.label}>Phone</Text>
+                  <TextInput style={styles.input} value={addForm.phone} onChangeText={v => setAddForm(f => ({ ...f, phone: v }))} keyboardType="phone-pad" />
+                  <Text style={styles.label}>Email</Text>
+                  <TextInput style={styles.input} value={addForm.email} onChangeText={v => setAddForm(f => ({ ...f, email: v }))} keyboardType="email-address" />
+                  <Text style={styles.label}>Address</Text>
+                  <TextInput style={styles.input} value={addForm.address} onChangeText={v => setAddForm(f => ({ ...f, address: v }))} />
+                  <Text style={styles.label}>Designation</Text>
+                  <TextInput style={styles.input} value={addForm.designation} onChangeText={v => setAddForm(f => ({ ...f, designation: v }))} />
+                  <Text style={styles.label}>Fingerprint / Biometric ID</Text>
+                  <TextInput style={styles.input} value={addForm.fingerprint_id} onChangeText={v => setAddForm(f => ({ ...f, fingerprint_id: v }))} />
+                  <Text style={styles.label}>Date of joining (YYYY-MM-DD)</Text>
+                  <TextInput style={styles.input} value={addForm.date_of_joining} onChangeText={v => setAddForm(f => ({ ...f, date_of_joining: v }))} placeholder="2026-01-15" placeholderTextColor={colors.slate400} />
+
+                  <Text style={styles.label}>Department</Text>
+                  <View style={styles.chipsRow}>
+                    <TouchableOpacity style={[styles.pickChip, addDepartment === null && styles.pickChipActive]} onPress={() => setAddDepartment(null)}>
+                      <Text style={[styles.pickChipText, addDepartment === null && styles.pickChipTextActive]}>Unassigned</Text>
+                    </TouchableOpacity>
+                    {departmentOptions.map(d => (
+                      <TouchableOpacity key={d.id} style={[styles.pickChip, addDepartment === d.name && styles.pickChipActive]} onPress={() => setAddDepartment(d.name)}>
+                        <Text style={[styles.pickChipText, addDepartment === d.name && styles.pickChipTextActive]}>{d.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  <Text style={styles.label}>Branch</Text>
+                  <View style={styles.chipsRow}>
+                    <TouchableOpacity style={[styles.pickChip, addBranchId === null && styles.pickChipActive]} onPress={() => setAddBranchId(null)}>
+                      <Text style={[styles.pickChipText, addBranchId === null && styles.pickChipTextActive]}>Unassigned</Text>
+                    </TouchableOpacity>
+                    {branches.map(b => (
+                      <TouchableOpacity key={b.id} style={[styles.pickChip, addBranchId === b.id && styles.pickChipActive]} onPress={() => setAddBranchId(b.id)}>
+                        <Text style={[styles.pickChipText, addBranchId === b.id && styles.pickChipTextActive]}>{b.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  {!addBranchId && <Text style={styles.hint}>GPS check-in won't work until set.</Text>}
+
+                  {addError && <Text style={styles.errorText}>{addError}</Text>}
+                  <View style={styles.formActions}>
+                    <TouchableOpacity onPress={() => setShowAddForm(false)} style={styles.cancelBtn}>
+                      <Text style={styles.cancelBtnText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleAddEmployee} disabled={saving} style={styles.saveModalBtn}>
+                      <Text style={styles.saveModalBtnText}>{saving ? 'Saving…' : 'Save employee'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setFilterOpen(false)}>
           <View style={styles.modalSheet}>
@@ -249,7 +362,9 @@ export default function EmployeesScreen({ route }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.slate50 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.slate50 },
-  filterRow: { paddingHorizontal: 16, paddingTop: 16 },
+  filterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 16 },
+  addBtn: { backgroundColor: colors.accent, borderRadius: 10, paddingHorizontal: 16, justifyContent: 'center' },
+  addBtnText: { color: colors.white, fontSize: 13, fontWeight: '700' },
   filterBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -313,4 +428,21 @@ const styles = StyleSheet.create({
   modalSheet: { backgroundColor: colors.white, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingVertical: 8, maxHeight: '60%' },
   modalOption: { paddingHorizontal: 20, paddingVertical: 14 },
   modalOptionText: { fontSize: 14, color: colors.ink },
+  modalBackdropCenter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', padding: 20 },
+  formSheet: { backgroundColor: colors.white, borderRadius: 16, padding: 20, maxHeight: '85%' },
+  formTitle: { fontSize: 16, fontWeight: '700', color: colors.ink, marginBottom: 4 },
+  label: { fontSize: 12, fontWeight: '600', color: colors.slate500, marginBottom: 4, marginTop: 8 },
+  input: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, fontSize: 14, color: colors.ink },
+  hint: { fontSize: 11, color: colors.slate400, marginTop: 4 },
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  pickChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: colors.slate200, backgroundColor: colors.white },
+  pickChipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  pickChipText: { fontSize: 11, fontWeight: '600', color: colors.slate500 },
+  pickChipTextActive: { color: colors.white },
+  errorText: { color: colors.criticalText, fontSize: 12, marginTop: 8 },
+  formActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 16 },
+  cancelBtn: { paddingHorizontal: 14, paddingVertical: 10 },
+  cancelBtnText: { fontSize: 13, fontWeight: '600', color: colors.slate500 },
+  saveModalBtn: { backgroundColor: colors.accent, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10 },
+  saveModalBtnText: { color: colors.white, fontSize: 13, fontWeight: '700' },
 });

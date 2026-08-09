@@ -8,6 +8,7 @@ import { useAuth } from '../lib/AuthContext';
 import { colors } from '../theme';
 import { BellIcon, MenuIcon } from '../components/icons';
 import AccountMenuModal from '../components/AccountMenuModal';
+import CalendarSystemSwitch from '../components/CalendarSystemSwitch';
 
 export default function AdminHeader({ navigation, options }: NativeStackHeaderProps) {
   const { profile } = useAuth();
@@ -30,34 +31,39 @@ export default function AdminHeader({ navigation, options }: NativeStackHeaderPr
 
   return (
     <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-      <TouchableOpacity
-        style={styles.menuBtn}
-        onPress={() => navigation.getParent()?.dispatch(DrawerActions.openDrawer())}
-      >
-        <MenuIcon />
-      </TouchableOpacity>
-      <Text style={styles.title} numberOfLines={1}>
-        {options.title}
-      </Text>
-
-      <TouchableOpacity style={styles.bellBtn}>
-        <BellIcon />
-      </TouchableOpacity>
-
-      <View style={styles.devices}>
-        <Text style={styles.devicesLabel}>Devices</Text>
-        <Text style={styles.devicesValue}>
-          {deviceCounts.online}/{deviceCounts.total}
+      <View style={styles.topRow}>
+        <TouchableOpacity
+          style={styles.menuBtn}
+          onPress={() => navigation.getParent()?.dispatch(DrawerActions.openDrawer())}
+        >
+          <MenuIcon />
+        </TouchableOpacity>
+        <Text style={styles.title} numberOfLines={1}>
+          {options.title}
         </Text>
+
+        <TouchableOpacity style={styles.bellBtn}>
+          <BellIcon />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.avatar} onPress={() => setMenuOpen(true)}>
+          {profile?.photo_url ? (
+            <Image source={{ uri: profile.photo_url }} style={styles.avatarImg} />
+          ) : (
+            <Text style={styles.avatarText}>{initial}</Text>
+          )}
+        </TouchableOpacity>
       </View>
 
-      <TouchableOpacity style={styles.avatar} onPress={() => setMenuOpen(true)}>
-        {profile?.photo_url ? (
-          <Image source={{ uri: profile.photo_url }} style={styles.avatarImg} />
-        ) : (
-          <Text style={styles.avatarText}>{initial}</Text>
-        )}
-      </TouchableOpacity>
+      <View style={styles.bottomRow}>
+        <CalendarSystemSwitch />
+        <View style={styles.devices}>
+          <Text style={styles.devicesLabel}>Devices</Text>
+          <Text style={styles.devicesValue}>
+            {deviceCounts.online}/{deviceCounts.total}
+          </Text>
+        </View>
+      </View>
 
       <AccountMenuModal visible={menuOpen} onClose={() => setMenuOpen(false)} />
     </View>
@@ -66,19 +72,18 @@ export default function AdminHeader({ navigation, options }: NativeStackHeaderPr
 
 const styles = StyleSheet.create({
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: colors.white,
     borderBottomWidth: 1,
     borderBottomColor: colors.slate200,
-    paddingBottom: 12,
+    paddingBottom: 10,
     paddingHorizontal: 12,
-    gap: 8,
   },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  bottomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
   menuBtn: { padding: 6 },
   title: { flex: 1, fontSize: 18, fontWeight: '700', color: colors.ink },
   bellBtn: { padding: 6 },
-  devices: { alignItems: 'flex-end', marginRight: 2 },
+  devices: { alignItems: 'flex-end' },
   devicesLabel: { fontSize: 9, color: colors.slate400 },
   devicesValue: { fontSize: 12, fontWeight: '700', color: colors.ink },
   avatar: {

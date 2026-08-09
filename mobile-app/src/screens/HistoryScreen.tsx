@@ -13,6 +13,8 @@ import {
   type DailyShiftByDate,
 } from '../lib/shift';
 import { colors } from '../theme';
+import { formatDdMmYyyy } from '../lib/calendar';
+import { useCalendarSystem } from '../lib/CalendarSystemContext';
 
 type Row = {
   key: string;
@@ -33,10 +35,6 @@ function fmtHrs(hours: number) {
 function fmtTime(iso: string | null) {
   return iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–';
 }
-function fmtDate(iso: string) {
-  const [, m, d] = iso.split('-');
-  return `${d}/${m}`;
-}
 function isoDaysAgo(n: number) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - n);
@@ -52,6 +50,7 @@ const STATUS_OPTIONS = ['All', 'Present', 'Absent', 'Late', 'Early'] as const;
 
 export default function HistoryScreen() {
   const { profile } = useAuth();
+  const { system } = useCalendarSystem();
   const isAdmin = profile?.role === 'admin' || profile?.role === 'hr';
 
   const [from, setFrom] = useState(isoDaysAgo(6));
@@ -272,7 +271,7 @@ export default function HistoryScreen() {
                 {item.employeeName}
               </Text>
             )}
-            <Text style={[styles.td, { flex: 0.12 }]}>{fmtDate(item.date)}</Text>
+            <Text style={[styles.td, { flex: 0.12 }]}>{formatDdMmYyyy(item.date, system).slice(0, 5)}</Text>
             <Text style={[styles.td, { flex: 0.2 }]}>
               {fmtTime(item.checkIn)}-{fmtTime(item.checkOut)}
             </Text>

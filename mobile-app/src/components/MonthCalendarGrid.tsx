@@ -2,40 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { colors } from '../theme';
 import type { DayStatus } from '../lib/shift';
+import { buildMonth, localDateKey as calLocalDateKey, stepAnchor, todayAnchor, type CalendarAnchor } from '../lib/calendar';
+import { useCalendarSystem } from '../lib/CalendarSystemContext';
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTH_LABEL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-
-type Cell = { adKey: string; displayDay: number; inMonth: boolean; isToday: boolean };
-
-function localDateKey(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function buildMonth(year: number, month: number): { weeks: Cell[][]; label: string } {
-  const first = new Date(year, month, 1);
-  const startOffset = first.getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const today = localDateKey(new Date());
-  const cells: Cell[] = [];
-  for (let i = 0; i < startOffset; i++) {
-    const d = new Date(year, month, i - startOffset + 1);
-    cells.push({ adKey: localDateKey(d), displayDay: d.getDate(), inMonth: false, isToday: false });
-  }
-  for (let d = 1; d <= daysInMonth; d++) {
-    const key = localDateKey(new Date(year, month, d));
-    cells.push({ adKey: key, displayDay: d, inMonth: true, isToday: key === today });
-  }
-  while (cells.length % 7 !== 0) {
-    const last = cells[cells.length - 1];
-    const [y, m, dd] = last.adKey.split('-').map(Number);
-    const d = new Date(y, m - 1, dd + 1);
-    cells.push({ adKey: localDateKey(d), displayDay: d.getDate(), inMonth: false, isToday: false });
-  }
-  const weeks: Cell[][] = [];
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
-  return { weeks, label: `${MONTH_LABEL[month]} ${year}` };
-}
 
 export default function MonthCalendarGrid({
   dayStatus,
@@ -52,11 +22,10 @@ export default function MonthCalendarGrid({
   onSelectDate: (adKey: string) => void;
   onMonthChange?: (adKeys: string[]) => void;
 }) {
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth());
-  const { weeks, label } = useMemo(() => buildMonth(year, month), [year, month]);
-  const todayKey = useMemo(() => localDateKey(new Date()), []);
+  const { system } = useCalendarSystem();
+  const [anchor, setAnchor] = useState<CalendarAnchor>(todayAnchor);
+  const { weeks, label } = useMemo(() => buildMonth(system, anchor), [system, anchor]);
+  const todayKey = useMemo(() => calLocalDateKey(new Date().toISOString()), []);
 
   useEffect(() => {
     onMonthChange?.(weeks.flat().filter(c => c.inMonth).map(c => c.adKey));
@@ -64,17 +33,7 @@ export default function MonthCalendarGrid({
   }, [weeks]);
 
   function go(dir: 1 | -1) {
-    let m = month + dir;
-    let y = year;
-    if (m < 0) {
-      m = 11;
-      y -= 1;
-    } else if (m > 11) {
-      m = 0;
-      y += 1;
-    }
-    setMonth(m);
-    setYear(y);
+    setAnchor(stepAnchor(system, anchor, dir));
   }
 
   return (

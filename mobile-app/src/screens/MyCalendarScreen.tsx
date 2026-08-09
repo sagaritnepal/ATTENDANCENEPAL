@@ -13,6 +13,8 @@ import {
 import { colors } from '../theme';
 import Badge from '../components/Badge';
 import MonthCalendarGrid from '../components/MonthCalendarGrid';
+import { formatAdDate } from '../lib/calendar';
+import { useCalendarSystem } from '../lib/CalendarSystemContext';
 
 const WINDOW_DAYS = 400;
 
@@ -44,6 +46,7 @@ const CARD_STYLES: Record<CardKey, { label: string; bg: string; text: string }> 
 };
 
 export default function MyCalendarScreen() {
+  const { system } = useCalendarSystem();
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -243,7 +246,7 @@ export default function MyCalendarScreen() {
               const day = dayStatus.get(entry.date);
               return (
                 <View key={entry.date} style={styles.expandedRow}>
-                  <Text style={styles.expandedDate}>{entry.date}</Text>
+                  <Text style={styles.expandedDate}>{formatAdDate(entry.date, system)}</Text>
                   {!day && <Badge tone="critical">Absent</Badge>}
                   {day?.isLate && <Badge tone="warning">Late</Badge>}
                 </View>
@@ -280,7 +283,7 @@ export default function MyCalendarScreen() {
             <Text style={styles.dim}>Pick a day on the calendar to see its detail.</Text>
           ) : (
             <>
-              <Text style={styles.detailTitle}>{selectedDate}</Text>
+              <Text style={styles.detailTitle}>{formatAdDate(selectedDate, system)}</Text>
               {selectedLeave && (
                 <View style={styles.leaveBanner}>
                   <Text style={styles.leaveBannerLabel}>On Leave</Text>
@@ -330,8 +333,8 @@ export default function MyCalendarScreen() {
               .map(lr => (
                 <View key={lr.id} style={styles.leaveRow}>
                   <Text style={styles.leaveRowDate}>
-                    {lr.start_date}
-                    {lr.start_date !== lr.end_date ? ` – ${lr.end_date}` : ''}
+                    {formatAdDate(lr.start_date, system)}
+                    {lr.start_date !== lr.end_date ? ` – ${formatAdDate(lr.end_date, system)}` : ''}
                   </Text>
                   <Badge tone="info">{lr.leave_type}</Badge>
                 </View>

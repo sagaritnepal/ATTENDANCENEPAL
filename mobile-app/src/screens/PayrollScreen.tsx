@@ -12,16 +12,12 @@ import {
 } from '../lib/shift';
 import { colors } from '../theme';
 import { ChevronIcon } from '../components/icons';
+import { buildPeriodOptions, currentSystemYearMonth, formatDdMmYyyy, systemPeriod } from '../lib/calendar';
+import { useCalendarSystem } from '../lib/CalendarSystemContext';
 
 function fmtHrs(hours: number) {
   return formatHoursMinutes(Math.round(hours * 60));
 }
-function monthBounds(year: number, month: number) {
-  const start = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
-  const end = new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10);
-  return { start, end };
-}
-const MONTH_LABEL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 type Row = {
   id: string;
@@ -35,11 +31,15 @@ type Row = {
   earlyDays: number;
 };
 
-export default function PayrollScreen() {
-  const now = new Date();
-  const [year, setYear] = useState(now.getUTCFullYear());
-  const [month, setMonth] = useState(now.getUTCMonth());
-  const { start, end } = useMemo(() => monthBounds(year, month), [year, month]);
+export default function PayrollScreen({ navigation }: any) {
+  const { system } = useCalendarSystem();
+  const [{ year, month }, setYearMonth] = useState(() => currentSystemYearMonth('AD'));
+  useEffect(() => {
+    setYearMonth(currentSystemYearMonth(system));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [system]);
+  const period = useMemo(() => systemPeriod(system, year, month), [system, year, month]);
+  const { start, end } = period;
 
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
@@ -206,8 +206,7 @@ export default function PayrollScreen() {
       m = 0;
       y += 1;
     }
-    setMonth(m);
-    setYear(y);
+    setYearMonth({ year: y, month: m });
   }
 
   if (loading && byEmployee.length === 0) {
@@ -282,11 +281,9 @@ export default function PayrollScreen() {
                 </View>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setMonthPickerOpen(true)} style={{ flex: 1, alignItems: 'center' }}>
-                <Text style={styles.periodLabel}>
-                  {MONTH_LABEL[month]} {year}
-                </Text>
+                <Text style={styles.periodLabel}>{period.label}</Text>
                 <Text style={styles.periodSub}>
-                  {start} to {end} ({daysInRange}d)
+                  {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)} ({daysInRange}d)
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => changeMonth(1)} style={styles.periodArrow}>
@@ -298,7 +295,7 @@ export default function PayrollScreen() {
           </>
         }
         renderItem={({ item }) => (
-          <View style={styles.card}>
+          <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('PayrollDetail', { employeeId: item.id })}>
             <View style={styles.cardTop}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{item.name}</Text>
@@ -367,7 +364,7 @@ export default function PayrollScreen() {
                 <Text style={styles.gridValue}>{overtimeSalary(item) != null ? overtimeSalary(item)!.toLocaleString() : '—'}</Text>
               </View>
             </View>
-          </View>
+          </TouchableOpacity>
         )}
         ListEmptyComponent={<Text style={styles.empty}>{loading ? 'Loading…' : 'No active employees.'}</Text>}
         ListFooterComponent={
@@ -385,19 +382,18 @@ export default function PayrollScreen() {
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setMonthPickerOpen(false)}>
           <View style={styles.modalSheet}>
             <FlatList
-              data={MONTH_LABEL}
-              keyExtractor={(_, i) => String(i)}
-              renderItem={({ item, index }) => (
+              data={buildPeriodOptions(system, null, period)}
+              keyExtractor={o => o.key}
+              renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.modalOption}
                   onPress={() => {
-                    setMonth(index);
+                    const [y, m] = item.key.split('-').slice(1).map(Number);
+                    setYearMonth({ year: y, month: m });
                     setMonthPickerOpen(false);
                   }}
                 >
-                  <Text style={[styles.modalOptionText, index === month && { color: colors.accent, fontWeight: '700' }]}>
-                    {item} {year}
-                  </Text>
+                  <Text style={[styles.modalOptionText, item.key === period.key && { color: colors.accent, fontWeight: '700' }]}>{item.label}</Text>
                 </TouchableOpacity>
               )}
             />
