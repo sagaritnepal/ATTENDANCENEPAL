@@ -7,7 +7,7 @@ import AppShell from '@/components/AppShell';
 import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
 import type { AttendanceLog, Device, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
-import { dateKey, isLate, last7Days, presentEmployeeIds, WEEKDAY_LABEL } from '@/lib/metrics';
+import { dateKey, firstCheckIn, isLate, last7Days, presentEmployeeIds, WEEKDAY_LABEL } from '@/lib/metrics';
 import type { DailyShiftByDate } from '@/lib/shift';
 
 const DEPT_COLORS: Record<string, string> = {
@@ -20,6 +20,8 @@ const DEPT_COLORS: Record<string, string> = {
 const OTHER_COLOR = '#94a3b8';
 
 type FeedItem = AttendanceLog & { employee_name: string };
+type DetailRow = { id: string; primary: string; secondary?: string };
+type DetailKey = 'total' | 'present' | 'late' | 'leave' | 'absent' | 'hours' | 'overtime';
 
 export default function DashboardPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -30,6 +32,7 @@ export default function DashboardPage() {
   const [todaySummaries, setTodaySummaries] = useState<PayrollSummary[]>([]);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [todayRoster, setTodayRoster] = useState<{ employee_id: string; shift_id: string | null }[]>([]);
+  const [detailKey, setDetailKey] = useState<DetailKey | null>(null);
 
   useEffect(() => {
     const since = new Date();
@@ -102,21 +105,86 @@ export default function DashboardPage() {
     return map;
   }, [todayRoster, today]);
 
-  const lateCount = useMemo(() => {
-    let count = 0;
+  const lateEmployees = useMemo(() => {
+    const rows: DetailRow[] = [];
     for (const emp of activeEmployees) {
       const empLogs = todayLogs.filter(l => l.employee_id === emp.id);
-      if (empLogs.length && isLate(emp, shifts, empLogs, today, dailyShiftByDate)) count++;
+      if (!empLogs.length || !isLate(emp, shifts, empLogs, today, dailyShiftByDate)) continue;
+      const checkIn = firstCheckIn(empLogs);
+      rows.push({
+        id: emp.id,
+        primary: emp.name,
+        secondary: checkIn ? `In at ${new Date(checkIn.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : undefined,
+      });
     }
-    return count;
+    return rows;
   }, [activeEmployees, todayLogs, shifts, today, dailyShiftByDate]);
+  const lateCount = lateEmployees.length;
 
   const onLeaveIds = useMemo(() => new Set(onLeave.map(l => l.employee_id)), [onLeave]);
-  const absentCount = Math.max(
-    0,
-    activeEmployees.length - presentIds.size - Array.from(onLeaveIds).filter(id => !presentIds.has(id)).length
-  );
   const attendancePct = activeEmployees.length ? Math.round((presentIds.size / activeEmployees.length) * 100) : 0;
+
+  const totalEmployeeRows = useMemo<DetailRow[]>(
+    () => activeEmployees.map(emp => ({ id: emp.id, primary: emp.name, secondary: emp.department ?? emp.employee_code })),
+    [activeEmployees]
+  );
+
+  const presentRows = useMemo<DetailRow[]>(() => {
+    const rows: DetailRow[] = [];
+    for (const emp of activeEmployees) {
+      if (!presentIds.has(emp.id)) continue;
+      const checkIn = firstCheckIn(todayLogs.filter(l => l.employee_id === emp.id));
+      rows.push({
+        id: emp.id,
+        primary: emp.name,
+        secondary: checkIn ? `In at ${new Date(checkIn.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : undefined,
+      });
+    }
+    return rows;
+  }, [activeEmployees, presentIds, todayLogs]);
+
+  const leaveRows = useMemo<DetailRow[]>(() => {
+    const byId = new Map(employees.map(e => [e.id, e.name]));
+    return onLeave.map(l => ({
+      id: l.id,
+      primary: byId.get(l.employee_id) ?? 'Unknown',
+      secondary: `${l.leave_type} · until ${l.end_date}`,
+    }));
+  }, [onLeave, employees]);
+
+  const absentRows = useMemo<DetailRow[]>(
+    () =>
+      activeEmployees
+        .filter(emp => !presentIds.has(emp.id) && !onLeaveIds.has(emp.id))
+        .map(emp => ({ id: emp.id, primary: emp.name, secondary: emp.department ?? undefined })),
+    [activeEmployees, presentIds, onLeaveIds]
+  );
+  const absentCount = absentRows.length;
+
+  const workHoursRows = useMemo<DetailRow[]>(() => {
+    const byId = new Map(employees.map(e => [e.id, e.name]));
+    return [...todaySummaries]
+      .sort((a, b) => Number(b.total_hours) - Number(a.total_hours))
+      .map(s => ({ id: s.id, primary: byId.get(s.employee_id) ?? 'Unknown', secondary: `${Number(s.total_hours).toFixed(1)} hrs` }));
+  }, [todaySummaries, employees]);
+
+  const overtimeRows = useMemo<DetailRow[]>(() => {
+    const byId = new Map(employees.map(e => [e.id, e.name]));
+    return todaySummaries
+      .filter(s => Number(s.overtime_hours) > 0)
+      .sort((a, b) => Number(b.overtime_hours) - Number(a.overtime_hours))
+      .map(s => ({ id: s.id, primary: byId.get(s.employee_id) ?? 'Unknown', secondary: `${Number(s.overtime_hours).toFixed(1)} hrs OT` }));
+  }, [todaySummaries, employees]);
+
+  const detailPanels: Record<DetailKey, { title: string; rows: DetailRow[]; emptyText: string }> = {
+    total: { title: 'Total Employees', rows: totalEmployeeRows, emptyText: 'No active employees.' },
+    present: { title: 'Present Today', rows: presentRows, emptyText: 'Nobody has checked in yet today.' },
+    late: { title: 'Late Arrivals', rows: lateEmployees, emptyText: 'No late arrivals today.' },
+    leave: { title: 'On Leave Today', rows: leaveRows, emptyText: 'Nobody is on approved leave today.' },
+    absent: { title: 'Absent Today', rows: absentRows, emptyText: 'No one is absent — everyone is present or on leave.' },
+    hours: { title: 'Total Work Hours', rows: workHoursRows, emptyText: 'No work hours recorded yet today.' },
+    overtime: { title: 'Overtime', rows: overtimeRows, emptyText: 'No overtime recorded today.' },
+  };
 
   const todayWorkHours = useMemo(() => todaySummaries.reduce((sum, s) => sum + Number(s.total_hours), 0), [todaySummaries]);
   const todayOvertimeHours = useMemo(() => todaySummaries.reduce((sum, s) => sum + Number(s.overtime_hours), 0), [todaySummaries]);
@@ -145,13 +213,19 @@ export default function DashboardPage() {
   return (
     <AppShell title="Dashboard">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
-        <StatCard label="Total Employees" value={String(activeEmployees.length)} hint="Active rosters" />
-        <StatCard label="Present Today" value={String(presentIds.size)} hint={`${attendancePct}% attendance`} />
-        <StatCard label="Late Arrivals" value={String(lateCount)} hint="Past grace period" />
-        <StatCard label="On Leave" value={String(onLeaveIds.size)} hint="Approved today" />
-        <StatCard label="Absent Today" value={String(absentCount)} hint="No punch, not on leave" />
-        <StatCard label="Total Work Hours" value={todayWorkHours.toFixed(1)} hint="Today, all staff" />
-        <StatCard className="col-span-2 sm:col-span-1" label="Overtime" value={`${todayOvertimeHours.toFixed(1)} hrs`} hint="Today, all staff" />
+        <StatCard label="Total Employees" value={String(activeEmployees.length)} hint="Active rosters" onClick={() => setDetailKey('total')} />
+        <StatCard label="Present Today" value={String(presentIds.size)} hint={`${attendancePct}% attendance`} onClick={() => setDetailKey('present')} />
+        <StatCard label="Late Arrivals" value={String(lateCount)} hint="Past grace period" onClick={() => setDetailKey('late')} />
+        <StatCard label="On Leave" value={String(onLeaveIds.size)} hint="Approved today" onClick={() => setDetailKey('leave')} />
+        <StatCard label="Absent Today" value={String(absentCount)} hint="No punch, not on leave" onClick={() => setDetailKey('absent')} />
+        <StatCard label="Total Work Hours" value={todayWorkHours.toFixed(1)} hint="Today, all staff" onClick={() => setDetailKey('hours')} />
+        <StatCard
+          className="col-span-2 sm:col-span-1"
+          label="Overtime"
+          value={`${todayOvertimeHours.toFixed(1)} hrs`}
+          hint="Today, all staff"
+          onClick={() => setDetailKey('overtime')}
+        />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -257,6 +331,44 @@ export default function DashboardPage() {
           </ul>
         </div>
       </div>
+
+      {detailKey && (
+        <div
+          className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 p-4"
+          onClick={() => setDetailKey(null)}
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-xl bg-white p-6 shadow-lg"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-ink">{detailPanels[detailKey].title}</h3>
+              <button
+                onClick={() => setDetailKey(null)}
+                aria-label="Close"
+                className="text-slate-400 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+            {detailPanels[detailKey].rows.length === 0 ? (
+              <p className="text-sm text-slate-400">{detailPanels[detailKey].emptyText}</p>
+            ) : (
+              <ul className="space-y-2">
+                {detailPanels[detailKey].rows.map(row => (
+                  <li
+                    key={row.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 px-3 py-2 text-sm"
+                  >
+                    <span className="font-medium text-ink">{row.primary}</span>
+                    {row.secondary && <span className="shrink-0 text-xs text-slate-500">{row.secondary}</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }
