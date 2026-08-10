@@ -709,12 +709,6 @@ function EmployeesView() {
         <div className="divide-y divide-slate-100 md:hidden">
           {pageItems.map(emp => {
             const shift = resolveShift(emp, shifts);
-            // "Registered" used to mean "has a fingerprint ID" — trivially
-            // true for every device-synced employee, so it never actually
-            // flagged an incomplete profile. A branch and a real shift (not
-            // the global Default fallback) is what's actually needed before
-            // this person's attendance/payroll works correctly.
-            const registered = Boolean(emp.branch_id) && (rosterEmployeeIds.has(emp.id) || shift.id !== 'default');
             return (
               <div key={emp.id} className="p-4">
                 <div className="flex items-center gap-3">
@@ -743,7 +737,7 @@ function EmployeesView() {
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
-                    <Badge tone={registered ? 'good' : 'warning'}>{registered ? 'Registered' : 'Unregistered'}</Badge>
+                    <Badge tone={emp.fingerprint_id ? 'good' : 'neutral'}>{emp.fingerprint_id ? 'Bio Enrolled' : 'Not Enrolled'}</Badge>
                     {linkedEmployeeIds.has(emp.id) && <Badge tone="good">Login Active</Badge>}
                   </div>
                 </div>
@@ -900,7 +894,6 @@ function EmployeesView() {
             <tbody>
               {pageItems.map(emp => {
                 const shift = resolveShift(emp, shifts);
-                const registered = Boolean(emp.branch_id) && (rosterEmployeeIds.has(emp.id) || shift.id !== 'default');
                 return (
                   <tr key={emp.id} className="border-b border-slate-100 last:border-0">
                     <td className="px-2 py-3 text-center text-sm font-semibold text-ink">{emp.fingerprint_id ?? '—'}</td>
@@ -1013,7 +1006,7 @@ function EmployeesView() {
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex flex-col items-start gap-1">
-                        <Badge tone={registered ? 'good' : 'warning'}>{registered ? 'Registered' : 'Unregistered'}</Badge>
+                        <Badge tone={emp.fingerprint_id ? 'good' : 'neutral'}>{emp.fingerprint_id ? 'Bio Enrolled' : 'Not Enrolled'}</Badge>
                         {linkedEmployeeIds.has(emp.id) && <Badge tone="good">Login Active</Badge>}
                       </div>
                     </td>

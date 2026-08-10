@@ -192,17 +192,15 @@ export default function CalendarPage() {
     };
   }, [visibleDates, dayStatus, leaveDates, weekOffDates]);
 
+  // Just today for now — a full date-range picker for this report can come
+  // later if it's actually needed.
   const reportRows = useMemo(() => {
     const todayKey = localDateKey(new Date().toISOString());
-    return [...visibleDates]
-      .sort((a, b) => b.localeCompare(a))
-      .map(date => {
-        const status = dayStatus.get(date);
-        const onLeave = leaveDates.has(date);
-        const onWeekOff = weekOffDates.has(date);
-        return { date, status, onLeave, onWeekOff, isFuture: date > todayKey };
-      });
-  }, [visibleDates, dayStatus, leaveDates, weekOffDates]);
+    const status = dayStatus.get(todayKey);
+    const onLeave = leaveDates.has(todayKey);
+    const onWeekOff = weekOffDates.has(todayKey);
+    return [{ date: todayKey, status, onLeave, onWeekOff, isFuture: false }];
+  }, [dayStatus, leaveDates, weekOffDates]);
 
   const selectedLeave = selectedDate ? leaveByDate.get(selectedDate) ?? null : null;
 
@@ -472,7 +470,7 @@ export default function CalendarPage() {
 
         {selectedTab === 'report' && (
           <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <h3 className="mb-3 text-sm font-semibold text-ink">Attendance Report — this month</h3>
+            <h3 className="mb-3 text-sm font-semibold text-ink">Attendance Report — today</h3>
             {reportRows.length === 0 ? (
               <p className="text-sm text-slate-400">No records for this month.</p>
             ) : (
