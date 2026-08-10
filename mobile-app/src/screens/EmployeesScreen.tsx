@@ -16,17 +16,6 @@ function generatePassword(length = 10) {
   return out;
 }
 
-const COLS = [
-  { key: 'id', label: 'ID', width: 48 },
-  { key: 'employee', label: 'Employee', width: 170 },
-  { key: 'username', label: 'Username', width: 160 },
-  { key: 'branch', label: 'Branch', width: 110 },
-  { key: 'shift', label: 'Shift', width: 120 },
-  { key: 'bio', label: 'Bio Enrollment', width: 110 },
-  { key: 'actions', label: 'Actions', width: 220 },
-] as const;
-const TABLE_WIDTH = COLS.reduce((s, c) => s + c.width, 0);
-
 export default function EmployeesScreen({ route, navigation }: any) {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -330,135 +319,135 @@ export default function EmployeesScreen({ route, navigation }: any) {
       </View>
       <TextInput style={styles.search} placeholder="Search employees…" placeholderTextColor={colors.slate400} value={search} onChangeText={setSearch} />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator style={{ flex: 1 }} contentContainerStyle={{ width: TABLE_WIDTH, flexGrow: 1 }}>
-        <View style={{ flex: 1 }}>
-          <View style={styles.tableHeader}>
-            {COLS.map(c => (
-              <Text key={c.key} style={[styles.th, { width: c.width }]}>
-                {c.label}
-              </Text>
-            ))}
-          </View>
-          <FlatList
-            data={filtered}
-            keyExtractor={item => item.id}
-            renderItem={({ item, index }) => {
-              const shift = resolveShift(item, shifts);
-              const registered = Boolean(item.branch_id) && (rosterEmployeeIds.has(item.id) || shift.id !== 'default');
-              const hasLogin = linkedEmployeeIds.has(item.id);
-              return (
-                <View style={[styles.tr, index % 2 === 1 && styles.trAlt]}>
-                  <Text style={[styles.td, { width: 48, fontWeight: '700', color: colors.ink }]}>{item.fingerprint_id ?? '—'}</Text>
-
-                  <TouchableOpacity style={{ width: 170, flexDirection: 'row', gap: 8 }} onPress={() => navigation.navigate('EmployeeDetail', { employeeId: item.id })}>
-                    <View style={styles.avatar}>
-                      {item.profile_photo_url ? <Image source={{ uri: item.profile_photo_url }} style={styles.avatarImg} /> : <Text style={styles.avatarText}>{item.name.slice(0, 1).toUpperCase()}</Text>}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.td, styles.tdName]} numberOfLines={1}>
-                        {item.name}
-                      </Text>
-                      <Text style={styles.tdSub} numberOfLines={1}>
-                        {item.phone ?? '—'}
-                      </Text>
-                      <Text style={styles.tdSub} numberOfLines={1}>
-                        {[item.designation, item.department].filter(Boolean).join(' · ') || '—'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-
-                  <View style={{ width: 160 }}>
-                    {hasLogin ? (
-                      editingUsernameId === item.id ? (
-                        <View style={{ gap: 4 }}>
-                          <TextInput style={styles.usernameInput} value={usernameDraft} onChangeText={setUsernameDraft} autoFocus keyboardType="email-address" autoCapitalize="none" />
-                          <View style={{ flexDirection: 'row', gap: 10 }}>
-                            <TouchableOpacity onPress={() => setEditingUsernameId(null)}>
-                              <Text style={styles.cancelLink}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => saveUsername(item)} disabled={savingUsername}>
-                              <Text style={styles.saveLink}>{savingUsername ? 'Saving…' : 'Save'}</Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      ) : (
-                        <TouchableOpacity onPress={() => startEditUsername(item)}>
-                          <Text style={[styles.td, styles.tdName]} numberOfLines={1}>
-                            {loginEmailByEmployee[item.id] ?? '—'}
-                          </Text>
-                          <Text style={styles.editHint}>tap to edit</Text>
-                        </TouchableOpacity>
-                      )
-                    ) : (
-                      <Text style={styles.dim}>—</Text>
-                    )}
+      <FlatList
+        data={filtered}
+        keyExtractor={item => item.id}
+        contentContainerStyle={{ padding: 16, paddingTop: 8, flexGrow: 1 }}
+        renderItem={({ item }) => {
+          const shift = resolveShift(item, shifts);
+          const registered = Boolean(item.branch_id) && (rosterEmployeeIds.has(item.id) || shift.id !== 'default');
+          const hasLogin = linkedEmployeeIds.has(item.id);
+          return (
+            <View style={styles.card}>
+              <View style={styles.cardTop}>
+                <TouchableOpacity style={styles.identity} onPress={() => navigation.navigate('EmployeeDetail', { employeeId: item.id })}>
+                  <View style={styles.avatar}>
+                    {item.profile_photo_url ? <Image source={{ uri: item.profile_photo_url }} style={styles.avatarImg} /> : <Text style={styles.avatarText}>{item.name.slice(0, 1).toUpperCase()}</Text>}
                   </View>
-
-                  <TouchableOpacity style={{ width: 110 }} onPress={() => setBranchPickerFor(item)}>
-                    <View style={[styles.branchChip, !item.branch_id && styles.branchChipWarn]}>
-                      <Text style={styles.branchChipText} numberOfLines={1}>
-                        {branches.find(b => b.id === item.branch_id)?.name ?? 'Unassigned'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-
-                  <View style={{ width: 120 }}>
-                    {rosterEmployeeIds.has(item.id) ? (
-                      <View style={styles.shiftPill}>
-                        <Text style={styles.shiftPillText}>Custom Roster</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.shiftPillNeutral}>
-                        <Text style={styles.td} numberOfLines={1}>
-                          {shift.name}
-                        </Text>
-                        <Text style={styles.tdSub}>{formatShiftHours(shift)}</Text>
-                      </View>
-                    )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardName} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <Text style={styles.cardSub} numberOfLines={1}>
+                      {[item.designation, item.department].filter(Boolean).join(' · ') || 'No designation'}
+                    </Text>
                   </View>
+                </TouchableOpacity>
+                <Text style={styles.cardId}>#{item.fingerprint_id ?? '—'}</Text>
+              </View>
 
-                  <View style={{ width: 110, gap: 4 }}>
-                    <Badge tone={registered ? 'good' : 'warning'}>{registered ? 'Registered' : 'Unregistered'}</Badge>
-                    {hasLogin && <Badge tone="good">Login Active</Badge>}
-                  </View>
+              <View style={styles.badgeRow}>
+                <Badge tone={registered ? 'good' : 'warning'}>{registered ? 'Registered' : 'Unregistered'}</Badge>
+                {hasLogin && <Badge tone="good">Login Active</Badge>}
+              </View>
 
-                  <View style={{ width: 220, flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-                    {hasLogin ? (
-                      <TouchableOpacity style={[styles.actionTile, styles.actionAccent]} onPress={() => openResetModal(item)}>
-                        <KeyIcon size={12} color={colors.accent} />
-                        <Text style={[styles.actionText, { color: colors.accent }]}>Reset</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity style={[styles.actionTile, styles.actionAccent]} onPress={() => openLoginModal(item)}>
-                        <KeyIcon size={12} color={colors.accent} />
-                        <Text style={[styles.actionText, { color: colors.accent }]}>Login</Text>
-                      </TouchableOpacity>
-                    )}
-                    {item.status === 'active' ? (
-                      <TouchableOpacity style={[styles.actionTile, styles.actionWarning]} onPress={() => handleMarkResigned(item)}>
-                        <Text style={[styles.actionText, { color: colors.warningText }]}>Resign</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity style={[styles.actionTile, styles.actionAccent]} onPress={() => handleRestore(item)}>
-                        <Text style={[styles.actionText, { color: colors.accent }]}>Restore</Text>
-                      </TouchableOpacity>
-                    )}
-                    <TouchableOpacity style={[styles.actionTile, styles.actionCritical]} onPress={() => handleRemove(item)}>
-                      <Text style={[styles.actionText, { color: colors.criticalText }]}>Remove</Text>
-                    </TouchableOpacity>
-                    {item.status !== 'active' && (
-                      <TouchableOpacity style={[styles.actionTile, styles.actionCritical]} onPress={() => openForceDelete(item)}>
-                        <Text style={[styles.actionText, { color: colors.criticalText }]}>Delete forever</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
+              <View style={styles.cardGrid}>
+                <View style={styles.gridItem}>
+                  <Text style={styles.gridLabel}>Phone</Text>
+                  <Text style={styles.gridValue} numberOfLines={1}>
+                    {item.phone ?? '—'}
+                  </Text>
                 </View>
-              );
-            }}
-            ListEmptyComponent={<Text style={styles.empty}>No employees match this filter.</Text>}
-          />
-        </View>
-      </ScrollView>
+
+                <TouchableOpacity style={styles.gridItem} onPress={() => setBranchPickerFor(item)}>
+                  <Text style={styles.gridLabel}>Branch</Text>
+                  <View style={[styles.branchChip, !item.branch_id && styles.branchChipWarn]}>
+                    <Text style={styles.branchChipText} numberOfLines={1}>
+                      {branches.find(b => b.id === item.branch_id)?.name ?? 'Unassigned'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                <View style={styles.gridItem}>
+                  <Text style={styles.gridLabel}>Shift</Text>
+                  {rosterEmployeeIds.has(item.id) ? (
+                    <View style={styles.shiftPill}>
+                      <Text style={styles.shiftPillText}>Custom Roster</Text>
+                    </View>
+                  ) : (
+                    <>
+                      <Text style={styles.gridValue} numberOfLines={1}>
+                        {shift.name}
+                      </Text>
+                      <Text style={styles.cardSub}>{formatShiftHours(shift)}</Text>
+                    </>
+                  )}
+                </View>
+
+                <View style={styles.gridItem}>
+                  <Text style={styles.gridLabel}>Username</Text>
+                  {hasLogin ? (
+                    editingUsernameId === item.id ? (
+                      <View style={{ gap: 4 }}>
+                        <TextInput style={styles.usernameInput} value={usernameDraft} onChangeText={setUsernameDraft} autoFocus keyboardType="email-address" autoCapitalize="none" />
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                          <TouchableOpacity onPress={() => setEditingUsernameId(null)}>
+                            <Text style={styles.cancelLink}>Cancel</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => saveUsername(item)} disabled={savingUsername}>
+                            <Text style={styles.saveLink}>{savingUsername ? 'Saving…' : 'Save'}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ) : (
+                      <TouchableOpacity onPress={() => startEditUsername(item)}>
+                        <Text style={styles.gridValue} numberOfLines={1}>
+                          {loginEmailByEmployee[item.id] ?? '—'}
+                        </Text>
+                        <Text style={styles.editHint}>tap to edit</Text>
+                      </TouchableOpacity>
+                    )
+                  ) : (
+                    <Text style={styles.dim}>—</Text>
+                  )}
+                </View>
+              </View>
+
+              <View style={styles.actionsRow}>
+                {hasLogin ? (
+                  <TouchableOpacity style={[styles.actionTile, styles.actionAccent]} onPress={() => openResetModal(item)}>
+                    <KeyIcon size={12} color={colors.accent} />
+                    <Text style={[styles.actionText, { color: colors.accent }]}>Reset</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity style={[styles.actionTile, styles.actionAccent]} onPress={() => openLoginModal(item)}>
+                    <KeyIcon size={12} color={colors.accent} />
+                    <Text style={[styles.actionText, { color: colors.accent }]}>Login</Text>
+                  </TouchableOpacity>
+                )}
+                {item.status === 'active' ? (
+                  <TouchableOpacity style={[styles.actionTile, styles.actionWarning]} onPress={() => handleMarkResigned(item)}>
+                    <Text style={[styles.actionText, { color: colors.warningText }]}>Resign</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity style={[styles.actionTile, styles.actionAccent]} onPress={() => handleRestore(item)}>
+                    <Text style={[styles.actionText, { color: colors.accent }]}>Restore</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={[styles.actionTile, styles.actionCritical]} onPress={() => handleRemove(item)}>
+                  <Text style={[styles.actionText, { color: colors.criticalText }]}>Remove</Text>
+                </TouchableOpacity>
+                {item.status !== 'active' && (
+                  <TouchableOpacity style={[styles.actionTile, styles.actionCritical]} onPress={() => openForceDelete(item)}>
+                    <Text style={[styles.actionText, { color: colors.criticalText }]}>Delete forever</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          );
+        }}
+        ListEmptyComponent={<Text style={styles.empty}>No employees match this filter.</Text>}
+      />
 
       {/* Add Employee modal */}
       <Modal visible={showAddForm} transparent animationType="fade" onRequestClose={() => setShowAddForm(false)}>
@@ -699,33 +688,37 @@ const styles = StyleSheet.create({
   filterBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: colors.slate200, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: colors.white },
   filterBtnText: { fontSize: 13, fontWeight: '600', color: colors.ink },
   search: { marginHorizontal: 16, marginTop: 8, marginBottom: 8, borderWidth: 1, borderColor: colors.slate200, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: colors.white, color: colors.ink },
-  tableHeader: { flexDirection: 'row', backgroundColor: colors.slate50, borderBottomWidth: 1, borderBottomColor: colors.slate200, paddingVertical: 8, paddingHorizontal: 8, marginHorizontal: 8 },
-  th: { fontSize: 9, fontWeight: '700', color: colors.slate500, textTransform: 'uppercase', paddingHorizontal: 4 },
-  tr: { flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 8, marginHorizontal: 8, borderBottomWidth: 1, borderBottomColor: colors.slate100, alignItems: 'flex-start' },
-  trAlt: { backgroundColor: colors.white },
-  td: { fontSize: 11, color: colors.slate500, paddingHorizontal: 4 },
-  tdName: { color: colors.ink, fontWeight: '600' },
-  tdSub: { fontSize: 9, color: colors.slate400, paddingHorizontal: 4, marginTop: 1 },
-  dim: { fontSize: 11, color: colors.slate400, paddingHorizontal: 4 },
-  avatar: { height: 30, width: 30, borderRadius: 15, backgroundColor: colors.accentLight, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  card: { backgroundColor: colors.white, borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: colors.slate200 },
+  cardTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
+  identity: { flexDirection: 'row', gap: 10, flex: 1, alignItems: 'center' },
+  cardName: { fontSize: 15, fontWeight: '700', color: colors.ink },
+  cardSub: { fontSize: 11, color: colors.slate400, marginTop: 1 },
+  cardId: { fontSize: 12, fontWeight: '700', color: colors.slate400 },
+  badgeRow: { flexDirection: 'row', gap: 6, marginTop: 10 },
+  cardGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 12, borderTopWidth: 1, borderTopColor: colors.slate100, paddingTop: 12 },
+  gridItem: { width: '50%', paddingRight: 10, marginBottom: 10 },
+  gridLabel: { fontSize: 10, fontWeight: '700', color: colors.slate400, textTransform: 'uppercase', marginBottom: 3 },
+  gridValue: { fontSize: 13, color: colors.ink, fontWeight: '600' },
+  dim: { fontSize: 13, color: colors.slate400 },
+  avatar: { height: 40, width: 40, borderRadius: 20, backgroundColor: colors.accentLight, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarImg: { height: '100%', width: '100%' },
-  avatarText: { color: colors.accent, fontWeight: '700', fontSize: 12 },
-  usernameInput: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4, fontSize: 11, color: colors.ink },
-  editHint: { fontSize: 8, color: colors.slate400, paddingHorizontal: 4 },
-  cancelLink: { fontSize: 10, color: colors.slate500, fontWeight: '600' },
-  saveLink: { fontSize: 10, color: colors.accent, fontWeight: '700' },
-  branchChip: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 },
+  avatarText: { color: colors.accent, fontWeight: '700', fontSize: 15 },
+  usernameInput: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4, fontSize: 12, color: colors.ink },
+  editHint: { fontSize: 9, color: colors.slate400 },
+  cancelLink: { fontSize: 11, color: colors.slate500, fontWeight: '600' },
+  saveLink: { fontSize: 11, color: colors.accent, fontWeight: '700' },
+  branchChip: { alignSelf: 'flex-start', borderWidth: 1, borderColor: colors.slate200, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 },
   branchChipWarn: { borderColor: colors.warning },
-  branchChipText: { fontSize: 10, color: colors.slate500 },
-  shiftPill: { backgroundColor: colors.accentLight, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4, alignItems: 'center' },
-  shiftPillText: { fontSize: 10, fontWeight: '700', color: colors.accent },
-  shiftPillNeutral: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 },
-  actionTile: { flexDirection: 'row', gap: 3, alignItems: 'center', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 5, borderWidth: 1 },
+  branchChipText: { fontSize: 11, color: colors.slate500 },
+  shiftPill: { alignSelf: 'flex-start', backgroundColor: colors.accentLight, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4 },
+  shiftPillText: { fontSize: 11, fontWeight: '700', color: colors.accent },
+  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
+  actionTile: { flexDirection: 'row', gap: 3, alignItems: 'center', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1 },
   actionAccent: { backgroundColor: colors.accentLight, borderColor: colors.accent },
   actionWarning: { backgroundColor: colors.warningBg, borderColor: colors.warning },
   actionCritical: { backgroundColor: colors.criticalBg, borderColor: colors.critical },
-  actionText: { fontSize: 9, fontWeight: '700' },
-  empty: { textAlign: 'center', marginTop: 40, color: colors.slate400, width: 400 },
+  actionText: { fontSize: 11, fontWeight: '700' },
+  empty: { textAlign: 'center', marginTop: 40, color: colors.slate400 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' },
   modalSheet: { backgroundColor: colors.white, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingVertical: 8, maxHeight: '60%' },
   modalOption: { paddingHorizontal: 20, paddingVertical: 14 },

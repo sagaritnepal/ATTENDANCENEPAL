@@ -31,9 +31,6 @@ type Row = {
   earlyDays: number;
 };
 
-const COLS_WIDTH = { id: 46, employee: 140, days: 60, hours: 60, overtime: 56, lateEarly: 70, salary: 90, calc: 100, otSalary: 130, total: 90 };
-const TABLE_WIDTH = Object.values(COLS_WIDTH).reduce((a, b) => a + b, 0);
-
 export default function PayrollScreen({ navigation }: any) {
   const { system } = useCalendarSystem();
   const [{ year, month }, setYearMonth] = useState(() => currentSystemYearMonth('AD'));
@@ -291,36 +288,44 @@ export default function PayrollScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ width: TABLE_WIDTH }}>
-          <View>
-            <View style={styles.tableHeader}>
-              <Text style={[styles.th, { width: COLS_WIDTH.id }]}>ID</Text>
-              <Text style={[styles.th, { width: COLS_WIDTH.employee }]}>Employee</Text>
-              <Text style={[styles.th, { width: COLS_WIDTH.days }]}>Days</Text>
-              <Text style={[styles.th, { width: COLS_WIDTH.hours }]}>Hours</Text>
-              <Text style={[styles.th, { width: COLS_WIDTH.overtime }]}>OT</Text>
-              <Text style={[styles.th, { width: COLS_WIDTH.lateEarly }]}>Late/Early</Text>
-              <Text style={[styles.th, { width: COLS_WIDTH.salary }]}>Salary</Text>
-              <Text style={[styles.th, { width: COLS_WIDTH.calc }]}>Calculated</Text>
-              <Text style={[styles.th, { width: COLS_WIDTH.otSalary }]}>OT Salary</Text>
-              <Text style={[styles.th, { width: COLS_WIDTH.total }]}>Total</Text>
-            </View>
-
-            {byEmployee.map((item, index) => (
-              <View key={item.id} style={[styles.tr, index % 2 === 1 && styles.trAlt]}>
-                <Text style={[styles.td, { width: COLS_WIDTH.id }]}>{item.enrollId}</Text>
-                <TouchableOpacity style={{ width: COLS_WIDTH.employee }} onPress={() => navigation.navigate('PayrollDetail', { employeeId: item.id })}>
-                  <Text style={[styles.td, styles.tdName]} numberOfLines={1}>
+        <View>
+          {byEmployee.map(item => (
+            <View key={item.id} style={styles.card}>
+              <View style={styles.cardTop}>
+                <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('PayrollDetail', { employeeId: item.id })}>
+                  <Text style={styles.cardName} numberOfLines={1}>
                     {item.name}
                   </Text>
+                  <Text style={styles.cardSub}>ID {item.enrollId}</Text>
                 </TouchableOpacity>
-                <Text style={[styles.td, { width: COLS_WIDTH.days }]}>{item.days}</Text>
-                <Text style={[styles.td, { width: COLS_WIDTH.hours }]}>{fmtHrs(item.hours)}</Text>
-                <Text style={[styles.td, { width: COLS_WIDTH.overtime, color: colors.infoText }]}>{fmtHrs(item.overtime)}</Text>
-                <Text style={[styles.td, { width: COLS_WIDTH.lateEarly }]}>
-                  <Text style={{ color: colors.warningText }}>{item.lateDays}L</Text> <Text style={{ color: colors.criticalText }}>{item.earlyDays}E</Text>
-                </Text>
-                <View style={{ width: COLS_WIDTH.salary }}>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.gridLabel}>Total</Text>
+                  <Text style={styles.cardTotal}>{totalSalary(item) != null ? totalSalary(item)!.toLocaleString() : '—'}</Text>
+                </View>
+              </View>
+
+              <View style={styles.cardGrid}>
+                <View style={styles.gridItem}>
+                  <Text style={styles.gridLabel}>Days</Text>
+                  <Text style={styles.gridValue}>{item.days}</Text>
+                </View>
+                <View style={styles.gridItem}>
+                  <Text style={styles.gridLabel}>Hours</Text>
+                  <Text style={styles.gridValue}>{fmtHrs(item.hours)}</Text>
+                </View>
+                <View style={styles.gridItem}>
+                  <Text style={styles.gridLabel}>Overtime</Text>
+                  <Text style={[styles.gridValue, { color: colors.infoText }]}>{fmtHrs(item.overtime)}</Text>
+                </View>
+                <View style={styles.gridItem}>
+                  <Text style={styles.gridLabel}>Late / Early</Text>
+                  <Text style={styles.gridValue}>
+                    <Text style={{ color: colors.warningText }}>{item.lateDays}L</Text> <Text style={{ color: colors.criticalText }}>{item.earlyDays}E</Text>
+                  </Text>
+                </View>
+
+                <View style={styles.gridItem}>
+                  <Text style={styles.gridLabel}>Salary</Text>
                   {editingSalaryId === item.id ? (
                     <View style={{ gap: 4 }}>
                       <TextInput
@@ -341,26 +346,31 @@ export default function PayrollScreen({ navigation }: any) {
                     </View>
                   ) : (
                     <TouchableOpacity onPress={() => setEditingSalaryId(item.id)}>
-                      <Text style={styles.td}>{item.salary != null ? item.salary.toLocaleString() : 'Set'}</Text>
+                      <Text style={styles.gridValue}>{item.salary != null ? item.salary.toLocaleString() : 'Set'}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
-                <Text style={[styles.td, { width: COLS_WIDTH.calc }]}>{calculatedSalary(item) != null ? calculatedSalary(item)!.toLocaleString() : '—'}</Text>
-                <View style={{ width: COLS_WIDTH.otSalary, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Switch
-                    value={overtimeEnabled[item.id] ?? true}
-                    onValueChange={v => setOvertimeEnabled(m => ({ ...m, [item.id]: v }))}
-                    trackColor={{ false: colors.slate200, true: colors.good }}
-                    style={{ transform: [{ scale: 0.8 }] }}
-                  />
-                  <Text style={styles.td}>{overtimeSalary(item) != null ? overtimeSalary(item)!.toLocaleString() : '—'}</Text>
+                <View style={styles.gridItem}>
+                  <Text style={styles.gridLabel}>Calculated</Text>
+                  <Text style={styles.gridValue}>{calculatedSalary(item) != null ? calculatedSalary(item)!.toLocaleString() : '—'}</Text>
                 </View>
-                <Text style={[styles.td, styles.tdBold, { width: COLS_WIDTH.total }]}>{totalSalary(item) != null ? totalSalary(item)!.toLocaleString() : '—'}</Text>
+                <View style={styles.gridItem}>
+                  <Text style={styles.gridLabel}>OT Salary</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Switch
+                      value={overtimeEnabled[item.id] ?? true}
+                      onValueChange={v => setOvertimeEnabled(m => ({ ...m, [item.id]: v }))}
+                      trackColor={{ false: colors.slate200, true: colors.good }}
+                      style={{ transform: [{ scale: 0.8 }] }}
+                    />
+                    <Text style={styles.gridValue}>{overtimeSalary(item) != null ? overtimeSalary(item)!.toLocaleString() : '—'}</Text>
+                  </View>
+                </View>
               </View>
-            ))}
-            {byEmployee.length === 0 && <Text style={styles.empty}>{loading ? 'Loading…' : 'No active employees.'}</Text>}
-          </View>
-        </ScrollView>
+            </View>
+          ))}
+          {byEmployee.length === 0 && <Text style={styles.empty}>{loading ? 'Loading…' : 'No active employees.'}</Text>}
+        </View>
 
         {byEmployee.length > 0 && (
           <View style={styles.footerBar}>
@@ -412,17 +422,19 @@ const styles = StyleSheet.create({
   periodArrow: { padding: 8 },
   periodLabel: { fontSize: 22, fontWeight: '700', color: colors.ink },
   periodSub: { fontSize: 16, color: colors.slate400, marginTop: 2 },
-  tableHeader: { flexDirection: 'row', backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.slate200, paddingVertical: 8, paddingHorizontal: 4, borderTopLeftRadius: 10, borderTopRightRadius: 10 },
-  th: { fontSize: 9, fontWeight: '700', color: colors.slate500, textTransform: 'uppercase', paddingHorizontal: 4 },
-  tr: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 4, backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.slate100 },
-  trAlt: { backgroundColor: colors.slate50 },
-  td: { fontSize: 11, color: colors.slate500, paddingHorizontal: 4 },
-  tdName: { color: colors.ink, fontWeight: '600' },
-  tdBold: { fontWeight: '700', color: colors.goodText },
-  salaryInput: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4, fontSize: 11, color: colors.ink, width: 80 },
-  cancelLink: { fontSize: 10, color: colors.slate500, fontWeight: '600' },
-  saveLink: { fontSize: 10, color: colors.accent, fontWeight: '700' },
-  empty: { textAlign: 'center', marginTop: 20, marginBottom: 20, color: colors.slate400, width: 300 },
+  card: { backgroundColor: colors.white, borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: colors.slate200 },
+  cardTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.slate100 },
+  cardName: { fontSize: 15, fontWeight: '700', color: colors.ink },
+  cardSub: { fontSize: 11, color: colors.slate400, marginTop: 1 },
+  cardTotal: { fontSize: 17, fontWeight: '700', color: colors.goodText, marginTop: 2 },
+  cardGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingTop: 12 },
+  gridItem: { width: '50%', paddingRight: 10, marginBottom: 10 },
+  gridLabel: { fontSize: 10, fontWeight: '700', color: colors.slate400, textTransform: 'uppercase', marginBottom: 3 },
+  gridValue: { fontSize: 13, color: colors.ink, fontWeight: '600' },
+  salaryInput: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4, fontSize: 12, color: colors.ink, width: 90 },
+  cancelLink: { fontSize: 11, color: colors.slate500, fontWeight: '600' },
+  saveLink: { fontSize: 11, color: colors.accent, fontWeight: '700' },
+  empty: { textAlign: 'center', marginTop: 20, marginBottom: 20, color: colors.slate400 },
   footerBar: { flexDirection: 'row', justifyContent: 'center', paddingVertical: 12 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' },
   modalSheet: { backgroundColor: colors.white, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingVertical: 8, maxHeight: '60%' },

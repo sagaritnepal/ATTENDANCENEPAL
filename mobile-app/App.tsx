@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, AppState, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, AppState, Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -254,9 +254,8 @@ function AppInner() {
     return (
       <View style={styles.webOuter}>
         <View style={[styles.webInner, styles.lockScreen]}>
-          <View style={styles.lockIcon}>
-            <Text style={styles.lockIconGlyph}>🔒</Text>
-          </View>
+          {/* eslint-disable-next-line @typescript-eslint/no-require-imports */}
+          <Image source={require('./assets/icon.png')} style={styles.lockLogo} resizeMode="contain" />
           <Text style={styles.lockTitle}>Locked</Text>
           <Text style={styles.lockSubtitle}>Unlock with your fingerprint or face to continue.</Text>
           <TouchableOpacity onPress={authenticate} disabled={authenticating} style={styles.unlockButton}>
@@ -325,16 +324,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.sidebar,
     paddingHorizontal: 32,
   },
-  lockIcon: {
-    height: 72,
-    width: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
+  lockLogo: {
+    height: 96,
+    width: 96,
+    borderRadius: 20,
+    backgroundColor: colors.white,
+    marginBottom: 20,
+    padding: 8,
   },
-  lockIconGlyph: { fontSize: 32 },
   lockTitle: { fontSize: 20, fontWeight: '700', color: colors.white, marginBottom: 6 },
   lockSubtitle: { fontSize: 14, color: 'rgba(255,255,255,0.7)', textAlign: 'center', marginBottom: 24 },
   unlockButton: { backgroundColor: colors.accent, paddingHorizontal: 32, paddingVertical: 12, borderRadius: 10 },

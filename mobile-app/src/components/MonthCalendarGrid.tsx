@@ -85,6 +85,7 @@ export default function MonthCalendarGrid({
               }
               if (cell.isToday) textColor = colors.accent;
             }
+            const todayRing = cell.inMonth && cell.isToday && !selected;
             if (selected) {
               bg = colors.accent;
               textColor = colors.white;
@@ -93,7 +94,7 @@ export default function MonthCalendarGrid({
             return (
               <TouchableOpacity
                 key={ci}
-                style={[styles.cell, { backgroundColor: bg }]}
+                style={[styles.cell, { backgroundColor: bg }, selected && styles.cellSelected, todayRing && styles.cellToday]}
                 onPress={() => onSelectDate(cell.adKey)}
                 disabled={!cell.inMonth}
               >
@@ -143,22 +144,42 @@ function LegendDot({ color, label }: { color: string; label: string }) {
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: colors.white, borderRadius: 12, borderWidth: 1, borderColor: colors.slate200, padding: 10 },
-  nav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 8 },
-  navBtn: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4 },
-  navBtnText: { color: colors.slate500, fontSize: 14 },
-  monthLabel: { fontSize: 20, fontWeight: '700', color: colors.ink, minWidth: 150, textAlign: 'center' },
-  weekdayRow: { flexDirection: 'row' },
-  weekdayLabel: { flex: 1, textAlign: 'center', fontSize: 10, fontWeight: '600', color: colors.slate400, textTransform: 'uppercase', paddingVertical: 4 },
-  weekRow: { flexDirection: 'row', gap: 2, marginBottom: 2 },
-  cell: { flex: 1, minHeight: 54, borderRadius: 8, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  container: {
+    backgroundColor: colors.white,
+    borderRadius: 20,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  nav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.accent,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    marginBottom: 10,
+  },
+  navBtn: { backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: 999, height: 34, width: 34, alignItems: 'center', justifyContent: 'center' },
+  navBtnText: { color: colors.white, fontSize: 16, fontWeight: '700' },
+  monthLabel: { fontSize: 20, fontWeight: '700', color: colors.white, textAlign: 'center' },
+  weekdayRow: { flexDirection: 'row', backgroundColor: colors.slate50, borderRadius: 10, paddingVertical: 4, marginBottom: 6 },
+  weekdayLabel: { flex: 1, textAlign: 'center', fontSize: 10, fontWeight: '700', color: colors.slate400, textTransform: 'uppercase', paddingVertical: 4 },
+  weekRow: { flexDirection: 'row', gap: 4, marginBottom: 4 },
+  cell: { flex: 1, minHeight: 54, borderRadius: 12, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  cellSelected: { shadowColor: colors.accent, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.35, shadowRadius: 6, elevation: 4 },
+  cellToday: { borderWidth: 2, borderColor: colors.accent },
   cellText: { fontSize: 20 },
   pill: { borderRadius: 20, paddingHorizontal: 4, paddingVertical: 1 },
   pillTop: { position: 'absolute', top: 2 },
   pillBottomRow: { position: 'absolute', bottom: 2, flexDirection: 'row', gap: 2 },
   pillText: { fontSize: 7, fontWeight: '700', textTransform: 'uppercase' },
-  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  legendSwatch: { height: 10, width: 10, borderRadius: 2 },
-  legendText: { fontSize: 10, color: colors.slate500 },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.slate50, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 4 },
+  legendSwatch: { height: 9, width: 9, borderRadius: 5 },
+  legendText: { fontSize: 10, color: colors.slate500, fontWeight: '600' },
 });
