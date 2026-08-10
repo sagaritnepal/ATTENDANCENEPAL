@@ -58,6 +58,7 @@ export default function EmployeesScreen({ route, navigation }: any) {
   const [forceDeleteConfirmText, setForceDeleteConfirmText] = useState('');
   const [forceDeleting, setForceDeleting] = useState(false);
   const [forceDeleteError, setForceDeleteError] = useState<string | null>(null);
+  const [photoFailed, setPhotoFailed] = useState<Set<string>>(new Set());
 
   function reload() {
     supabase
@@ -332,7 +333,15 @@ export default function EmployeesScreen({ route, navigation }: any) {
               <View style={styles.cardTop}>
                 <TouchableOpacity style={styles.identity} onPress={() => navigation.navigate('EmployeeDetail', { employeeId: item.id })}>
                   <View style={styles.avatar}>
-                    {item.profile_photo_url ? <Image source={{ uri: item.profile_photo_url }} style={styles.avatarImg} /> : <Text style={styles.avatarText}>{item.name.slice(0, 1).toUpperCase()}</Text>}
+                    {item.profile_photo_url && !photoFailed.has(item.id) ? (
+                      <Image
+                        source={{ uri: item.profile_photo_url }}
+                        style={styles.avatarImg}
+                        onError={() => setPhotoFailed(prev => new Set(prev).add(item.id))}
+                      />
+                    ) : (
+                      <Text style={styles.avatarText}>{item.name.slice(0, 1).toUpperCase()}</Text>
+                    )}
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.cardName} numberOfLines={1}>
@@ -347,6 +356,7 @@ export default function EmployeesScreen({ route, navigation }: any) {
               </View>
 
               <View style={styles.badgeRow}>
+                <Badge tone={item.fingerprint_id ? 'good' : 'neutral'}>{item.fingerprint_id ? 'Biometric Enrolled' : 'Not Enrolled'}</Badge>
                 <Badge tone={registered ? 'good' : 'warning'}>{registered ? 'Registered' : 'Unregistered'}</Badge>
                 {hasLogin && <Badge tone="good">Login Active</Badge>}
               </View>

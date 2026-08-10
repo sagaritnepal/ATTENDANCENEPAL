@@ -163,8 +163,8 @@ export default function DateRangePicker({ from, to, onChange }: { from: string; 
 }
 
 const styles = StyleSheet.create({
-  trigger: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: colors.slate200, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: colors.white },
-  triggerText: { fontSize: 20, fontWeight: '600', color: colors.ink, flexShrink: 1 },
+  trigger: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: colors.slate200, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: colors.white },
+  triggerText: { fontSize: 14, fontWeight: '600', color: colors.ink, flexShrink: 1 },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', padding: 20 },
   sheet: { backgroundColor: colors.white, borderRadius: 16, padding: 16 },
   presetsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, borderBottomWidth: 1, borderBottomColor: colors.slate100, paddingBottom: 12, marginBottom: 10 },
@@ -174,16 +174,16 @@ const styles = StyleSheet.create({
   navGroup: { flexDirection: 'row', gap: 4 },
   navBtn: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
   navBtnText: { fontSize: 13, color: colors.slate500 },
-  monthLabel: { fontSize: 20, fontWeight: '700', color: colors.ink },
+  monthLabel: { fontSize: 15, fontWeight: '700', color: colors.ink },
   hint: { fontSize: 11, color: colors.slate400, textAlign: 'center', marginBottom: 6 },
   weekdayRow: { flexDirection: 'row' },
   weekdayLabel: { flex: 1, textAlign: 'center', fontSize: 10, fontWeight: '600', color: colors.slate400 },
   weekRow: { flexDirection: 'row', marginTop: 4 },
-  cell: { flex: 1, aspectRatio: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 999 },
+  cell: { flex: 1, aspectRatio: 1, minHeight: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 999 },
   cellSelected: { backgroundColor: colors.accent },
   cellInRange: { backgroundColor: colors.accentLight },
   cellToday: { backgroundColor: colors.accentLight },
-  cellText: { fontSize: 18, color: colors.slate500 },
+  cellText: { fontSize: 13, color: colors.slate500 },
   cellTextSelected: { color: colors.white, fontWeight: '700' },
   cellTextToday: { color: colors.accent, fontWeight: '700' },
 });

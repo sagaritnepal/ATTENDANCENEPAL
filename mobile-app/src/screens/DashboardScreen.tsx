@@ -48,6 +48,7 @@ export default function DashboardScreen({ navigation }: any) {
   const [todayRoster, setTodayRoster] = useState<{ employee_id: string; shift_id: string | null }[]>([]);
   const [weekLogs, setWeekLogs] = useState<AttendanceLog[]>([]);
   const [detailKey, setDetailKey] = useState<DetailKey | null>(null);
+  const [photoFailed, setPhotoFailed] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const since = new Date();
@@ -301,8 +302,12 @@ export default function DashboardScreen({ navigation }: any) {
           const isIn = item.punch_type === '0';
           return (
             <View style={styles.row}>
-              {emp?.profile_photo_url ? (
-                <Image source={{ uri: emp.profile_photo_url }} style={styles.avatarImage} />
+              {emp?.profile_photo_url && !photoFailed.has(item.employee_id) ? (
+                <Image
+                  source={{ uri: emp.profile_photo_url }}
+                  style={styles.avatarImage}
+                  onError={() => setPhotoFailed(prev => new Set(prev).add(item.employee_id))}
+                />
               ) : (
                 <View style={styles.avatar}>
                   <Text style={styles.avatarText}>{name.slice(0, 1).toUpperCase()}</Text>
