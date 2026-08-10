@@ -279,17 +279,17 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
 
   return (
     <>
-      <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-        <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
+      <div className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+        <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
           <div>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Employee</label>
-            <div className="flex items-center gap-2">
+            <label className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Employee</label>
+            <div className="flex items-center gap-1.5">
               <div className="relative">
-                <PersonIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-accent" />
+                <PersonIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-accent" />
                 <select
                   value={employeeId}
                   onChange={e => setEmployeeId(e.target.value)}
-                  className="min-w-[11rem] rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                  className="min-w-[10rem] rounded-md border border-slate-200 bg-white py-1.5 pl-8 pr-2.5 text-xs shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
                 >
                   <option value="all">All Employees</option>
                   {employees.map(e => (
@@ -300,7 +300,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                 </select>
               </div>
               {employeeId !== 'all' && (
-                <button onClick={() => setEmployeeId('all')} className="text-xs font-medium text-accent hover:underline">
+                <button onClick={() => setEmployeeId('all')} className="text-[11px] font-medium text-accent hover:underline">
                   Clear
                 </button>
               )}
@@ -308,13 +308,13 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
           </div>
 
           <div>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</label>
+            <label className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Status</label>
             <div className="relative">
-              <StatusIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-accent" />
+              <StatusIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-accent" />
               <select
                 value={status}
                 onChange={e => setStatus(e.target.value as typeof status)}
-                className="rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                className="rounded-md border border-slate-200 bg-white py-1.5 pl-8 pr-2.5 text-xs shadow-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
               >
                 <option value="All">All Logs</option>
                 <option value="Present">Present</option>
@@ -325,11 +325,11 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             </div>
           </div>
 
-          <div className="hidden h-10 w-px bg-slate-200 sm:block" />
+          <div className="hidden h-8 w-px bg-slate-200 sm:block" />
 
           <div>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Date Range</label>
-            <div className="w-56">
+            <label className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Date Range</label>
+            <div className="w-48">
               <DateRangePicker from={from} to={to} onChange={(f, t) => {
                 setFrom(f);
                 setTo(t);
@@ -339,46 +339,46 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
 
           <button
             onClick={exportCsv}
-            className="ml-auto flex items-center gap-1.5 rounded-lg border border-accent bg-accent/5 px-4 py-2 text-sm font-semibold text-accent shadow-sm transition-colors hover:bg-accent hover:text-white"
+            className="ml-auto flex items-center gap-1 rounded-md border border-accent bg-accent/5 px-3 py-1.5 text-xs font-semibold text-accent shadow-sm transition-colors hover:bg-accent hover:text-white"
           >
             ⭳ Export CSV
           </button>
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
         {/* Same left-to-right table on every screen size, including phones —
             horizontal scroll instead of a condensed/truncated mobile layout,
             so it always matches the desktop web view exactly. */}
-        <div className="max-h-[65vh] overflow-auto rounded-xl">
-        <table className="w-full text-left text-sm">
+        <div className="max-h-[65vh] overflow-auto rounded-lg">
+        <table className="w-full text-left text-xs">
           <thead>
-            <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <th className="whitespace-nowrap px-3 py-2 font-medium">Date</th>
-              <th className="whitespace-nowrap px-3 py-2 font-medium">ID</th>
-              <th className="whitespace-nowrap px-3 py-2 font-medium">Employee</th>
-              <th className="whitespace-nowrap px-3 py-2 font-medium">Shift</th>
-              <th className="whitespace-nowrap px-3 py-2 font-medium">In / Out</th>
-              <th className="whitespace-nowrap px-3 py-2 font-medium">Late / Early</th>
-              <th className="whitespace-nowrap px-3 py-2 font-medium">Work Hours</th>
-              <th className="whitespace-nowrap px-3 py-2 font-medium">Overtime</th>
-              <th className="whitespace-nowrap px-3 py-2 font-medium">Status</th>
-              <th className="whitespace-nowrap px-3 py-2 font-medium">Device</th>
+            <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Date</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium">ID</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Employee</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Shift</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium">In / Out</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Late / Early</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Work Hours</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Overtime</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Status</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Device</th>
             </tr>
           </thead>
           <tbody>
             {rows.map(r => (
               <tr key={r.key} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                <td className="whitespace-nowrap px-3 py-2 text-slate-600">{formatAdDate(r.date, system)}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-slate-600">{r.enrollId}</td>
-                <td className="whitespace-nowrap px-3 py-2 font-medium text-ink">{r.employeeName}</td>
-                <td className="px-3 py-2 whitespace-nowrap text-slate-600">{r.shiftLabel}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+                <td className="whitespace-nowrap px-2 py-1 text-slate-600">{formatAdDate(r.date, system)}</td>
+                <td className="whitespace-nowrap px-2 py-1 text-slate-600">{r.enrollId}</td>
+                <td className="whitespace-nowrap px-2 py-1 font-medium text-ink">{r.employeeName}</td>
+                <td className="px-2 py-1 whitespace-nowrap text-slate-600">{r.shiftLabel}</td>
+                <td className="whitespace-nowrap px-2 py-1 text-slate-600">
                   {r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
                   {' – '}
                   {r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2">
+                <td className="whitespace-nowrap px-2 py-1">
                   {r.lateMinutes === 0 && r.earlyMinutes === 0 && <span className="text-slate-400">—</span>}
                   {r.lateMinutes > 0 && (
                     <span className="font-medium text-warning-text">L {formatHoursMinutes(r.lateMinutes)}</span>
@@ -388,23 +388,23 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                     <span className="font-medium text-critical-text">E {formatHoursMinutes(r.earlyMinutes)}</span>
                   )}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+                <td className="whitespace-nowrap px-2 py-1 text-slate-600">
                   {fmtHrs(r.hours)}
-                  {r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
+                  {r.pending && <span className="ml-1 text-[9px] text-slate-400">(live)</span>}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+                <td className="whitespace-nowrap px-2 py-1 text-slate-600">
                   {fmtHrs(r.overtime)}
-                  {r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
+                  {r.pending && <span className="ml-1 text-[9px] text-slate-400">(live)</span>}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2">
+                <td className="whitespace-nowrap px-2 py-1">
                   {statusBadge(r)}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 text-slate-600">{r.device}</td>
+                <td className="whitespace-nowrap px-2 py-1 text-slate-600">{r.device}</td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-5 py-8 text-center text-slate-400">
+                <td colSpan={10} className="px-4 py-6 text-center text-slate-400">
                   {loading ? 'Loading…' : 'No records in this range.'}
                 </td>
               </tr>
@@ -412,20 +412,20 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
           </tbody>
           {rows.length > 0 && (
             <tfoot>
-              <tr className="sticky bottom-0 border-t-2 border-slate-200 bg-slate-50 text-sm font-bold text-ink">
-                <td colSpan={4} className="whitespace-nowrap px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <tr className="sticky bottom-0 border-t-2 border-slate-200 bg-slate-50 text-xs font-bold text-ink">
+                <td colSpan={4} className="whitespace-nowrap px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                   Total
                 </td>
                 <td />
-                <td className="whitespace-nowrap px-3 py-2 text-xs">
+                <td className="whitespace-nowrap px-2 py-1.5 text-[10px]">
                   {totals.lateMinutes > 0 && <span className="text-warning-text">L {formatHoursMinutes(totals.lateMinutes)}</span>}
                   {totals.lateMinutes > 0 && totals.earlyMinutes > 0 && ' · '}
                   {totals.earlyMinutes > 0 && <span className="text-critical-text">E {formatHoursMinutes(totals.earlyMinutes)}</span>}
                   {totals.lateMinutes === 0 && totals.earlyMinutes === 0 && '—'}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.workHours)}</td>
-                <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.overtimeHours)}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-xs font-semibold">
+                <td className="whitespace-nowrap px-2 py-1.5">{fmtHrs(totals.workHours)}</td>
+                <td className="whitespace-nowrap px-2 py-1.5">{fmtHrs(totals.overtimeHours)}</td>
+                <td className="whitespace-nowrap px-2 py-1.5 text-[10px] font-semibold">
                   <span className="text-good-text">{totals.presentDays} present</span>
                   {' · '}
                   <span className="text-critical-text">{totals.absentDays} absent</span>
