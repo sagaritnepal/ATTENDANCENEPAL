@@ -13,7 +13,7 @@ import {
 import { colors } from '../theme';
 import Badge from '../components/Badge';
 import MonthCalendarGrid from '../components/MonthCalendarGrid';
-import { formatAdDate } from '../lib/calendar';
+import { formatAdDate, formatDdMmYyyy } from '../lib/calendar';
 import { useCalendarSystem } from '../lib/CalendarSystemContext';
 
 const WINDOW_DAYS = 400;
@@ -58,7 +58,7 @@ export default function CalendarScreen() {
   const [dayLogs, setDayLogs] = useState<AttendanceLog[]>([]);
   const [visibleDates, setVisibleDates] = useState<string[]>([]);
   const [expandedCard, setExpandedCard] = useState<CardKey | null>(null);
-  const [tab, setTab] = useState<'day' | 'leave'>('day');
+  const [tab, setTab] = useState<'day' | 'leave' | 'report'>('day');
 
   useEffect(() => {
     supabase
@@ -203,6 +203,18 @@ export default function CalendarScreen() {
       .then(({ data }) => setDayLogs((data as AttendanceLog[]) ?? []));
   }, [selectedDate, employeeId]);
 
+  const reportRows = useMemo(() => {
+    const todayKey = localDateKey(new Date().toISOString());
+    return [...visibleDates]
+      .sort((a, b) => b.localeCompare(a))
+      .map(date => {
+        const status = dayStatus.get(date);
+        const onLeave = leaveDates.has(date);
+        const onWeekOff = weekOffDates.has(date);
+        return { date, status, onLeave, onWeekOff, isFuture: date > todayKey };
+      });
+  }, [visibleDates, dayStatus, leaveDates, weekOffDates]);
+
   function cardValue(key: CardKey) {
     if (key === 'hours') return formatHoursMinutes(monthSummary.totalWorkMinutes);
     if (key === 'overtime') return formatHoursMinutes(monthSummary.overtimeMinutes);
@@ -273,6 +285,9 @@ export default function CalendarScreen() {
           </TouchableOpacity>
           <TouchableOpacity style={[styles.tabBtn, tab === 'leave' && styles.tabBtnActive]} onPress={() => setTab('leave')}>
             <Text style={[styles.tabText, tab === 'leave' && styles.tabTextActive]}>Recent Leave</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.tabBtn, tab === 'report' && styles.tabBtnActive]} onPress={() => setTab('report')}>
+            <Text style={[styles.tabText, tab === 'report' && styles.tabTextActive]}>Report</Text>
           </TouchableOpacity>
         </View>
 
@@ -345,6 +360,51 @@ export default function CalendarScreen() {
             )}
           </View>
         )}
+
+        {tab === 'report' && (
+          <View style={styles.detailCard}>
+            <Text style={styles.detailTitle}>Attendance Report — this month</Text>
+            <View style={styles.reportHeader}>
+              <Text style={[styles.reportTh, { flex: 0.22 }]}>Date</Text>
+              <Text style={[styles.reportTh, { flex: 0.28 }]}>In / Out</Text>
+              <Text style={[styles.reportTh, { flex: 0.22 }]}>Status</Text>
+              <Text style={[styles.reportTh, { flex: 0.14 }]}>Hrs</Text>
+              <Text style={[styles.reportTh, { flex: 0.14 }]}>OT</Text>
+            </View>
+            {reportRows.length === 0 ? (
+              <Text style={styles.dim}>No records for this month.</Text>
+            ) : (
+              reportRows.map((row, i) => (
+                <View key={row.date} style={[styles.reportRow, i % 2 === 1 && styles.reportRowAlt]}>
+                  <Text style={[styles.reportTd, { flex: 0.22 }]}>{formatDdMmYyyy(row.date, system).slice(0, 5)}</Text>
+                  <Text style={[styles.reportTd, { flex: 0.28 }]}>
+                    {row.status?.checkIn ? new Date(row.status.checkIn.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '–:–'}-
+                    {row.status?.checkOut ? new Date(row.status.checkOut.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '–:–'}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.reportTd,
+                      { flex: 0.22 },
+                      row.onLeave || row.onWeekOff
+                        ? { color: '#7e22ce' }
+                        : row.status
+                          ? row.status.isLate
+                            ? { color: colors.warningText }
+                            : { color: colors.goodText }
+                          : row.isFuture
+                            ? styles.dim
+                            : { color: colors.criticalText },
+                    ]}
+                  >
+                    {row.onLeave ? 'On Leave' : row.onWeekOff ? 'Week Off' : row.status ? (row.status.isLate ? 'Late' : 'Present') : row.isFuture ? '—' : 'Absent'}
+                  </Text>
+                  <Text style={[styles.reportTd, { flex: 0.14 }]}>{row.status ? formatHoursMinutes(row.status.totalMinutes) : '—'}</Text>
+                  <Text style={[styles.reportTd, { flex: 0.14, color: colors.infoText }]}>{row.status && row.status.overtimeMinutes > 0 ? formatHoursMinutes(row.status.overtimeMinutes) : '—'}</Text>
+                </View>
+              ))
+            )}
+          </View>
+        )}
       </ScrollView>
 
       <Modal visible={employeePickerOpen} transparent animationType="fade" onRequestClose={() => setEmployeePickerOpen(false)}>
@@ -385,7 +445,7 @@ const styles = StyleSheet.create({
   expandedCard: { backgroundColor: colors.white, borderRadius: 12, borderWidth: 1, borderColor: colors.slate200, padding: 12, marginBottom: 12 },
   expandedTitle: { fontSize: 13, fontWeight: '700', color: colors.ink, marginBottom: 8 },
   expandedRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderTopWidth: 1, borderTopColor: colors.slate100 },
-  expandedDate: { fontSize: 12, color: colors.ink, fontWeight: '600' },
+  expandedDate: { fontSize: 18, color: colors.ink, fontWeight: '600' },
   dim: { fontSize: 12, color: colors.slate400 },
   tabBar: { flexDirection: 'row', backgroundColor: colors.white, borderRadius: 10, borderWidth: 1, borderColor: colors.slate200, padding: 4, marginTop: 12, alignSelf: 'flex-start' },
   tabBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
@@ -393,7 +453,7 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 12, fontWeight: '700', color: colors.slate500 },
   tabTextActive: { color: colors.white },
   detailCard: { backgroundColor: colors.white, borderRadius: 12, borderWidth: 1, borderColor: colors.slate200, padding: 14, marginTop: 10 },
-  detailTitle: { fontSize: 14, fontWeight: '700', color: colors.ink, marginBottom: 10 },
+  detailTitle: { fontSize: 22, fontWeight: '700', color: colors.ink, marginBottom: 10 },
   leaveBanner: { backgroundColor: '#f3e8ff', borderRadius: 12, padding: 10, marginBottom: 10 },
   leaveBannerLabel: { fontSize: 11, fontWeight: '600', color: '#7e22ce' },
   leaveBannerType: { fontSize: 15, fontWeight: '700', color: colors.ink, textTransform: 'capitalize' },
@@ -402,9 +462,14 @@ const styles = StyleSheet.create({
   detailCellLabel: { fontSize: 11, fontWeight: '600' },
   detailCellValue: { fontSize: 15, fontWeight: '700', color: colors.ink, marginTop: 2, marginBottom: 4 },
   leaveRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.slate100 },
-  leaveRowDate: { fontSize: 13, color: colors.ink },
+  leaveRowDate: { fontSize: 18, color: colors.ink },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', padding: 20 },
   modalSheet: { backgroundColor: colors.white, borderRadius: 16, maxHeight: '60%' },
   modalOption: { paddingHorizontal: 20, paddingVertical: 14 },
   modalOptionText: { fontSize: 14, color: colors.ink },
+  reportHeader: { flexDirection: 'row', backgroundColor: colors.slate50, paddingVertical: 6, paddingHorizontal: 4, borderRadius: 6 },
+  reportTh: { fontSize: 9, fontWeight: '700', color: colors.slate500, textTransform: 'uppercase', paddingHorizontal: 2 },
+  reportRow: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: colors.slate100 },
+  reportRowAlt: { backgroundColor: colors.slate50 },
+  reportTd: { fontSize: 11, color: colors.slate500, paddingHorizontal: 2 },
 });

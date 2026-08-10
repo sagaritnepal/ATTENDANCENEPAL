@@ -19,10 +19,10 @@ export default function CalendarSystemSwitch() {
 
 const styles = StyleSheet.create({
   container: { flexDirection: 'row', borderWidth: 1, borderColor: colors.slate200, borderRadius: 8, overflow: 'hidden' },
-  btn: { paddingHorizontal: 8, paddingVertical: 5, backgroundColor: colors.white },
+  btn: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: colors.white },
   btnLeft: {},
   btnRight: { borderLeftWidth: 1, borderLeftColor: colors.slate200 },
   btnActive: { backgroundColor: colors.accent },
-  text: { fontSize: 11, fontWeight: '700', color: colors.slate500 },
+  text: { fontSize: 20, fontWeight: '700', color: colors.slate500 },
   textActive: { color: colors.white },
 });

@@ -223,7 +223,7 @@ const styles = StyleSheet.create({
   statHint: { fontSize: 9, marginTop: 1 },
   periodBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 10, borderWidth: 1, borderColor: colors.slate200, padding: 8, marginBottom: 16 },
   periodArrow: { padding: 8 },
-  periodLabel: { flex: 1, textAlign: 'center', fontSize: 13, fontWeight: '700', color: colors.ink },
+  periodLabel: { flex: 1, textAlign: 'center', fontSize: 22, fontWeight: '700', color: colors.ink },
   sectionHeading: { fontSize: 13, fontWeight: '700', color: colors.ink, marginBottom: 8 },
   tableHeader: { flexDirection: 'row', backgroundColor: colors.slate100, paddingVertical: 6, paddingHorizontal: 8, borderTopLeftRadius: 8, borderTopRightRadius: 8 },
   th: { fontSize: 9, fontWeight: '700', color: colors.slate500, textTransform: 'uppercase', textAlign: 'center' },
