@@ -175,7 +175,7 @@ function AdminDrawerNavigator() {
 }
 
 function AppInner() {
-  const { session, profile, loading } = useAuth();
+  const { session, profile, loading, justSignedIn, clearJustSignedIn } = useAuth();
 
   // Only ever true on a device that actually has biometrics set up — a
   // phone with no fingerprint/face enrolled never locks at all instead of
@@ -194,9 +194,11 @@ function AppInner() {
     }
   }, []);
 
-  // Locks immediately once a session exists on a biometric-capable device —
-  // re-checked per session rather than once at app start, since logging out
-  // and a different person logging in on the same phone should re-lock too.
+  // Locks once a session exists on a biometric-capable device — but not
+  // right after the user just typed their password to get here. Signing in
+  // already proved identity once; re-checked per session (rather than once
+  // at app start) so a session restored from a previous cold start still
+  // locks, and only that case, on this same phone.
   useEffect(() => {
     if (!session) {
       setLocked(false);
@@ -212,15 +214,16 @@ function AppInner() {
       if (!active) return;
       const available = hasHardware && isEnrolled;
       setBiometricAvailable(available);
-      if (available) {
+      if (available && !justSignedIn) {
         setLocked(true);
         authenticate();
       }
+      if (justSignedIn) clearJustSignedIn();
     })();
     return () => {
       active = false;
     };
-  }, [session, authenticate]);
+  }, [session, authenticate, justSignedIn, clearJustSignedIn]);
 
   // Re-lock only on a real background->active transition, not the
   // momentary 'inactive' state the biometric prompt itself causes — a
