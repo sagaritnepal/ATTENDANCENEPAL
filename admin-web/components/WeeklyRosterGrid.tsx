@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import NepaliDate from 'nepali-date-converter';
 import { supabase } from '@/lib/supabase';
 import { stepWeek, weekRange } from '@/lib/calendar';
+import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { Employee, Shift } from '@/lib/types';
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -25,7 +26,22 @@ function shortBsDate(date: string) {
   return NepaliDate.fromAD(new Date(y, m - 1, d)).format('D/M');
 }
 
+/** The Sun-Sat week structure itself always stays AD (see weekRange's own
+ * comment — the duty roster is filled in real calendar weeks regardless of
+ * display system), but the label shown to the user should still follow the
+ * global AD/BS switch like every other date on the page, rather than being
+ * silently stuck on AD forever. */
+function bsWeekLabel(startKey: string, endKey: string): string {
+  const [sy, sm, sd] = startKey.split('-').map(Number);
+  const [ey, em, ed] = endKey.split('-').map(Number);
+  const bsStart = NepaliDate.fromAD(new Date(sy, sm - 1, sd));
+  const bsEnd = NepaliDate.fromAD(new Date(ey, em - 1, ed));
+  const startLabel = bsStart.getYear() === bsEnd.getYear() ? bsStart.format('D MMMM') : bsStart.format('D MMMM YYYY');
+  return `${startLabel} – ${bsEnd.format('D MMMM YYYY')}`;
+}
+
 export default function WeeklyRosterGrid() {
+  const { system } = useCalendarSystem();
   const [anchor, setAnchor] = useState(() => new Date().toISOString().slice(0, 10));
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -122,7 +138,9 @@ export default function WeeklyRosterGrid() {
         <button onClick={() => setAnchor(stepWeek(anchor, -1))} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
           ←
         </button>
-        <span className="text-sm font-semibold text-ink">{week.label}</span>
+        <span className="text-sm font-semibold text-ink">
+          {system === 'AD' ? week.label : bsWeekLabel(week.start, week.end)}
+        </span>
         <button onClick={() => setAnchor(stepWeek(anchor, 1))} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
           →
         </button>
@@ -147,7 +165,15 @@ export default function WeeklyRosterGrid() {
                   <th key={date} className="whitespace-nowrap px-1.5 py-2 text-center font-medium">
                     {WEEKDAY_LABELS[i]}
                     <div className="text-[10px] font-normal normal-case text-slate-400">
-                      {shortDate(date)} AD <span className="text-slate-300">·</span> {shortBsDate(date)} BS
+                      {system === 'AD' ? (
+                        <>
+                          {shortDate(date)} AD <span className="text-slate-300">·</span> {shortBsDate(date)} BS
+                        </>
+                      ) : (
+                        <>
+                          {shortBsDate(date)} BS <span className="text-slate-300">·</span> {shortDate(date)} AD
+                        </>
+                      )}
                     </div>
                   </th>
                 ))}
