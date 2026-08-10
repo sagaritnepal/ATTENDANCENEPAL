@@ -10,7 +10,14 @@ on:
     branches: [main]
     paths:
       - 'mobile-app/**'
+      - '.github/workflows/build-android.yml'
   workflow_dispatch: {}
+
+# The default GITHUB_TOKEN is read-only unless a workflow says otherwise —
+# without this, "Publish GitHub Release" fails immediately (403) the moment
+# it tries to create the release, right after a successful APK build.
+permissions:
+  contents: write
 
 jobs:
   build:
