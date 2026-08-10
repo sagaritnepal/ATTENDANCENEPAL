@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, ScrollView, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity, Modal, Alert, Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { compressPhoto } from '../lib/compressPhoto';
 import { supabase } from '../lib/supabase';
 import type { Branch, Department, Employee, Profile, Shift } from '../types';
 import { resolveShift, formatShiftHours } from '../lib/shift';
@@ -224,7 +225,8 @@ export default function EmployeesScreen({ route, navigation }: any) {
 
     setUploadingPhotoId(emp.id);
     try {
-      const response = await fetch(result.assets[0].uri);
+      const compressedUri = await compressPhoto(result.assets[0].uri);
+      const response = await fetch(compressedUri);
       const arrayBuffer = await response.arrayBuffer();
       const path = `employee-photos/${emp.id}-${Date.now()}.jpg`;
       const { error: uploadError } = await supabase.storage.from('attendance-selfies').upload(path, arrayBuffer, { contentType: 'image/jpeg' });

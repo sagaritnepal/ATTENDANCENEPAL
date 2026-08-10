@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import { colors } from '../theme';
 import { BuildingIcon, CalendarDotIcon, EditIcon, KeyIcon, MailIcon, PinIcon, SignOutIcon } from './icons';
+import { compressPhoto } from '../lib/compressPhoto';
 
 export default function AccountMenuModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { profile, session, refreshProfile } = useAuth();
@@ -47,7 +48,8 @@ export default function AccountMenuModal({ visible, onClose }: { visible: boolea
 
     setUploadingPhoto(true);
     try {
-      const response = await fetch(result.assets[0].uri);
+      const compressedUri = await compressPhoto(result.assets[0].uri);
+      const response = await fetch(compressedUri);
       const arrayBuffer = await response.arrayBuffer();
       const path = `admin-photos/${session.user.id}-${Date.now()}.jpg`;
       const { error: uploadError } = await supabase.storage.from('attendance-selfies').upload(path, arrayBuffer, { contentType: 'image/jpeg' });
