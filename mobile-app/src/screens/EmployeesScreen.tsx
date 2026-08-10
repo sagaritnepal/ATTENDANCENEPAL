@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, ScrollView, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity, Modal, Alert, Image } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
 import type { Branch, Department, Employee, Profile, Shift } from '../types';
 import { resolveShift, formatShiftHours } from '../lib/shift';
 import { colors } from '../theme';
 import Badge from '../components/Badge';
-import { ChevronIcon, KeyIcon } from '../components/icons';
+import { ChevronIcon, EditIcon, KeyIcon } from '../components/icons';
 import { createLogin, fetchAccounts, resetPassword, updateLoginEmail } from '../lib/accountsApi';
 
 const EMPTY_ADD_FORM = { employee_code: '', name: '', phone: '', email: '', address: '', designation: '', fingerprint_id: '', date_of_joining: '' };
@@ -59,6 +60,7 @@ export default function EmployeesScreen({ route, navigation }: any) {
   const [forceDeleting, setForceDeleting] = useState(false);
   const [forceDeleteError, setForceDeleteError] = useState<string | null>(null);
   const [photoFailed, setPhotoFailed] = useState<Set<string>>(new Set());
+  const [uploadingPhotoId, setUploadingPhotoId] = useState<string | null>(null);
 
   function reload() {
     supabase
@@ -206,6 +208,48 @@ export default function EmployeesScreen({ route, navigation }: any) {
     reload();
   }
 
+  async function pickAndUploadPhoto(emp: Employee) {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Photo library access is required to set an employee photo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets[0]) return;
+
+    setUploadingPhotoId(emp.id);
+    try {
+      const response = await fetch(result.assets[0].uri);
+      const arrayBuffer = await response.arrayBuffer();
+      const path = `employee-photos/${emp.id}-${Date.now()}.jpg`;
+      const { error: uploadError } = await supabase.storage.from('attendance-selfies').upload(path, arrayBuffer, { contentType: 'image/jpeg' });
+      if (uploadError) {
+        Alert.alert('Photo upload failed', uploadError.message);
+        return;
+      }
+      const { data: publicUrl } = supabase.storage.from('attendance-selfies').getPublicUrl(path);
+      const { error: updateError } = await supabase.from('employees').update({ profile_photo_url: publicUrl.publicUrl }).eq('id', emp.id);
+      if (updateError) {
+        Alert.alert('Could not save the photo', updateError.message);
+        return;
+      }
+      setPhotoFailed(prev => {
+        if (!prev.has(emp.id)) return prev;
+        const next = new Set(prev);
+        next.delete(emp.id);
+        return next;
+      });
+      reload();
+    } finally {
+      setUploadingPhotoId(null);
+    }
+  }
+
   function startEditUsername(emp: Employee) {
     setEditingUsernameId(emp.id);
     setUsernameDraft(loginEmailByEmployee[emp.id] ?? '');
@@ -331,9 +375,11 @@ export default function EmployeesScreen({ route, navigation }: any) {
           return (
             <View style={styles.card}>
               <View style={styles.cardTop}>
-                <TouchableOpacity style={styles.identity} onPress={() => navigation.navigate('EmployeeDetail', { employeeId: item.id })}>
-                  <View style={styles.avatar}>
-                    {item.profile_photo_url && !photoFailed.has(item.id) ? (
+                <View style={styles.identity}>
+                  <TouchableOpacity style={styles.avatar} onPress={() => pickAndUploadPhoto(item)} disabled={uploadingPhotoId === item.id}>
+                    {uploadingPhotoId === item.id ? (
+                      <ActivityIndicator size="small" color={colors.accent} />
+                    ) : item.profile_photo_url && !photoFailed.has(item.id) ? (
                       <Image
                         source={{ uri: item.profile_photo_url }}
                         style={styles.avatarImg}
@@ -342,16 +388,19 @@ export default function EmployeesScreen({ route, navigation }: any) {
                     ) : (
                       <Text style={styles.avatarText}>{item.name.slice(0, 1).toUpperCase()}</Text>
                     )}
-                  </View>
-                  <View style={{ flex: 1 }}>
+                    <View style={styles.avatarEditBadge}>
+                      <EditIcon size={9} color={colors.white} />
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={{ flex: 1 }} onPress={() => navigation.navigate('EmployeeDetail', { employeeId: item.id })}>
                     <Text style={styles.cardName} numberOfLines={1}>
                       {item.name}
                     </Text>
                     <Text style={styles.cardSub} numberOfLines={1}>
                       {[item.designation, item.department].filter(Boolean).join(' · ') || 'No designation'}
                     </Text>
-                  </View>
-                </TouchableOpacity>
+                  </TouchableOpacity>
+                </View>
                 <Text style={styles.cardId}>#{item.fingerprint_id ?? '—'}</Text>
               </View>
 
@@ -710,9 +759,22 @@ const styles = StyleSheet.create({
   gridLabel: { fontSize: 10, fontWeight: '700', color: colors.slate400, textTransform: 'uppercase', marginBottom: 3 },
   gridValue: { fontSize: 13, color: colors.ink, fontWeight: '600' },
   dim: { fontSize: 13, color: colors.slate400 },
-  avatar: { height: 40, width: 40, borderRadius: 20, backgroundColor: colors.accentLight, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  avatarImg: { height: '100%', width: '100%' },
+  avatar: { height: 40, width: 40, borderRadius: 20, backgroundColor: colors.accentLight, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  avatarImg: { height: '100%', width: '100%', borderRadius: 20 },
   avatarText: { color: colors.accent, fontWeight: '700', fontSize: 15 },
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    height: 16,
+    width: 16,
+    borderRadius: 8,
+    backgroundColor: colors.accent,
+    borderWidth: 1.5,
+    borderColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   usernameInput: { borderWidth: 1, borderColor: colors.slate200, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 4, fontSize: 12, color: colors.ink },
   editHint: { fontSize: 9, color: colors.slate400 },
   cancelLink: { fontSize: 11, color: colors.slate500, fontWeight: '600' },

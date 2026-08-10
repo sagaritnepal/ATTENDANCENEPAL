@@ -13,7 +13,8 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "Used to take a selfie or scan a QR code for attendance check-in.",
-        "NSLocationWhenInUseUsageDescription": "Used to confirm you're at your branch when checking in."
+        "NSLocationWhenInUseUsageDescription": "Used to confirm you're at your branch when checking in.",
+        "NSPhotoLibraryUsageDescription": "Used to choose an employee profile photo."
       }
     },
     "android": {
@@ -33,6 +34,13 @@
         "expo-local-authentication",
         {
           "faceIDPermission": "Allow Attendance Nepal to use Face ID to unlock the app."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Used to choose an employee profile photo.",
+          "cameraPermission": "Used to take an employee profile photo."
         }
       ]
     ]
