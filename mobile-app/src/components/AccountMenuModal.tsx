@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, Image, Pressable, TextInput, Alert, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
@@ -11,6 +11,15 @@ export default function AccountMenuModal({ visible, onClose }: { visible: boolea
   const [showEdit, setShowEdit] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  // The app can stay open for a long time without a cold restart, and
+  // profile is only ever fetched once per login session — so an edit made
+  // elsewhere (e.g. company/address set via the web app) wouldn't show up
+  // here until now: reload it fresh every time this menu is opened, not
+  // just once per session.
+  useEffect(() => {
+    if (visible) refreshProfile();
+  }, [visible, refreshProfile]);
 
   const adminName = profile?.full_name || 'Admin';
   const roleLabel = profile?.role === 'admin' ? 'System Administrator' : profile?.role === 'hr' ? 'HR' : 'Employee';
