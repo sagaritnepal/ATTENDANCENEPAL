@@ -49,7 +49,7 @@ export default function CalendarPage() {
 
       <div className="mt-6">
         <h2 className="mb-2 text-sm font-semibold text-ink">Attendance Report</h2>
-        <AttendanceReportTable />
+        <AttendanceReportTable variant="compact" />
       </div>
     </AppShell>
   );
