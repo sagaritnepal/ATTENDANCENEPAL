@@ -225,14 +225,25 @@ function AppInner() {
   // Re-lock only on a real background->active transition, not the
   // momentary 'inactive' state the biometric prompt itself causes — a
   // naive "lock on every active event" would immediately re-lock right
-  // after a successful unlock.
+  // after a successful unlock. A system dialog (the GPS/location
+  // permission prompt Check In triggers, photo library picker, etc.) can
+  // also flip Android's AppState through 'background' and back within a
+  // second or two even though the user never actually left the app — a
+  // short grace window tells that apart from a genuine app-switch (user
+  // presses home, opens another app, comes back later) without weakening
+  // security for the case that actually matters.
   useEffect(() => {
     if (!biometricAvailable) return;
     let prevState = AppState.currentState;
+    let backgroundedAt: number | null = null;
     const sub = AppState.addEventListener('change', nextState => {
+      if (nextState === 'background') backgroundedAt = Date.now();
       if (prevState === 'background' && nextState === 'active') {
-        setLocked(true);
-        authenticate();
+        const briefSystemDialog = backgroundedAt !== null && Date.now() - backgroundedAt < 2000;
+        if (!briefSystemDialog) {
+          setLocked(true);
+          authenticate();
+        }
       }
       prevState = nextState;
     });
@@ -258,7 +269,7 @@ function AppInner() {
           <Text style={styles.lockTitle}>Locked</Text>
           <Text style={styles.lockSubtitle}>Unlock with your fingerprint or face to continue.</Text>
           <TouchableOpacity onPress={authenticate} disabled={authenticating} style={styles.unlockButton}>
-            <Text style={styles.unlockButtonText}>{authenticating ? 'Verifying…' : 'Unlock'}</Text>
+            <Text style={styles.unlockButtonText}>{authenticating ? 'Verifying…' : '👆 Unlock with biometric'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -315,22 +326,17 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    // The web app has no equivalent screen — this borrows the sidebar's real
-    // dark navy instead of a made-up color, so it still reads as "this app"
-    // rather than an unrelated shade.
-    backgroundColor: colors.sidebar,
+    backgroundColor: colors.white,
     paddingHorizontal: 32,
   },
   lockLogo: {
-    height: 96,
-    width: 96,
-    borderRadius: 20,
-    backgroundColor: colors.white,
-    marginBottom: 20,
-    padding: 8,
+    height: 384,
+    width: 384,
+    maxWidth: '100%',
+    marginBottom: 12,
   },
-  lockTitle: { fontSize: 20, fontWeight: '700', color: colors.white, marginBottom: 6 },
-  lockSubtitle: { fontSize: 14, color: 'rgba(255,255,255,0.7)', textAlign: 'center', marginBottom: 24 },
+  lockTitle: { fontSize: 20, fontWeight: '700', color: colors.ink, marginBottom: 6 },
+  lockSubtitle: { fontSize: 14, color: colors.slate500, textAlign: 'center', marginBottom: 24 },
   unlockButton: { backgroundColor: colors.accent, paddingHorizontal: 32, paddingVertical: 12, borderRadius: 10 },
   unlockButtonText: { color: colors.white, fontSize: 15, fontWeight: '600' },
 });
