@@ -6,6 +6,7 @@ import { colors } from '../theme';
 import Badge from '../components/Badge';
 import { formatAdDate } from '../lib/calendar';
 import { useCalendarSystem } from '../lib/CalendarSystemContext';
+import DatePicker from '../components/DatePicker';
 
 const LEAVE_TYPES: LeaveType[] = ['casual', 'sick', 'annual', 'unpaid'];
 
@@ -59,7 +60,7 @@ export default function LeaveRequestScreen() {
       return;
     }
     if (!startDate || !endDate) {
-      setError('Pick both a start date and an end date (YYYY-MM-DD).');
+      setError('Pick both a start date and an end date.');
       return;
     }
     setSubmitting(true);
@@ -104,9 +105,9 @@ export default function LeaveRequestScreen() {
             ))}
           </View>
           <Text style={styles.label}>Start date</Text>
-          <TextInput style={styles.input} value={startDate} onChangeText={setStartDate} placeholder="2026-08-01" placeholderTextColor={colors.slate400} />
+          <DatePicker value={startDate} onChange={setStartDate} />
           <Text style={styles.label}>End date</Text>
-          <TextInput style={styles.input} value={endDate} onChangeText={setEndDate} placeholder="2026-08-03" placeholderTextColor={colors.slate400} />
+          <DatePicker value={endDate} onChange={setEndDate} />
           <Text style={styles.label}>Reason (optional)</Text>
           <TextInput style={[styles.input, { height: 60 }]} value={reason} onChangeText={setReason} multiline placeholderTextColor={colors.slate400} />
           {error && <Text style={styles.errorText}>{error}</Text>}

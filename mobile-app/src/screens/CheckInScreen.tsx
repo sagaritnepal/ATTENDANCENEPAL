@@ -9,6 +9,7 @@ import Badge from '../components/Badge';
 import { formatAdDate, localDateKey } from '../lib/calendar';
 import type { CalendarSystem } from '../lib/calendar';
 import { useCalendarSystem } from '../lib/CalendarSystemContext';
+import DatePicker from '../components/DatePicker';
 
 type ViewMode = 'menu' | 'fix';
 type PunchModal = {
@@ -227,8 +228,8 @@ export default function CheckInScreen({ navigation }: any) {
               automatically as confirmation.
             </Text>
             <View style={styles.form}>
-              <Text style={styles.label}>Date (YYYY-MM-DD)</Text>
-              <TextInput style={styles.input} value={workDate} onChangeText={setWorkDate} placeholder="2026-08-09" placeholderTextColor={colors.slate400} />
+              <Text style={styles.label}>Date</Text>
+              <DatePicker value={workDate} onChange={setWorkDate} />
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>Check-in (HH:MM)</Text>

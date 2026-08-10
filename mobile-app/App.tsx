@@ -30,6 +30,7 @@ import MyPayrollScreen from './src/screens/MyPayrollScreen';
 import MyTasksScreen from './src/screens/MyTasksScreen';
 import MyProfileScreen from './src/screens/MyProfileScreen';
 import AdminHeader from './src/navigation/AdminHeader';
+import EmployeeHeader from './src/navigation/EmployeeHeader';
 import AdminSidebarContent from './src/navigation/AdminSidebarContent';
 import { colors } from './src/theme';
 import { CalendarIcon, CardIcon, CheckCircleIcon, PersonIcon, TaskIcon } from './src/components/icons';
@@ -56,9 +57,7 @@ function EmployeeTabNavigator() {
   return (
     <EmployeeTab.Navigator
       screenOptions={{
-        headerStyle: { backgroundColor: colors.white },
-        headerTintColor: colors.ink,
-        headerTitleStyle: { fontWeight: '700' },
+        header: props => <EmployeeHeader {...props} />,
         tabBarStyle: { backgroundColor: colors.white, borderTopColor: colors.slate200 },
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.slate400,
@@ -277,9 +276,7 @@ function AppInner() {
           ) : (
             <EmployeeStack.Navigator
               screenOptions={{
-                headerStyle: { backgroundColor: colors.white },
-                headerTintColor: colors.ink,
-                headerTitleStyle: { fontWeight: '700' },
+                header: props => <EmployeeHeader {...props} />,
               }}
             >
               <EmployeeStack.Screen name="EmployeeTabs" component={EmployeeTabNavigator} options={{ headerShown: false }} />
