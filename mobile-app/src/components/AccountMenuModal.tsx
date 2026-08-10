@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity, Image, Pressable, TextInput, Alert } from 'react-native';
+import { Modal, View, Text, StyleSheet, TouchableOpacity, Image, Pressable, TextInput, Alert, ActivityIndicator } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import { colors } from '../theme';
@@ -9,6 +10,7 @@ export default function AccountMenuModal({ visible, onClose }: { visible: boolea
   const { profile, session, refreshProfile } = useAuth();
   const [showEdit, setShowEdit] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const adminName = profile?.full_name || 'Admin';
   const roleLabel = profile?.role === 'admin' ? 'System Administrator' : profile?.role === 'hr' ? 'HR' : 'Employee';
@@ -17,6 +19,43 @@ export default function AccountMenuModal({ visible, onClose }: { visible: boolea
   async function handleSignOut() {
     onClose();
     await supabase.auth.signOut();
+  }
+
+  async function pickAndUploadPhoto() {
+    if (!session?.user.id) return;
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Photo library access is required to set a profile photo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets[0]) return;
+
+    setUploadingPhoto(true);
+    try {
+      const response = await fetch(result.assets[0].uri);
+      const arrayBuffer = await response.arrayBuffer();
+      const path = `admin-photos/${session.user.id}-${Date.now()}.jpg`;
+      const { error: uploadError } = await supabase.storage.from('attendance-selfies').upload(path, arrayBuffer, { contentType: 'image/jpeg' });
+      if (uploadError) {
+        Alert.alert('Photo upload failed', uploadError.message);
+        return;
+      }
+      const { data: publicUrl } = supabase.storage.from('attendance-selfies').getPublicUrl(path);
+      const { error: updateError } = await supabase.from('profiles').update({ photo_url: publicUrl.publicUrl }).eq('id', session.user.id);
+      if (updateError) {
+        Alert.alert('Could not save the photo', updateError.message);
+        return;
+      }
+      refreshProfile();
+    } finally {
+      setUploadingPhoto(false);
+    }
   }
 
   return (
@@ -28,13 +67,18 @@ export default function AccountMenuModal({ visible, onClose }: { visible: boolea
               <Text style={styles.name}>{adminName}</Text>
               <Text style={styles.role}>{roleLabel}</Text>
             </View>
-            <View style={styles.avatarLg}>
-              {profile?.photo_url ? (
+            <TouchableOpacity style={styles.avatarLg} onPress={pickAndUploadPhoto} disabled={uploadingPhoto}>
+              {uploadingPhoto ? (
+                <ActivityIndicator size="small" color={colors.white} />
+              ) : profile?.photo_url ? (
                 <Image source={{ uri: profile.photo_url }} style={styles.avatarImg} />
               ) : (
                 <Text style={styles.avatarLgText}>{initial}</Text>
               )}
-            </View>
+              <View style={styles.avatarEditBadge}>
+                <EditIcon size={9} color={colors.white} />
+              </View>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.infoBlock}>
@@ -202,9 +246,22 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, padding: 16, backgroundColor: colors.accentLight },
   name: { fontSize: 15, fontWeight: '700', color: colors.ink },
   role: { fontSize: 12, color: colors.slate500, marginTop: 2 },
-  avatarLg: { height: 48, width: 48, borderRadius: 24, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  avatarImg: { height: '100%', width: '100%' },
+  avatarLg: { height: 48, width: 48, borderRadius: 24, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  avatarImg: { height: '100%', width: '100%', borderRadius: 24 },
   avatarLgText: { color: colors.white, fontSize: 18, fontWeight: '700' },
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    height: 16,
+    width: 16,
+    borderRadius: 8,
+    backgroundColor: colors.ink,
+    borderWidth: 1.5,
+    borderColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   infoBlock: { padding: 16, gap: 10, borderTopWidth: 1, borderTopColor: colors.slate200 },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   infoIcon: { height: 24, width: 24, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },

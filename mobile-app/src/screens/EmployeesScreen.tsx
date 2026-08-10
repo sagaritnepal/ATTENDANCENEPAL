@@ -370,7 +370,6 @@ export default function EmployeesScreen({ route, navigation }: any) {
         contentContainerStyle={{ padding: 16, paddingTop: 8, flexGrow: 1 }}
         renderItem={({ item }) => {
           const shift = resolveShift(item, shifts);
-          const registered = Boolean(item.branch_id) && (rosterEmployeeIds.has(item.id) || shift.id !== 'default');
           const hasLogin = linkedEmployeeIds.has(item.id);
           return (
             <View style={styles.card}>
@@ -406,7 +405,6 @@ export default function EmployeesScreen({ route, navigation }: any) {
 
               <View style={styles.badgeRow}>
                 <Badge tone={item.fingerprint_id ? 'good' : 'neutral'}>{item.fingerprint_id ? 'Biometric Enrolled' : 'Not Enrolled'}</Badge>
-                <Badge tone={registered ? 'good' : 'warning'}>{registered ? 'Registered' : 'Unregistered'}</Badge>
                 {hasLogin && <Badge tone="good">Login Active</Badge>}
               </View>
 

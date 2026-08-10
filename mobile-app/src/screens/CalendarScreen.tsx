@@ -203,17 +203,15 @@ export default function CalendarScreen() {
       .then(({ data }) => setDayLogs((data as AttendanceLog[]) ?? []));
   }, [selectedDate, employeeId]);
 
+  // Just today for now — a full date-range picker for this report can come
+  // later if it's actually needed.
   const reportRows = useMemo(() => {
     const todayKey = localDateKey(new Date().toISOString());
-    return [...visibleDates]
-      .sort((a, b) => b.localeCompare(a))
-      .map(date => {
-        const status = dayStatus.get(date);
-        const onLeave = leaveDates.has(date);
-        const onWeekOff = weekOffDates.has(date);
-        return { date, status, onLeave, onWeekOff, isFuture: date > todayKey };
-      });
-  }, [visibleDates, dayStatus, leaveDates, weekOffDates]);
+    const status = dayStatus.get(todayKey);
+    const onLeave = leaveDates.has(todayKey);
+    const onWeekOff = weekOffDates.has(todayKey);
+    return [{ date: todayKey, status, onLeave, onWeekOff, isFuture: false }];
+  }, [dayStatus, leaveDates, weekOffDates]);
 
   function cardValue(key: CardKey) {
     if (key === 'hours') return formatHoursMinutes(monthSummary.totalWorkMinutes);
@@ -363,7 +361,7 @@ export default function CalendarScreen() {
 
         {tab === 'report' && (
           <View style={styles.detailCard}>
-            <Text style={styles.detailTitle}>Attendance Report — this month</Text>
+            <Text style={styles.detailTitle}>Attendance Report — today</Text>
             <View style={styles.reportHeader}>
               <Text style={[styles.reportTh, { flex: 0.22 }]}>Date</Text>
               <Text style={[styles.reportTh, { flex: 0.28 }]}>In / Out</Text>
