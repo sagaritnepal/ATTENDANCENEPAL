@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import MonthCalendar from '@/components/MonthCalendar';
+import AttendanceReportTable from '@/components/AttendanceReportTable';
 import Badge from '@/components/Badge';
-import { formatAdDate, formatDdMmYyyy, localDateKey } from '@/lib/calendar';
+import { formatAdDate, localDateKey } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import {
   applyOvernightShiftCorrection,
@@ -57,7 +58,7 @@ export default function CalendarPage() {
   const [dayLoading, setDayLoading] = useState(false);
   const [visibleDates, setVisibleDates] = useState<string[]>([]);
   const [expandedCard, setExpandedCard] = useState<CardKey | null>(null);
-  const [selectedTab, setSelectedTab] = useState<'day' | 'leave' | 'report'>('day');
+  const [selectedTab, setSelectedTab] = useState<'day' | 'leave'>('day');
 
   useEffect(() => {
     supabase
@@ -191,16 +192,6 @@ export default function CalendarPage() {
       } satisfies Record<CardKey, CardEntry[]>,
     };
   }, [visibleDates, dayStatus, leaveDates, weekOffDates]);
-
-  // Just today for now — a full date-range picker for this report can come
-  // later if it's actually needed.
-  const reportRows = useMemo(() => {
-    const todayKey = localDateKey(new Date().toISOString());
-    const status = dayStatus.get(todayKey);
-    const onLeave = leaveDates.has(todayKey);
-    const onWeekOff = weekOffDates.has(todayKey);
-    return [{ date: todayKey, status, onLeave, onWeekOff, isFuture: false }];
-  }, [dayStatus, leaveDates, weekOffDates]);
 
   const selectedLeave = selectedDate ? leaveByDate.get(selectedDate) ?? null : null;
 
@@ -356,14 +347,6 @@ export default function CalendarPage() {
           >
             Recent Leave
           </button>
-          <button
-            onClick={() => setSelectedTab('report')}
-            className={`rounded-md px-3 py-1.5 transition-colors ${
-              selectedTab === 'report' ? 'bg-accent text-white' : 'text-slate-500 hover:bg-slate-50'
-            }`}
-          >
-            Report
-          </button>
         </div>
 
         {selectedTab === 'day' && !selectedDate && (
@@ -468,64 +451,12 @@ export default function CalendarPage() {
           </div>
         )}
 
-        {selectedTab === 'report' && (
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <h3 className="mb-3 text-sm font-semibold text-ink">Attendance Report — today</h3>
-            {reportRows.length === 0 ? (
-              <p className="text-sm text-slate-400">No records for this month.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[420px] text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wide text-slate-500">
-                      <th className="py-1.5 pr-2 font-medium">Date</th>
-                      <th className="py-1.5 pr-2 font-medium">In / Out</th>
-                      <th className="py-1.5 pr-2 font-medium">Status</th>
-                      <th className="py-1.5 pr-2 font-medium">Hrs</th>
-                      <th className="py-1.5 font-medium">OT</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {reportRows.map((row, i) => {
-                      const statusColor =
-                        row.onLeave || row.onWeekOff
-                          ? 'text-purple-700'
-                          : row.status
-                            ? row.status.isLate
-                              ? 'text-warning-text'
-                              : 'text-good-text'
-                            : row.isFuture
-                              ? 'text-slate-400'
-                              : 'text-critical-text';
-                      return (
-                        <tr key={row.date} className={i % 2 === 1 ? 'bg-slate-50' : undefined}>
-                          <td className="py-1.5 pr-2 text-slate-500">{formatDdMmYyyy(row.date, system).slice(0, 5)}</td>
-                          <td className="py-1.5 pr-2 text-slate-500">
-                            {row.status?.checkIn
-                              ? new Date(row.status.checkIn.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                              : '–:–'}
-                            {' - '}
-                            {row.status?.checkOut
-                              ? new Date(row.status.checkOut.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                              : '–:–'}
-                          </td>
-                          <td className={`py-1.5 pr-2 font-medium ${statusColor}`}>
-                            {row.onLeave ? 'On Leave' : row.onWeekOff ? 'Week Off' : row.status ? (row.status.isLate ? 'Late' : 'Present') : row.isFuture ? '—' : 'Absent'}
-                          </td>
-                          <td className="py-1.5 pr-2 text-slate-500">{row.status ? formatHoursMinutes(row.status.totalMinutes) : '—'}</td>
-                          <td className="py-1.5 text-info-text">
-                            {row.status && row.status.overtimeMinutes > 0 ? formatHoursMinutes(row.status.overtimeMinutes) : '—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
         </div>
+      </div>
+
+      <div className="mt-4">
+        <h2 className="mb-2 text-sm font-semibold text-ink">Attendance Report</h2>
+        <AttendanceReportTable />
       </div>
     </AppShell>
   );
