@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, FlatList, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Modal, Alert } from 'react-native';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import type { AttendanceLog, Device, Employee, PayrollSummary, Shift } from '../types';
@@ -33,19 +35,27 @@ type Row = {
   overtime: number;
 };
 
-const COLS = [
-  { key: 'date', label: 'Date', width: 64 },
-  { key: 'enrollId', label: 'ID', width: 48 },
-  { key: 'employeeName', label: 'Employee', width: 120 },
-  { key: 'shiftLabel', label: 'Shift', width: 130 },
-  { key: 'inOut', label: 'In / Out', width: 100 },
-  { key: 'lateEarly', label: 'Late/Early', width: 90 },
-  { key: 'hours', label: 'Work Hrs', width: 64 },
-  { key: 'overtime', label: 'OT', width: 56 },
-  { key: 'status', label: 'Status', width: 64 },
-  { key: 'device', label: 'Device', width: 110 },
+// Mirrors admin-web's phone-width Attendance Report table exactly: 7 dense
+// columns that fit without horizontal scrolling (Shift/ID/Device only show
+// on web's desktop table, which has no mobile equivalent screen at all) —
+// employees drop their own name column since every row is already theirs.
+const ADMIN_COLS = [
+  { key: 'employeeName', label: 'Employee', flex: 2.2 },
+  { key: 'date', label: 'Date', flex: 1.1 },
+  { key: 'inOut', label: 'In / Out', flex: 1.9 },
+  { key: 'lateEarly', label: 'Late / Early', flex: 1.6 },
+  { key: 'status', label: 'Status', flex: 1.1 },
+  { key: 'overtime', label: 'OT', flex: 1.0 },
+  { key: 'hours', label: 'Hrs', flex: 1.1 },
 ] as const;
-const EMPLOYEE_COLS = COLS.filter(c => c.key !== 'employeeName' && c.key !== 'enrollId');
+const EMPLOYEE_COLS = [
+  { key: 'date', label: 'Date', flex: 1.3 },
+  { key: 'inOut', label: 'In / Out', flex: 2.2 },
+  { key: 'lateEarly', label: 'Late / Early', flex: 1.9 },
+  { key: 'status', label: 'Status', flex: 1.3 },
+  { key: 'overtime', label: 'OT', flex: 1.1 },
+  { key: 'hours', label: 'Hrs', flex: 1.2 },
+] as const;
 
 function fmtHrs(hours: number) {
   return formatHoursMinutes(Math.round(hours * 60));
@@ -236,8 +246,37 @@ export default function HistoryScreen() {
     return { workHours, overtimeHours, lateMinutes, earlyMinutes, presentDays, absentDays };
   }, [rows]);
 
-  const cols = isAdmin ? COLS : EMPLOYEE_COLS;
-  const tableWidth = cols.reduce((s, c) => s + c.width, 0);
+  const cols = isAdmin ? ADMIN_COLS : EMPLOYEE_COLS;
+
+  async function exportCsv() {
+    const header = ['Date', 'ID', 'Employee', 'Shift', 'Check-In', 'Check-Out', 'Late By (min)', 'Early Out (min)', 'Total Work Hours', 'Overtime', 'Status', 'Device'];
+    const lines = rows.map(r =>
+      [
+        r.date,
+        r.enrollId,
+        r.employeeName,
+        r.shiftLabel,
+        r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour12: false }) : '',
+        r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour12: false }) : '',
+        r.lateMinutes || '',
+        r.earlyMinutes || '',
+        r.hours.toFixed(1),
+        r.overtime.toFixed(1),
+        r.status,
+        r.device,
+      ]
+        .map(v => `"${String(v).replace(/"/g, '""')}"`)
+        .join(',')
+    );
+    const csv = [header.join(','), ...lines].join('\n');
+    const fileUri = `${FileSystem.cacheDirectory}attendance_${from}_to_${to}.csv`;
+    await FileSystem.writeAsStringAsync(fileUri, csv, { encoding: FileSystem.EncodingType.UTF8 });
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Export attendance CSV' });
+    } else {
+      Alert.alert('Sharing is not available on this device.');
+    }
+  }
 
   if (loading && rows.length === 0) {
     return (
@@ -263,88 +302,83 @@ export default function HistoryScreen() {
             <Text style={styles.chipText}>{status === 'All' ? 'All Logs' : status}</Text>
           </TouchableOpacity>
         </View>
+        <TouchableOpacity style={styles.exportBtn} onPress={exportCsv}>
+          <Text style={styles.exportBtnText}>⭳ Export CSV</Text>
+        </TouchableOpacity>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator style={{ flex: 1 }} contentContainerStyle={{ width: tableWidth, flexGrow: 1 }}>
-        <View style={{ flex: 1 }}>
-          <View style={styles.tableHeader}>
-            {cols.map(c => (
-              <Text key={c.key} style={[styles.th, { width: c.width }]}>
-                {c.label}
-              </Text>
-            ))}
-          </View>
+      <View style={styles.tableHeader}>
+        {cols.map(c => (
+          <Text key={c.key} style={[styles.th, { flex: c.flex }]} numberOfLines={1}>
+            {c.label}
+          </Text>
+        ))}
+      </View>
 
-          <FlatList
-            data={rows}
-            keyExtractor={item => item.key}
-            renderItem={({ item, index }) => (
-              <View style={[styles.tr, index % 2 === 1 && styles.trAlt]}>
-                {isAdmin && (
-                  <>
-                    <Text style={[styles.td, { width: 64 }]}>{formatDdMmYyyy(item.date, system).slice(0, 5)}</Text>
-                    <Text style={[styles.td, { width: 48 }]}>{item.enrollId}</Text>
-                    <Text style={[styles.td, styles.tdName, { width: 120 }]} numberOfLines={1}>
-                      {item.employeeName}
-                    </Text>
-                  </>
-                )}
-                {!isAdmin && <Text style={[styles.td, { width: 64 }]}>{formatDdMmYyyy(item.date, system).slice(0, 5)}</Text>}
-                <Text style={[styles.td, { width: 130 }]} numberOfLines={1}>
-                  {item.shiftLabel}
-                </Text>
-                <Text style={[styles.td, { width: 100 }]}>
-                  {fmtTime(item.checkIn)}-{fmtTime(item.checkOut)}
-                </Text>
-                <Text style={[styles.td, { width: 90 }]}>
-                  {item.lateMinutes === 0 && item.earlyMinutes === 0 && <Text style={styles.dim}>—</Text>}
-                  {item.lateMinutes > 0 && <Text style={{ color: colors.warningText }}>L{formatHoursMinutes(item.lateMinutes)}</Text>}
-                  {item.earlyMinutes > 0 && <Text style={{ color: colors.criticalText }}> E{formatHoursMinutes(item.earlyMinutes)}</Text>}
-                </Text>
-                <Text style={[styles.td, { width: 64 }]}>{fmtHrs(item.hours)}</Text>
-                <Text style={[styles.td, { width: 56, color: colors.infoText }]}>{fmtHrs(item.overtime)}</Text>
-                <Text
-                  style={[
-                    styles.td,
-                    { width: 64 },
-                    item.checkIn ? { color: colors.goodText } : item.status === 'Upcoming' ? styles.dim : { color: colors.criticalText },
-                  ]}
-                >
-                  {item.checkIn ? 'Present' : item.status === 'Upcoming' ? 'Upcoming' : 'Absent'}
-                </Text>
-                <Text style={[styles.td, { width: 110 }]} numberOfLines={1}>
-                  {item.device}
-                </Text>
-              </View>
+      <FlatList
+        data={rows}
+        keyExtractor={item => item.key}
+        renderItem={({ item, index }) => (
+          <View style={[styles.tr, index % 2 === 1 && styles.trAlt]}>
+            {isAdmin && (
+              <Text style={[styles.td, styles.tdName, { flex: ADMIN_COLS[0].flex }]} numberOfLines={1}>
+                {item.employeeName}
+              </Text>
             )}
-            ListEmptyComponent={<Text style={styles.empty}>No records in this range.</Text>}
-            ListFooterComponent={
-              rows.length > 0 ? (
-                <View style={styles.footerRow}>
-                  {isAdmin ? (
-                    <Text style={[styles.tf, { width: 64 + 48 + 120 }]}>Total</Text>
-                  ) : (
-                    <Text style={[styles.tf, { width: 64 }]}>Total</Text>
-                  )}
-                  <Text style={[styles.tf, { width: 130 }]} />
-                  <Text style={[styles.tf, { width: 100 }]}>
-                    <Text style={{ color: colors.goodText }}>{totals.presentDays}P</Text> <Text style={{ color: colors.criticalText }}>{totals.absentDays}A</Text>
-                  </Text>
-                  <Text style={[styles.tf, { width: 90 }]}>
-                    {totals.lateMinutes > 0 && <Text style={{ color: colors.warningText }}>L{formatHoursMinutes(totals.lateMinutes)}</Text>}
-                    {totals.earlyMinutes > 0 && <Text style={{ color: colors.criticalText }}> E{formatHoursMinutes(totals.earlyMinutes)}</Text>}
-                    {totals.lateMinutes === 0 && totals.earlyMinutes === 0 && '—'}
-                  </Text>
-                  <Text style={[styles.tf, { width: 64 }]}>{fmtHrs(totals.workHours)}</Text>
-                  <Text style={[styles.tf, { width: 56, color: colors.infoText }]}>{fmtHrs(totals.overtimeHours)}</Text>
-                  <Text style={[styles.tf, { width: 64 }]} />
-                  <Text style={[styles.tf, { width: 110 }]} />
-                </View>
-              ) : null
-            }
-          />
-        </View>
-      </ScrollView>
+            <Text style={[styles.td, { flex: cols.find(c => c.key === 'date')!.flex }]} numberOfLines={1}>
+              {formatDdMmYyyy(item.date, system).slice(0, 5)}
+            </Text>
+            <Text style={[styles.td, { flex: cols.find(c => c.key === 'inOut')!.flex }]} numberOfLines={1}>
+              {fmtTime(item.checkIn)}-{fmtTime(item.checkOut)}
+            </Text>
+            <Text style={[styles.td, { flex: cols.find(c => c.key === 'lateEarly')!.flex }]} numberOfLines={1}>
+              {item.lateMinutes === 0 && item.earlyMinutes === 0 && <Text style={styles.dim}>—</Text>}
+              {item.lateMinutes > 0 && <Text style={{ color: colors.warningText }}>L{formatHoursMinutes(item.lateMinutes)}</Text>}
+              {item.earlyMinutes > 0 && <Text style={{ color: colors.criticalText }}> E{formatHoursMinutes(item.earlyMinutes)}</Text>}
+            </Text>
+            <Text
+              style={[
+                styles.td,
+                { flex: cols.find(c => c.key === 'status')!.flex },
+                item.checkIn ? { color: colors.goodText } : item.status === 'Upcoming' ? styles.dim : { color: colors.criticalText },
+              ]}
+              numberOfLines={1}
+            >
+              {item.checkIn ? 'Present' : item.status === 'Upcoming' ? 'Upcoming' : 'Absent'}
+            </Text>
+            <Text style={[styles.td, { flex: cols.find(c => c.key === 'overtime')!.flex, color: colors.infoText }]} numberOfLines={1}>
+              {fmtHrs(item.overtime)}
+            </Text>
+            <Text style={[styles.td, { flex: cols.find(c => c.key === 'hours')!.flex }]} numberOfLines={1}>
+              {fmtHrs(item.hours)}
+            </Text>
+          </View>
+        )}
+        ListEmptyComponent={<Text style={styles.empty}>{loading ? 'Loading…' : 'No records in this range.'}</Text>}
+        ListFooterComponent={
+          rows.length > 0 ? (
+            <View style={styles.footerRow}>
+              {isAdmin && <Text style={[styles.tf, { flex: ADMIN_COLS[0].flex }]}>Total</Text>}
+              <Text style={[styles.tf, { flex: cols.find(c => c.key === 'date')!.flex }]}>{!isAdmin ? 'Total' : ''}</Text>
+              <Text style={[styles.tf, { flex: cols.find(c => c.key === 'inOut')!.flex }]}>
+                <Text style={{ color: colors.goodText }}>{totals.presentDays}P</Text> <Text style={{ color: colors.criticalText }}>{totals.absentDays}A</Text>
+              </Text>
+              <Text style={[styles.tf, { flex: cols.find(c => c.key === 'lateEarly')!.flex }]} numberOfLines={1}>
+                {totals.lateMinutes > 0 && <Text style={{ color: colors.warningText }}>L{formatHoursMinutes(totals.lateMinutes)}</Text>}
+                {totals.earlyMinutes > 0 && <Text style={{ color: colors.criticalText }}> E{formatHoursMinutes(totals.earlyMinutes)}</Text>}
+                {totals.lateMinutes === 0 && totals.earlyMinutes === 0 && '—'}
+              </Text>
+              <Text style={[styles.tf, { flex: cols.find(c => c.key === 'status')!.flex }]} />
+              <Text style={[styles.tf, { flex: cols.find(c => c.key === 'overtime')!.flex, color: colors.infoText }]} numberOfLines={1}>
+                {fmtHrs(totals.overtimeHours)}
+              </Text>
+              <Text style={[styles.tf, { flex: cols.find(c => c.key === 'hours')!.flex }]} numberOfLines={1}>
+                {fmtHrs(totals.workHours)}
+              </Text>
+            </View>
+          ) : null
+        }
+      />
 
       {isAdmin && (
         <Modal visible={employeeOpen} transparent animationType="fade" onRequestClose={() => setEmployeeOpen(false)}>
@@ -403,6 +437,8 @@ const styles = StyleSheet.create({
   filterChipsRow: { flexDirection: 'row', gap: 8 },
   chip: { flex: 1, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.slate200, backgroundColor: colors.white },
   chipText: { fontSize: 12, fontWeight: '600', color: colors.ink },
+  exportBtn: { alignSelf: 'flex-end', borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.accentLight, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
+  exportBtnText: { fontSize: 12, fontWeight: '700', color: colors.accent },
   tableHeader: {
     flexDirection: 'row',
     backgroundColor: colors.slate50,
@@ -411,15 +447,15 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 6,
   },
-  th: { fontSize: 9, fontWeight: '700', color: colors.slate500, textTransform: 'uppercase', paddingHorizontal: 2 },
-  tr: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 6, borderBottomWidth: 1, borderBottomColor: colors.slate100 },
+  th: { fontSize: 9, fontWeight: '700', color: colors.slate500, textTransform: 'uppercase', paddingHorizontal: 2, textAlign: 'center' },
+  tr: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 6, borderBottomWidth: 1, borderBottomColor: colors.slate100 },
   trAlt: { backgroundColor: colors.slate50 },
-  td: { fontSize: 10, color: colors.slate500, paddingHorizontal: 2 },
-  tdName: { color: colors.ink, fontWeight: '600' },
+  td: { fontSize: 10, color: colors.slate500, paddingHorizontal: 2, textAlign: 'center' },
+  tdName: { color: colors.ink, fontWeight: '600', textAlign: 'left' },
   dim: { color: colors.slate400 },
-  footerRow: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 6, backgroundColor: colors.slate50, borderTopWidth: 2, borderTopColor: colors.slate200 },
-  tf: { fontSize: 10, fontWeight: '700', color: colors.ink, paddingHorizontal: 2 },
-  empty: { textAlign: 'center', marginTop: 40, color: colors.slate400, width: 400 },
+  footerRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 6, backgroundColor: colors.slate50, borderTopWidth: 2, borderTopColor: colors.slate200 },
+  tf: { fontSize: 10, fontWeight: '700', color: colors.ink, paddingHorizontal: 2, textAlign: 'center' },
+  empty: { textAlign: 'center', marginTop: 40, color: colors.slate400 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' },
   modalSheet: { backgroundColor: colors.white, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingVertical: 8, maxHeight: '60%' },
   modalOption: { paddingHorizontal: 20, paddingVertical: 14 },
