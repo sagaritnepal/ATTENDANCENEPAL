@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import EmployeeCalendarView from '@/components/EmployeeCalendarView';
-import AttendanceReportTable from '@/components/AttendanceReportTable';
 import type { Employee } from '@/lib/types';
 
 export default function CalendarPage() {
@@ -46,11 +45,6 @@ export default function CalendarPage() {
       </div>
 
       {employeeId && <EmployeeCalendarView employeeId={employeeId} />}
-
-      <div className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold text-ink">Attendance Report</h2>
-        <AttendanceReportTable variant="compact" />
-      </div>
     </AppShell>
   );
 }

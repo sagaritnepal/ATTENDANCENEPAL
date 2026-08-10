@@ -3,9 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Badge from '@/components/Badge';
-import StatusText from '@/components/StatusText';
 import DateRangePicker from '@/components/DateRangePicker';
-import { formatAdDate, formatDdMmYyyy } from '@/lib/calendar';
+import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import {
   applyOvernightShiftCorrection,
@@ -44,10 +43,6 @@ function fmtHrs(hours: number) {
   return formatHoursMinutes(Math.round(hours * 60));
 }
 
-function fmtTime(iso: string | null) {
-  return iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–';
-}
-
 function isoDaysAgo(n: number) {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - n);
@@ -60,17 +55,7 @@ function statusBadge(r: Row) {
   return <Badge tone="critical">Absent</Badge>;
 }
 
-export default function AttendanceReportTable({
-  initialEmployeeId,
-  variant = 'full',
-}: {
-  initialEmployeeId?: string | null;
-  /** 'compact' packs many more rows on screen (small condensed cells, no
-   * horizontal scroll) — same style as the mobile app's employee table.
-   * 'full' is the desktop left-to-right table with every column spelled
-   * out. Both share the same filters/data/export below. */
-  variant?: 'full' | 'compact';
-}) {
+export default function AttendanceReportTable({ initialEmployeeId }: { initialEmployeeId?: string | null }) {
   const { system } = useCalendarSystem();
   const [from, setFrom] = useState(isoDaysAgo(6));
   const [to, setTo] = useState(isoDaysAgo(0));
@@ -362,177 +347,95 @@ export default function AttendanceReportTable({
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        {variant === 'compact' ? (
-          <div className="max-h-[70vh] overflow-y-auto">
-            <table className="w-full table-fixed text-center text-[10px]">
-              <colgroup>
-                <col className="w-[22%]" />
-                <col className="w-[11%]" />
-                <col className="w-[19%]" />
-                <col className="w-[16%]" />
-                <col className="w-[11%]" />
-                <col className="w-[10%]" />
-                <col className="w-[11%]" />
-              </colgroup>
-              <thead>
-                <tr className="sticky top-0 border-b border-slate-200 bg-slate-50 text-[9px] uppercase tracking-wide text-slate-500">
-                  <th className="truncate px-0.5 py-1 font-medium">Employee</th>
-                  <th className="truncate px-0.5 py-1 font-medium">Date</th>
-                  <th className="truncate px-0.5 py-1 font-medium">In / Out</th>
-                  <th className="truncate px-0.5 py-1 font-medium">Late / Early</th>
-                  <th className="truncate px-0.5 py-1 font-medium">Status</th>
-                  <th className="truncate px-0.5 py-1 font-medium">OT</th>
-                  <th className="truncate px-0.5 py-1 font-medium">Hrs</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r, i) => (
-                  <tr key={r.key} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
-                    <td className="truncate px-0.5 py-0.5 text-left font-medium text-ink" title={r.employeeName}>
-                      {r.employeeName}
-                    </td>
-                    <td className="truncate px-0.5 py-0.5 text-slate-600">{formatDdMmYyyy(r.date, system).slice(0, 5)}</td>
-                    <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight text-slate-600">
-                      {fmtTime(r.checkIn)} – {fmtTime(r.checkOut)}
-                    </td>
-                    <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight font-medium">
-                      {r.lateMinutes === 0 && r.earlyMinutes === 0 && <span className="text-slate-300">—</span>}
-                      {r.lateMinutes > 0 && <span className="text-warning-text">L {formatHoursMinutes(r.lateMinutes)}</span>}
-                      {r.lateMinutes > 0 && r.earlyMinutes > 0 && ' · '}
-                      {r.earlyMinutes > 0 && <span className="text-critical-text">E {formatHoursMinutes(r.earlyMinutes)}</span>}
-                    </td>
-                    <td className="truncate px-0.5 py-0.5 font-medium">
-                      <StatusText checkIn={r.checkIn} status={r.status} />
-                    </td>
-                    <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight text-info-text">
-                      {fmtHrs(r.overtime)}
-                    </td>
-                    <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight text-slate-600">
-                      {fmtHrs(r.hours)}
-                    </td>
-                  </tr>
-                ))}
-                {rows.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-2 py-8 text-center text-slate-400">
-                      {loading ? 'Loading…' : 'No records in this range.'}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-              {rows.length > 0 && (
-                <tfoot>
-                  <tr className="border-t-2 border-slate-200 bg-slate-50 text-ink">
-                    <td className="truncate px-0.5 py-1 text-left font-semibold" colSpan={2}>
-                      Total
-                    </td>
-                    <td />
-                    <td className="whitespace-normal break-words px-0.5 py-1 font-semibold leading-tight">
-                      {totals.lateMinutes > 0 && <span className="text-warning-text">L {formatHoursMinutes(totals.lateMinutes)}</span>}
-                      {totals.lateMinutes > 0 && totals.earlyMinutes > 0 && ' · '}
-                      {totals.earlyMinutes > 0 && <span className="text-critical-text">E {formatHoursMinutes(totals.earlyMinutes)}</span>}
-                      {totals.lateMinutes === 0 && totals.earlyMinutes === 0 && '—'}
-                    </td>
-                    <td className="truncate px-0.5 py-1 font-semibold text-[9px]">
-                      <span className="text-good-text">{totals.presentDays}P</span> / <span className="text-critical-text">{totals.absentDays}A</span>
-                    </td>
-                    <td className="whitespace-normal break-words px-0.5 py-1 font-semibold leading-tight text-info-text">
-                      {fmtHrs(totals.overtimeHours)}
-                    </td>
-                    <td className="whitespace-normal break-words px-0.5 py-1 font-semibold leading-tight">{fmtHrs(totals.workHours)}</td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-        ) : (
-          <div className="max-h-[65vh] overflow-auto rounded-xl">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Date</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">ID</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Employee</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Shift</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">In / Out</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Late / Early</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Work Hours</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Overtime</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Status</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Device</th>
+        {/* Same left-to-right table on every screen size, including phones —
+            horizontal scroll instead of a condensed/truncated mobile layout,
+            so it always matches the desktop web view exactly. */}
+        <div className="max-h-[65vh] overflow-auto rounded-xl">
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Date</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">ID</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Employee</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Shift</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">In / Out</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Late / Early</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Work Hours</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Overtime</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Status</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Device</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.key} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                <td className="whitespace-nowrap px-3 py-2 text-slate-600">{formatAdDate(r.date, system)}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-slate-600">{r.enrollId}</td>
+                <td className="whitespace-nowrap px-3 py-2 font-medium text-ink">{r.employeeName}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-slate-600">{r.shiftLabel}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+                  {r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
+                  {' – '}
+                  {r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2">
+                  {r.lateMinutes === 0 && r.earlyMinutes === 0 && <span className="text-slate-400">—</span>}
+                  {r.lateMinutes > 0 && (
+                    <span className="font-medium text-warning-text">L {formatHoursMinutes(r.lateMinutes)}</span>
+                  )}
+                  {r.lateMinutes > 0 && r.earlyMinutes > 0 && ' · '}
+                  {r.earlyMinutes > 0 && (
+                    <span className="font-medium text-critical-text">E {formatHoursMinutes(r.earlyMinutes)}</span>
+                  )}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+                  {fmtHrs(r.hours)}
+                  {r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+                  {fmtHrs(r.overtime)}
+                  {r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2">
+                  {statusBadge(r)}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2 text-slate-600">{r.device}</td>
               </tr>
-            </thead>
-            <tbody>
-              {rows.map(r => (
-                <tr key={r.key} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">{formatAdDate(r.date, system)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">{r.enrollId}</td>
-                  <td className="whitespace-nowrap px-3 py-2 font-medium text-ink">{r.employeeName}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-slate-600">{r.shiftLabel}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">
-                    {r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
-                    {' – '}
-                    {r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2">
-                    {r.lateMinutes === 0 && r.earlyMinutes === 0 && <span className="text-slate-400">—</span>}
-                    {r.lateMinutes > 0 && (
-                      <span className="font-medium text-warning-text">L {formatHoursMinutes(r.lateMinutes)}</span>
-                    )}
-                    {r.lateMinutes > 0 && r.earlyMinutes > 0 && ' · '}
-                    {r.earlyMinutes > 0 && (
-                      <span className="font-medium text-critical-text">E {formatHoursMinutes(r.earlyMinutes)}</span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">
-                    {fmtHrs(r.hours)}
-                    {r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">
-                    {fmtHrs(r.overtime)}
-                    {r.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2">
-                    {statusBadge(r)}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">{r.device}</td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={10} className="px-5 py-8 text-center text-slate-400">
-                    {loading ? 'Loading…' : 'No records in this range.'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-            {rows.length > 0 && (
-              <tfoot>
-                <tr className="sticky bottom-0 border-t-2 border-slate-200 bg-slate-50 text-sm font-bold text-ink">
-                  <td colSpan={4} className="whitespace-nowrap px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Total
-                  </td>
-                  <td />
-                  <td className="whitespace-nowrap px-3 py-2 text-xs">
-                    {totals.lateMinutes > 0 && <span className="text-warning-text">L {formatHoursMinutes(totals.lateMinutes)}</span>}
-                    {totals.lateMinutes > 0 && totals.earlyMinutes > 0 && ' · '}
-                    {totals.earlyMinutes > 0 && <span className="text-critical-text">E {formatHoursMinutes(totals.earlyMinutes)}</span>}
-                    {totals.lateMinutes === 0 && totals.earlyMinutes === 0 && '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.workHours)}</td>
-                  <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.overtimeHours)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-xs font-semibold">
-                    <span className="text-good-text">{totals.presentDays} present</span>
-                    {' · '}
-                    <span className="text-critical-text">{totals.absentDays} absent</span>
-                  </td>
-                  <td />
-                </tr>
-              </tfoot>
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={10} className="px-5 py-8 text-center text-slate-400">
+                  {loading ? 'Loading…' : 'No records in this range.'}
+                </td>
+              </tr>
             )}
-          </table>
-          </div>
-        )}
+          </tbody>
+          {rows.length > 0 && (
+            <tfoot>
+              <tr className="sticky bottom-0 border-t-2 border-slate-200 bg-slate-50 text-sm font-bold text-ink">
+                <td colSpan={4} className="whitespace-nowrap px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Total
+                </td>
+                <td />
+                <td className="whitespace-nowrap px-3 py-2 text-xs">
+                  {totals.lateMinutes > 0 && <span className="text-warning-text">L {formatHoursMinutes(totals.lateMinutes)}</span>}
+                  {totals.lateMinutes > 0 && totals.earlyMinutes > 0 && ' · '}
+                  {totals.earlyMinutes > 0 && <span className="text-critical-text">E {formatHoursMinutes(totals.earlyMinutes)}</span>}
+                  {totals.lateMinutes === 0 && totals.earlyMinutes === 0 && '—'}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.workHours)}</td>
+                <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.overtimeHours)}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-xs font-semibold">
+                  <span className="text-good-text">{totals.presentDays} present</span>
+                  {' · '}
+                  <span className="text-critical-text">{totals.absentDays} absent</span>
+                </td>
+                <td />
+              </tr>
+            </tfoot>
+          )}
+        </table>
+        </div>
       </div>
     </>
   );
