@@ -31,6 +31,8 @@ import MyTasksScreen from './src/screens/MyTasksScreen';
 import MyProfileScreen from './src/screens/MyProfileScreen';
 import AdminHeader from './src/navigation/AdminHeader';
 import EmployeeHeader from './src/navigation/EmployeeHeader';
+import UpdateBanner from './src/components/UpdateBanner';
+import { useUpdateCheck } from './src/lib/useUpdateCheck';
 import AdminSidebarContent from './src/navigation/AdminSidebarContent';
 import { colors } from './src/theme';
 import { CalendarIcon, CardIcon, CheckCircleIcon, PersonIcon, TaskIcon } from './src/components/icons';
@@ -176,6 +178,7 @@ function AdminDrawerNavigator() {
 
 function AppInner() {
   const { session, profile, loading, justSignedIn, clearJustSignedIn } = useAuth();
+  const updateInfo = useUpdateCheck();
 
   // Only ever true on a device that actually has biometrics set up — a
   // phone with no fingerprint/face enrolled never locks at all instead of
@@ -282,6 +285,7 @@ function AppInner() {
   return (
     <View style={styles.webOuter}>
       <View style={styles.webInner}>
+        {updateInfo && <UpdateBanner downloadUrl={updateInfo.downloadUrl} />}
         <NavigationContainer>
           {!session ? (
             <LoginScreen />
