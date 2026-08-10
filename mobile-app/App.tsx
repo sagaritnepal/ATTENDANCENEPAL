@@ -11,6 +11,7 @@ import { AuthProvider, useAuth } from './src/lib/AuthContext';
 import { CalendarSystemProvider } from './src/lib/CalendarSystemContext';
 import LoginScreen from './src/screens/LoginScreen';
 import CheckInScreen from './src/screens/CheckInScreen';
+import HistoryScreen from './src/screens/HistoryScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import LeaveRequestScreen from './src/screens/LeaveRequestScreen';
 import EmployeesScreen from './src/screens/EmployeesScreen';
@@ -127,9 +128,10 @@ function EmployeesStackScreen() {
 function AttendanceStackScreen() {
   return (
     <AttendanceAdminStack.Navigator screenOptions={{ header: props => <AdminHeader {...props} /> }}>
-      <AttendanceAdminStack.Screen name="Calendar" component={CalendarScreen} options={{ title: 'Attendance Calendar' }} />
+      <AttendanceAdminStack.Screen name="AttendanceList" component={HistoryScreen} options={{ title: 'Attendance' }} />
       <AttendanceAdminStack.Screen name="Leave" component={LeaveApprovalScreen} options={{ title: 'Leave Requests' }} />
       <AttendanceAdminStack.Screen name="Corrections" component={CorrectionsScreen} options={{ title: 'Attendance Corrections' }} />
+      <AttendanceAdminStack.Screen name="Calendar" component={CalendarScreen} options={{ title: 'Attendance Calendar' }} />
     </AttendanceAdminStack.Navigator>
   );
 }

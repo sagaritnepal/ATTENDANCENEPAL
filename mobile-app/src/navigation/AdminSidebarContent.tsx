@@ -8,6 +8,7 @@ import { colors } from '../theme';
 import {
   BranchIcon,
   CalendarIcon,
+  CalendarViewIcon,
   ChevronIcon,
   ClockIcon,
   CorrectionIcon,
@@ -38,10 +39,6 @@ const NAV_ITEMS: NavItem[] = [
     ],
   },
   {
-    // Tapping "Attendance" itself lands on the Calendar screen (the stack's
-    // first screen) — that now includes the full attendance report table,
-    // so it doubles as this section's landing page instead of a separate
-    // list screen.
     name: 'Attendance',
     label: 'Attendance',
     icon: ClockIcon,
@@ -49,6 +46,7 @@ const NAV_ITEMS: NavItem[] = [
     children: [
       { screen: 'Leave', label: 'Leave', icon: LeaveIcon, adminOnly: false },
       { screen: 'Corrections', label: 'Corrections', icon: CorrectionIcon, adminOnly: false },
+      { screen: 'Calendar', label: 'Calendar', icon: CalendarViewIcon, adminOnly: false },
     ],
   },
   { name: 'Payroll', label: 'Payroll', icon: CardIcon, adminOnly: false },
