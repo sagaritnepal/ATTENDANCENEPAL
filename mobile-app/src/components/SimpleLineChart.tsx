@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { colors } from '../theme';
 
 // Catmull-Rom -> cubic Bezier so the line reads as a smooth curve like
@@ -26,11 +26,17 @@ export default function SimpleLineChart({
   data,
   height = 180,
   color = colors.accent,
+  formatValue = (v: number) => String(Math.round(v)),
 }: {
   data: { label: string; value: number }[];
   height?: number;
   color?: string;
+  /** Tooltip text for a tapped point — e.g. formatHoursMinutes for an hours
+   * chart, or toLocaleString for a currency chart. Defaults to a plain
+   * rounded number. */
+  formatValue?: (value: number) => string;
 }) {
+  const [selected, setSelected] = useState<number | null>(null);
   const width = 320;
   const padding = { top: 12, right: 12, bottom: 24, left: 28 };
   const chartW = width - padding.left - padding.right;
@@ -43,7 +49,15 @@ export default function SimpleLineChart({
     const y = padding.top + chartH - (d.value / maxVal) * chartH;
     return { x, y, ...d };
   });
-  const yTicks = [0, Math.round(maxVal / 2), maxVal];
+  const yTicks = [0, Math.round(maxVal / 2), Math.round(maxVal)];
+
+  const tip = selected != null ? points[selected] : null;
+  const tipText = tip ? formatValue(tip.value) : '';
+  // Rough width estimate so the tooltip box fits its text and stays inside
+  // the chart instead of getting clipped at the right edge.
+  const tipWidth = Math.max(36, tipText.length * 6 + 14);
+  const tipX = tip ? Math.min(Math.max(tip.x - tipWidth / 2, padding.left), width - padding.right - tipWidth) : 0;
+  const tipY = tip ? Math.max(tip.y - 30, 2) : 0;
 
   return (
     <View>
@@ -61,13 +75,30 @@ export default function SimpleLineChart({
         })}
         <Path d={smoothPath(points)} fill="none" stroke={color} strokeWidth={2} />
         {points.map((p, i) => (
-          <Circle key={i} cx={p.x} cy={p.y} r={4} fill={color} stroke={colors.white} strokeWidth={1.5} />
+          <Circle
+            key={i}
+            cx={p.x}
+            cy={p.y}
+            r={selected === i ? 6 : 4}
+            fill={color}
+            stroke={colors.white}
+            strokeWidth={1.5}
+            onPress={() => setSelected(cur => (cur === i ? null : i))}
+          />
         ))}
         {points.map((p, i) => (
           <SvgText key={`l-${i}`} x={p.x} y={height - 6} fontSize={9} fill={colors.slate400} textAnchor="middle">
             {p.label}
           </SvgText>
         ))}
+        {tip && (
+          <React.Fragment>
+            <Rect x={tipX} y={tipY} width={tipWidth} height={20} rx={5} fill={colors.ink} />
+            <SvgText x={tipX + tipWidth / 2} y={tipY + 14} fontSize={10} fontWeight="700" fill={colors.white} textAnchor="middle">
+              {tipText}
+            </SvgText>
+          </React.Fragment>
+        )}
       </Svg>
     </View>
   );

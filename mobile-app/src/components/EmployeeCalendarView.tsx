@@ -254,7 +254,7 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
   );
 
   const chartData = useMemo(
-    () => tableRows.map(row => ({ label: formatDdMmYyyy(row.date, system).slice(0, 2), value: row.present ? Math.round(row.hours * 10) / 10 : 0 })),
+    () => tableRows.map(row => ({ label: formatDdMmYyyy(row.date, system).slice(0, 2), value: row.present ? row.hours : 0 })),
     [tableRows, system]
   );
 
@@ -412,7 +412,7 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={{ width: Math.max(chartData.length * 24, 320) }}>
-              <SimpleLineChart data={chartData} height={160} />
+              <SimpleLineChart data={chartData} height={160} formatValue={v => formatHoursMinutes(Math.round(v * 60))} />
             </View>
           </ScrollView>
         )}

@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Modal } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { formatHoursMinutes, nepalTodayIso, type DailyShiftByDate } from '../lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '../lib/payrollDetail';
+import { buildPeriodOptions, currentSystemYearMonth, formatDdMmYyyy, systemPeriod, type CalendarPeriod } from '../lib/calendar';
+import { useCalendarSystem } from '../lib/CalendarSystemContext';
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '../types';
 import { colors } from '../theme';
 import { ChevronIcon } from '../components/icons';
@@ -10,26 +12,29 @@ import SimpleLineChart from '../components/SimpleLineChart';
 
 const OT_HOURS_PER_DAY = 8;
 const OT_MULTIPLIER = 1.5;
-const MONTH_LABEL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 function fmtHrs(hours: number) {
   return formatHoursMinutes(Math.round(hours * 60));
 }
-function monthBounds(year: number, month: number) {
-  const start = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
-  const end = new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10);
-  return { start, end };
-}
-function fmtShort(iso: string) {
-  const [, m, d] = iso.split('-');
-  return `${d}/${m}`;
-}
 
 export default function MyPayrollScreen() {
-  const now = new Date();
-  const [year, setYear] = useState(now.getUTCFullYear());
-  const [month, setMonth] = useState(now.getUTCMonth());
-  const { start, end } = useMemo(() => monthBounds(year, month), [year, month]);
+  const { system } = useCalendarSystem();
+  const [period, setPeriod] = useState<CalendarPeriod>(() => {
+    const { year, month } = currentSystemYearMonth(system);
+    return systemPeriod(system, year, month);
+  });
+  const [periodPickerOpen, setPeriodPickerOpen] = useState(false);
+  const [dataRange, setDataRange] = useState<{ earliest: Date; latest: Date } | null>(null);
+  const { start, end } = period;
+
+  // Toggling AD/BS resets to "this month" in the newly active system — the
+  // previously selected month rarely has an equivalent boundary in the
+  // other system. Mirrors the web My Payroll page.
+  useEffect(() => {
+    const { year, month } = currentSystemYearMonth(system);
+    setPeriod(systemPeriod(system, year, month));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [system]);
 
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [employee, setEmployee] = useState<Employee | null>(null);
@@ -56,6 +61,26 @@ export default function MyPayrollScreen() {
       setShifts((shiftRows as Shift[]) ?? []);
     });
   }, []);
+
+  // This employee's own oldest/newest punch — bounds the period picker to
+  // months that actually have data for them, same as web.
+  useEffect(() => {
+    if (!employeeId) return;
+    Promise.all([
+      supabase.from('attendance_logs').select('punch_time').eq('employee_id', employeeId).order('punch_time', { ascending: true }).limit(1),
+      supabase.from('attendance_logs').select('punch_time').eq('employee_id', employeeId).order('punch_time', { ascending: false }).limit(1),
+    ]).then(([earliestRes, latestRes]) => {
+      const earliest = earliestRes.data?.[0]?.punch_time;
+      const latest = latestRes.data?.[0]?.punch_time;
+      if (!earliest || !latest) {
+        setDataRange(null);
+        return;
+      }
+      setDataRange({ earliest: new Date(earliest), latest: new Date(latest) });
+    });
+  }, [employeeId]);
+
+  const periodOptions = useMemo(() => buildPeriodOptions(system, dataRange, period), [system, dataRange, period]);
 
   useEffect(() => {
     if (!employeeId) return;
@@ -141,18 +166,10 @@ export default function MyPayrollScreen() {
   const received = employee?.salary != null ? Math.round(totals.totalSalary) : null;
   const receivedOvertime = Math.round(totals.overtimeEarning);
 
-  function changeMonth(delta: number) {
-    let m = month + delta;
-    let y = year;
-    if (m < 0) {
-      m = 11;
-      y -= 1;
-    } else if (m > 11) {
-      m = 0;
-      y += 1;
-    }
-    setMonth(m);
-    setYear(y);
+  function changePeriod(delta: number) {
+    const idx = periodOptions.findIndex(o => o.key === period.key);
+    const next = periodOptions[idx + delta];
+    if (next) setPeriod(next);
   }
 
   if (loading) {
@@ -199,28 +216,32 @@ export default function MyPayrollScreen() {
             )}
 
             <View style={styles.periodBar}>
-              <TouchableOpacity onPress={() => changeMonth(-1)} style={styles.periodArrow}>
+              <TouchableOpacity onPress={() => changePeriod(-1)} style={styles.periodArrow}>
                 <View style={{ transform: [{ rotate: '90deg' }] }}>
                   <ChevronIcon size={16} color={colors.accent} />
                 </View>
               </TouchableOpacity>
-              <Text style={styles.periodLabel}>
-                {MONTH_LABEL[month]} {year}
-              </Text>
-              <TouchableOpacity onPress={() => changeMonth(1)} style={styles.periodArrow}>
+              <TouchableOpacity style={styles.periodLabelBtn} onPress={() => setPeriodPickerOpen(true)}>
+                <Text style={styles.periodLabel}>{period.label}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => changePeriod(1)} style={styles.periodArrow}>
                 <View style={{ transform: [{ rotate: '-90deg' }] }}>
                   <ChevronIcon size={16} color={colors.accent} />
                 </View>
               </TouchableOpacity>
             </View>
+            <Text style={styles.dateRangeHint}>
+              {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
+            </Text>
 
-            <Text style={styles.sectionHeading}>Daily Breakdown</Text>
+            <Text style={styles.sectionHeading}>Daily Breakdown of {period.label}</Text>
             <View style={styles.tableHeader}>
-              <Text style={[styles.th, { flex: 0.15 }]}>Date</Text>
+              <Text style={[styles.th, { flex: 0.11 }]}>Date</Text>
               <Text style={[styles.th, { flex: 0.15 }]}>Hrs</Text>
               <Text style={[styles.th, { flex: 0.15 }]}>OT</Text>
-              <Text style={[styles.th, { flex: 0.2 }]}>Status</Text>
-              <Text style={[styles.th, { flex: 0.35 }]}>Total (OT)</Text>
+              <Text style={[styles.th, { flex: 0.12 }]}>Status</Text>
+              <Text style={[styles.th, { flex: 0.23 }]}>My Salary</Text>
+              <Text style={[styles.th, { flex: 0.24 }]}>Total(OT)</Text>
             </View>
           </>
         }
@@ -228,15 +249,16 @@ export default function MyPayrollScreen() {
           const earning = row.checkIn ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true) : null;
           return (
             <View style={[styles.tr, index % 2 === 1 && styles.trAlt]}>
-              <Text style={[styles.td, { flex: 0.15 }]}>{fmtShort(row.date)}</Text>
+              <Text style={[styles.td, { flex: 0.11 }]}>{formatDdMmYyyy(row.date, system).slice(0, 5)}</Text>
               <Text style={[styles.td, { flex: 0.15 }]}>{row.checkIn ? fmtHrs(row.hours) : '—'}</Text>
               <Text style={[styles.td, { flex: 0.15, color: colors.infoText }]}>{row.checkIn ? fmtHrs(row.overtime) : '—'}</Text>
-              <Text style={[styles.td, { flex: 0.2 }, row.checkIn ? { color: colors.goodText } : row.status === 'Absent' ? { color: colors.criticalText } : styles.dim]}>
+              <Text style={[styles.td, { flex: 0.12 }, row.checkIn ? { color: colors.goodText } : row.status === 'Absent' ? { color: colors.criticalText } : styles.dim]}>
                 {row.checkIn ? 'Present' : row.status === 'Absent' ? 'Absent' : '—'}
               </Text>
-              <Text style={[styles.td, styles.tdBold, { flex: 0.35 }]}>
-                {earning ? earning.total.toFixed(0) : '—'}
-                {earning && earning.overtime > 0 ? <Text style={{ color: colors.infoText }}> ({earning.overtime.toFixed(0)})</Text> : null}
+              <Text style={[styles.td, { flex: 0.23 }]}>{earning ? Math.round(earning.base).toLocaleString() : '—'}</Text>
+              <Text style={[styles.td, styles.tdBold, { flex: 0.24 }]}>
+                {earning ? Math.round(earning.total).toLocaleString() : '—'}
+                {earning && earning.overtime > 0 ? <Text style={{ color: colors.infoText }}> ({Math.round(earning.overtime).toLocaleString()})</Text> : null}
               </Text>
             </View>
           );
@@ -246,21 +268,23 @@ export default function MyPayrollScreen() {
           dayRows.length > 0 ? (
             <>
               <View style={styles.footerRow}>
-                <Text style={[styles.tf, { flex: 0.15 }]}>Total</Text>
+                <Text style={[styles.tf, { flex: 0.11 }]}>Total</Text>
                 <Text style={[styles.tf, { flex: 0.15 }]}>{fmtHrs(totals.totalHours)}</Text>
                 <Text style={[styles.tf, { flex: 0.15, color: colors.infoText }]}>{fmtHrs(totals.overtimeHours)}</Text>
-                <Text style={[styles.tf, { flex: 0.2 }]}>
+                <Text style={[styles.tf, { flex: 0.12 }]}>
                   <Text style={{ color: colors.goodText }}>{totals.presentDays}P</Text> <Text style={{ color: colors.criticalText }}>{totals.absentDays}A</Text>
                 </Text>
-                <Text style={[styles.tf, { flex: 0.35, color: colors.goodText }]}>{Math.round(totals.totalSalary).toLocaleString()}</Text>
+                <Text style={[styles.tf, { flex: 0.23 }]}>{Math.round(totals.totalSalary - totals.overtimeEarning).toLocaleString()}</Text>
+                <Text style={[styles.tf, { flex: 0.24, color: colors.goodText }]}>{Math.round(totals.totalSalary).toLocaleString()}</Text>
               </View>
               <View style={styles.chartCard}>
                 <Text style={styles.sectionHeading}>Earning Trend</Text>
                 <SimpleLineChart
                   color="#7c3aed"
+                  formatValue={v => Math.round(v).toLocaleString()}
                   data={dayRows.map(row => {
                     const earning = row.checkIn ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true) : null;
-                    return { label: row.date.slice(8, 10), value: earning ? Math.round(earning.total) : 0 };
+                    return { label: formatDdMmYyyy(row.date, system).slice(0, 2), value: earning ? Math.round(earning.total) : 0 };
                   })}
                 />
               </View>
@@ -268,6 +292,28 @@ export default function MyPayrollScreen() {
           ) : null
         }
       />
+
+      <Modal visible={periodPickerOpen} transparent animationType="fade" onRequestClose={() => setPeriodPickerOpen(false)}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setPeriodPickerOpen(false)}>
+          <View style={styles.modalSheet}>
+            <FlatList
+              data={[...periodOptions].reverse()}
+              keyExtractor={item => item.key}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.modalOption, item.key === period.key && styles.modalOptionActive]}
+                  onPress={() => {
+                    setPeriod(item);
+                    setPeriodPickerOpen(false);
+                  }}
+                >
+                  <Text style={styles.modalOptionText}>{item.label}</Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -281,19 +327,26 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
   statValue: { fontSize: 14, fontWeight: '700', color: colors.ink, marginTop: 2 },
   statHint: { fontSize: 9, marginTop: 1 },
-  periodBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 10, borderWidth: 1, borderColor: colors.slate200, padding: 8, marginBottom: 16 },
+  periodBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 10, borderWidth: 1, borderColor: colors.slate200, padding: 8 },
   periodArrow: { padding: 8 },
-  periodLabel: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '700', color: colors.ink },
+  periodLabelBtn: { flex: 1 },
+  periodLabel: { textAlign: 'center', fontSize: 18, fontWeight: '700', color: colors.ink },
+  dateRangeHint: { textAlign: 'center', fontSize: 11, color: colors.slate500, marginTop: 6, marginBottom: 16 },
   sectionHeading: { fontSize: 13, fontWeight: '700', color: colors.ink, marginBottom: 8 },
   chartCard: { backgroundColor: colors.white, borderRadius: 12, borderWidth: 1, borderColor: colors.slate200, padding: 12, marginTop: 16 },
-  tableHeader: { flexDirection: 'row', backgroundColor: colors.slate100, paddingVertical: 6, paddingHorizontal: 8, borderTopLeftRadius: 8, borderTopRightRadius: 8 },
-  th: { fontSize: 9, fontWeight: '700', color: colors.slate500, textTransform: 'uppercase', textAlign: 'center' },
-  tr: { flexDirection: 'row', paddingVertical: 6, paddingHorizontal: 8, backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.slate100 },
+  tableHeader: { flexDirection: 'row', backgroundColor: colors.slate100, paddingVertical: 6, paddingHorizontal: 6, borderTopLeftRadius: 8, borderTopRightRadius: 8 },
+  th: { fontSize: 8, fontWeight: '700', color: colors.slate500, textTransform: 'uppercase', textAlign: 'center' },
+  tr: { flexDirection: 'row', paddingVertical: 6, paddingHorizontal: 6, backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.slate100 },
   trAlt: { backgroundColor: colors.slate50 },
-  td: { fontSize: 10, color: colors.slate500, textAlign: 'center' },
+  td: { fontSize: 9, color: colors.slate500, textAlign: 'center' },
   tdBold: { fontWeight: '700', color: colors.goodText },
   dim: { color: colors.slate400 },
-  footerRow: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 8, backgroundColor: colors.slate100, borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
-  tf: { fontSize: 10, fontWeight: '700', color: colors.ink, textAlign: 'center' },
+  footerRow: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 6, backgroundColor: colors.slate100, borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
+  tf: { fontSize: 9, fontWeight: '700', color: colors.ink, textAlign: 'center' },
   empty: { textAlign: 'center', marginTop: 20, color: colors.slate400 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', padding: 20 },
+  modalSheet: { backgroundColor: colors.white, borderRadius: 16, maxHeight: '60%' },
+  modalOption: { paddingHorizontal: 20, paddingVertical: 14 },
+  modalOptionActive: { backgroundColor: colors.accentLight },
+  modalOptionText: { fontSize: 14, color: colors.ink },
 });
