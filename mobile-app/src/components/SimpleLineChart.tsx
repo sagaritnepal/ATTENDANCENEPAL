@@ -73,16 +73,21 @@ export default function SimpleLineChart({
             </React.Fragment>
           );
         })}
+        {tip && <Line x1={tip.x} y1={padding.top} x2={tip.x} y2={padding.top + chartH} stroke={colors.slate200} strokeWidth={1} strokeDasharray="3,3" />}
         <Path d={smoothPath(points)} fill="none" stroke={color} strokeWidth={2} />
         {points.map((p, i) => (
+          <Circle key={i} cx={p.x} cy={p.y} r={selected === i ? 6 : 4} fill={color} stroke={colors.white} strokeWidth={1.5} />
+        ))}
+        {/* Generous invisible hit targets stacked on top — the visible dots
+            above are too small to reliably tap on a phone, this widens each
+            one's tappable area without changing how it looks. */}
+        {points.map((p, i) => (
           <Circle
-            key={i}
+            key={`hit-${i}`}
             cx={p.x}
             cy={p.y}
-            r={selected === i ? 6 : 4}
-            fill={color}
-            stroke={colors.white}
-            strokeWidth={1.5}
+            r={14}
+            fill="transparent"
             onPress={() => setSelected(cur => (cur === i ? null : i))}
           />
         ))}
