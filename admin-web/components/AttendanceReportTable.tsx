@@ -57,7 +57,7 @@ function statusBadge(r: Row) {
 
 export default function AttendanceReportTable({ initialEmployeeId }: { initialEmployeeId?: string | null }) {
   const { system } = useCalendarSystem();
-  const [from, setFrom] = useState(isoDaysAgo(6));
+  const [from, setFrom] = useState(isoDaysAgo(0));
   const [to, setTo] = useState(isoDaysAgo(0));
   const [status, setStatus] = useState<'All' | 'Present' | 'Late' | 'Early' | 'Absent'>('All');
   const [employeeId, setEmployeeId] = useState<string>(initialEmployeeId ?? 'all');
