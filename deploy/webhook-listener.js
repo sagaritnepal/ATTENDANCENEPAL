@@ -2,6 +2,7 @@
 // Verifies the HMAC signature GitHub sends, and on a push to main, runs
 // redeploy.sh. Bound to 127.0.0.1 only; nginx proxies /deploy-webhook to it
 // over the site's existing HTTPS, so this is never directly internet-facing.
+// Verified working end-to-end 2026-08-12.
 //
 // Requires WEBHOOK_SECRET in the environment (set in
 // deploy/webhook.ecosystem.config.js on the server — not committed to git).
