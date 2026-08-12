@@ -42,7 +42,19 @@
           "photosPermission": "Used to choose an employee profile photo.",
           "cameraPermission": "Used to take an employee profile photo."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#0d9488"
+        }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+      }
+    }
   }
 }
