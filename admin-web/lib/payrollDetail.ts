@@ -15,11 +15,15 @@ export type DayDetail = {
   overtime: number;
   lateMinutes: number;
   earlyMinutes: number;
-  status: 'Present' | 'Late' | 'Absent' | 'Upcoming';
+  status: 'Present' | 'Late' | 'Absent' | 'Upcoming' | 'Week Off';
   /** No payroll_summaries row yet (only computed by the nightly job or
    * "Recalculate month" on the Payroll page) — computed live client-side
    * from the raw punches instead of left blank until that job runs. */
   pending?: boolean;
+  /** True for a company-wide Week-off or approved-Leave day with no punch —
+   * still earns a full day's pay (see dailySalaryEarning), distinct from a
+   * genuine Absent. */
+  paidOff?: boolean;
 };
 
 /** Day 1 through `end`, for one employee — same payroll_summaries-or-live-
@@ -33,7 +37,11 @@ export function buildEmployeeDayRows(
   logs: AttendanceLog[],
   start: string,
   end: string,
-  dailyShiftByDate?: DailyShiftByDate
+  dailyShiftByDate?: DailyShiftByDate,
+  /** Company-wide Week-off dates (weekOffDatesInRange()) and this employee's
+   * own approved-Leave dates — a punchless day matching either is 'Week Off'
+   * (paid), not 'Absent'/'Upcoming'. */
+  paidOffDates?: Set<string>
 ): DayDetail[] {
   const days: string[] = [];
   const cur = new Date(start + 'T00:00:00Z');
@@ -74,6 +82,12 @@ export function buildEmployeeDayRows(
     }
     const dayLogs = (byDate.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
     if (dayLogs.length === 0) {
+      // A company Week-off or approved Leave day is a known, paid day off
+      // regardless of whether it's already passed — takes priority over the
+      // Upcoming/Absent distinction below.
+      if (paidOffDates?.has(day)) {
+        return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status: 'Week Off', paidOff: true };
+      }
       // A day that hasn't happened yet isn't "Absent" — it just hasn't
       // occurred. Only mark days up to and including today that way.
       const status = day > today ? ('Upcoming' as const) : ('Absent' as const);
@@ -113,6 +127,10 @@ export function dailySalaryEarning(
 ): { base: number; overtime: number; total: number } | null {
   if (salary == null) return null;
   const hourlyRate = salary / (daysInRange * otHoursPerDay);
+  // A paid Week-off/Leave day has no punches to derive hours from — credit
+  // one full standard day (hourlyRate * otHoursPerDay = salary / daysInRange)
+  // instead of the usual per-hour math.
+  if (d.paidOff) return { base: hourlyRate * otHoursPerDay, overtime: 0, total: hourlyRate * otHoursPerDay };
   const regularHours = Math.max(0, d.hours - d.overtime);
   const base = hourlyRate * regularHours;
   const overtime = otOn && d.overtime > 0 ? hourlyRate * otMultiplier * d.overtime : 0;

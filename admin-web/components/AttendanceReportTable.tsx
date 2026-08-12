@@ -15,7 +15,8 @@ import {
   resolveShiftForDate,
   type DailyShiftByDate,
 } from '@/lib/shift';
-import type { AttendanceLog, Device, Employee, PayrollSummary, Shift } from '@/lib/types';
+import { fetchMyCompanyWeekOffConfig, leaveDatesByEmployee, weekOffDatesInRange } from '@/lib/weekOff';
+import type { AttendanceLog, CompanyHoliday, Device, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
 
 type Row = {
   key: string;
@@ -27,7 +28,7 @@ type Row = {
   checkIn: string | null;
   checkOut: string | null;
   hours: number;
-  status: 'Present' | 'Late' | 'Absent' | 'Upcoming';
+  status: 'Present' | 'Late' | 'Absent' | 'Upcoming' | 'Week Off';
   lateMinutes: number;
   earlyMinutes: number;
   overtime: number;
@@ -51,6 +52,7 @@ function isoDaysAgo(n: number) {
 
 function statusBadge(r: Row) {
   if (r.checkIn) return <Badge tone="good">Present</Badge>;
+  if (r.status === 'Week Off') return <Badge tone="neutral">Week Off</Badge>;
   if (r.status === 'Upcoming') return <Badge tone="neutral">Upcoming</Badge>;
   return <Badge tone="critical">Absent</Badge>;
 }
@@ -59,7 +61,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
   const { system } = useCalendarSystem();
   const [from, setFrom] = useState(isoDaysAgo(0));
   const [to, setTo] = useState(isoDaysAgo(0));
-  const [status, setStatus] = useState<'All' | 'Present' | 'Late' | 'Early' | 'Absent'>('All');
+  const [status, setStatus] = useState<'All' | 'Present' | 'Late' | 'Early' | 'Absent' | 'Week Off'>('All');
   const [employeeId, setEmployeeId] = useState<string>(initialEmployeeId ?? 'all');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -67,12 +69,16 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [dailyShiftRows, setDailyShiftRows] = useState<{ employee_id: string; work_date: string; shift_id: string | null }[]>([]);
+  const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
+  const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     supabase.from('employees').select('*').eq('status', 'active').order('name').then(({ data }) => setEmployees(data ?? []));
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
     supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
   }, []);
 
   useEffect(() => {
@@ -81,10 +87,14 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
       supabase.from('payroll_summaries').select('*').gte('work_date', from).lte('work_date', to),
       supabase.from('attendance_logs').select('*').gte('punch_time', `${from}T00:00:00Z`).lte('punch_time', `${to}T23:59:59Z`),
       supabase.from('employee_daily_shifts').select('employee_id, work_date, shift_id').gte('work_date', from).lte('work_date', to),
-    ]).then(([summariesRes, logsRes, rosterRes]) => {
+      supabase.from('company_holidays').select('*').gte('holiday_date', from).lte('holiday_date', to),
+      supabase.from('leave_requests').select('*').eq('status', 'approved').lte('start_date', to).gte('end_date', from),
+    ]).then(([summariesRes, logsRes, rosterRes, holidaysRes, leaveRes]) => {
       setSummaries(summariesRes.data ?? []);
       setLogs(logsRes.data ?? []);
       setDailyShiftRows(rosterRes.data ?? []);
+      setHolidays(holidaysRes.data ?? []);
+      setLeaveRequests(leaveRes.data ?? []);
       setLoading(false);
     });
   }, [from, to]);
@@ -106,6 +116,9 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
     }
     return map;
   }, [dailyShiftRows]);
+
+  const weekOffDateSet = useMemo(() => weekOffDatesInRange(from, to, weeklyOffDay, holidays), [from, to, weeklyOffDay, holidays]);
+  const leaveByEmployee = useMemo(() => leaveDatesByEmployee(leaveRequests), [leaveRequests]);
 
   const rows: Row[] = useMemo(() => {
     const deviceName = (id: string | null) => devices.find(d => d.id === id)?.name ?? 'Mobile / QR / Selfie';
@@ -191,6 +204,10 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             pending: true,
           });
         } else {
+          // A company Week-off or approved Leave day is a known, paid day
+          // off — takes priority over the Upcoming/Absent distinction below,
+          // whether it's already passed or not.
+          const isPaidOff = weekOffDateSet.has(day) || leaveByEmployee.get(emp.id)?.has(day);
           out.push({
             key: `${emp.id}-${day}`,
             date: day,
@@ -204,7 +221,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             // A day that hasn't happened yet isn't "Absent" — it just
             // hasn't occurred (only relevant if the picked range runs past
             // today).
-            status: day > today ? 'Upcoming' : 'Absent',
+            status: isPaidOff ? 'Week Off' : day > today ? 'Upcoming' : 'Absent',
             lateMinutes: 0,
             earlyMinutes: 0,
             overtime: 0,
@@ -222,7 +239,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
         if (!bId) return -1;
         return aId.localeCompare(bId, undefined, { numeric: true, sensitivity: 'base' });
       });
-  }, [scopedEmployees, summaries, logs, devices, shifts, from, to, status, dailyShiftByDate]);
+  }, [scopedEmployees, summaries, logs, devices, shifts, from, to, status, dailyShiftByDate, weekOffDateSet, leaveByEmployee]);
 
   const totals = useMemo(() => {
     const workHours = rows.reduce((sum, r) => sum + r.hours, 0);
@@ -321,6 +338,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                 <option value="Absent">Absent</option>
                 <option value="Late">Late</option>
                 <option value="Early">Early</option>
+                <option value="Week Off">Week Off</option>
               </select>
             </div>
           </div>

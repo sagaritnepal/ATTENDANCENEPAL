@@ -29,6 +29,7 @@ const NAV_ITEMS: NavItem[] = [
       { href: '/leave', label: 'Leave', icon: LeaveIcon, adminOnly: false },
       { href: '/corrections', label: 'Corrections', icon: CorrectionIcon, adminOnly: false },
       { href: '/calendar', label: 'Calendar', icon: CalendarViewIcon, adminOnly: false },
+      { href: '/week-off', label: 'Week-off', icon: CalendarViewIcon, adminOnly: true },
     ],
   },
   { href: '/payroll', label: 'Payroll', icon: CardIcon, adminOnly: false },
