@@ -9,8 +9,12 @@ export type DayDetail = {
   overtime: number;
   lateMinutes: number;
   earlyMinutes: number;
-  status: 'Present' | 'Late' | 'Absent' | 'Upcoming';
+  status: 'Present' | 'Late' | 'Absent' | 'Upcoming' | 'Week Off';
   pending?: boolean;
+  /** True for a company-wide Week-off or approved-Leave day with no punch —
+   * still earns a full day's pay (see dailySalaryEarning), distinct from a
+   * genuine Absent. */
+  paidOff?: boolean;
 };
 
 export function buildEmployeeDayRows(
@@ -20,7 +24,10 @@ export function buildEmployeeDayRows(
   logs: AttendanceLog[],
   start: string,
   end: string,
-  dailyShiftByDate?: DailyShiftByDate
+  dailyShiftByDate?: DailyShiftByDate,
+  /** Company-wide Week-off dates and this employee's own approved-Leave
+   * dates — a punchless day matching either is 'Week Off' (paid). */
+  paidOffDates?: Set<string>
 ): DayDetail[] {
   const days: string[] = [];
   const cur = new Date(start + 'T00:00:00Z');
@@ -55,6 +62,9 @@ export function buildEmployeeDayRows(
     }
     const dayLogs = (byDate.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
     if (dayLogs.length === 0) {
+      if (paidOffDates?.has(day)) {
+        return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status: 'Week Off' as const, paidOff: true };
+      }
       const status = day > today ? ('Upcoming' as const) : ('Absent' as const);
       return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status };
     }
@@ -84,6 +94,7 @@ export function dailySalaryEarning(
 ): { base: number; overtime: number; total: number } | null {
   if (salary == null) return null;
   const hourlyRate = salary / (daysInRange * otHoursPerDay);
+  if (d.paidOff) return { base: hourlyRate * otHoursPerDay, overtime: 0, total: hourlyRate * otHoursPerDay };
   const regularHours = Math.max(0, d.hours - d.overtime);
   const base = hourlyRate * regularHours;
   const overtime = otOn && d.overtime > 0 ? hourlyRate * otMultiplier * d.overtime : 0;

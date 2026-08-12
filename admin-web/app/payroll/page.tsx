@@ -288,7 +288,7 @@ export default function PayrollPage() {
     const lateDays = byEmployee.reduce((s, r) => s + r.lateDays, 0);
     const earlyDays = byEmployee.reduce((s, r) => s + r.earlyDays, 0);
     const possibleDays = scopedEmployees.length * elapsedDaysInRange;
-    const absentDays = Math.max(0, possibleDays - workedDays);
+    const absentDays = Math.max(0, possibleDays - workedDays - paidOffDays);
     const attendancePct = possibleDays ? Math.round((workedDays / possibleDays) * 1000) / 10 : 0;
     const totalEmployeeSalary = byEmployee.reduce((s, r) => s + (r.salary ?? 0), 0);
     const totalSalaryPayable = byEmployee.reduce((s, r) => s + (calculatedSalary(r) ?? 0), 0);

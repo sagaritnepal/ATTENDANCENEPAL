@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { supabase } from '../lib/supabase';
-import type { AttendanceLog, Employee, LeaveRequest, PayrollSummary, Shift } from '../types';
+import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '../types';
+import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '../lib/weekOff';
 import {
   applyOvernightShiftCorrection,
   computeDayStatusForResolvedShift,
@@ -71,6 +72,12 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
   const [dayLogs, setDayLogs] = useState<AttendanceLog[]>([]);
   const [visibleDates, setVisibleDates] = useState<string[]>([]);
   const [expandedCard, setExpandedCard] = useState<CardKey | null>(null);
+  const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
+  const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
+
+  useEffect(() => {
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
+  }, []);
 
   useEffect(() => {
     setSelectedDate(null);
@@ -108,6 +115,7 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
       .eq('employee_id', employeeId)
       .gte('work_date', since.slice(0, 10))
       .then(({ data }) => setDailyShiftRows((data as any) ?? []));
+    supabase.from('company_holidays').select('*').gte('holiday_date', since.slice(0, 10)).then(({ data }) => setHolidays((data as CompanyHoliday[]) ?? []));
   }, [employeeId]);
 
   const dailyShiftByDate: DailyShiftByDate = useMemo(() => {
@@ -151,6 +159,15 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
     return set;
   }, [dailyShiftByDate, employeeId]);
 
+  // Company-wide Week-off (recurring day + ad-hoc holidays) — distinct from
+  // the per-employee roster `weekOffDates` above, but treated identically
+  // everywhere in this view: never Absent, never counted toward Hours.
+  const companyWeekOffDates = useMemo(() => {
+    const since = new Date(Date.now() - WINDOW_DAYS * 86400000).toISOString().slice(0, 10);
+    const today = new Date().toISOString().slice(0, 10);
+    return weekOffDatesInRange(since, today, weeklyOffDay, holidays);
+  }, [weeklyOffDay, holidays]);
+
   const todayKey = useMemo(() => localDateKey(new Date().toISOString()), []);
 
   const summaryByDate = useMemo(() => {
@@ -170,7 +187,7 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
     let overtimeMinutes = 0;
 
     for (const date of visibleDates) {
-      if (leaveDates.has(date) || weekOffDates.has(date)) continue;
+      if (leaveDates.has(date) || weekOffDates.has(date) || companyWeekOffDates.has(date)) continue;
       const summary = date !== todayKey ? summaryByDate.get(date) : undefined;
       const status = dayStatus.get(date);
       if (summary || status) {
@@ -209,12 +226,12 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
         absent: absent.sort(byDateDesc),
       } as Record<CardKey, CardEntry[]>,
     };
-  }, [visibleDates, dayStatus, leaveDates, weekOffDates, summaryByDate, todayKey]);
+  }, [visibleDates, dayStatus, leaveDates, weekOffDates, companyWeekOffDates, summaryByDate, todayKey]);
 
   const tableRows: TableRow[] = useMemo(
     () =>
       visibleDates.map(date => {
-        const onLeave = leaveDates.has(date) || weekOffDates.has(date);
+        const onLeave = leaveDates.has(date) || weekOffDates.has(date) || companyWeekOffDates.has(date);
         if (onLeave) {
           return { date, onLeave: true, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, present: false, absent: false };
         }
@@ -250,7 +267,7 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
           absent: false,
         };
       }),
-    [visibleDates, leaveDates, weekOffDates, dayStatus, summaryByDate, todayKey]
+    [visibleDates, leaveDates, weekOffDates, companyWeekOffDates, dayStatus, summaryByDate, todayKey]
   );
 
   const chartData = useMemo(
@@ -282,6 +299,10 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
       .then(({ data }) => setDayLogs((data as AttendanceLog[]) ?? []));
   }, [selectedDate, employeeId]);
 
+  // Per-employee roster Week Off + company-wide Week-off, merged for the
+  // calendar's visual "week off" coloring.
+  const mergedWeekOffDates = useMemo(() => new Set([...weekOffDates, ...companyWeekOffDates]), [weekOffDates, companyWeekOffDates]);
+
   function cardValue(key: CardKey) {
     if (key === 'hours') return formatHoursMinutes(monthSummary.totalWorkMinutes);
     if (key === 'overtime') return formatHoursMinutes(monthSummary.overtimeMinutes);
@@ -298,7 +319,7 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
       <MonthCalendarGrid
         dayStatus={dayStatus}
         leaveDates={leaveDates}
-        weekOffDates={weekOffDates}
+        weekOffDates={mergedWeekOffDates}
         selectedDate={selectedDate}
         onSelectDate={d => setSelectedDate(cur => (cur === d ? null : d))}
         onMonthChange={setVisibleDates}

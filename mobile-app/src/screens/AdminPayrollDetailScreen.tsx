@@ -3,9 +3,10 @@ import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity }
 import { supabase } from '../lib/supabase';
 import { formatHoursMinutes, nepalTodayIso, type DailyShiftByDate } from '../lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '../lib/payrollDetail';
+import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '../lib/weekOff';
 import { formatDdMmYyyy } from '../lib/calendar';
 import { useCalendarSystem } from '../lib/CalendarSystemContext';
-import type { AttendanceLog, Employee, PayrollSummary, Shift } from '../types';
+import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '../types';
 import { colors } from '../theme';
 import { ChevronIcon } from '../components/icons';
 
@@ -35,6 +36,13 @@ export default function AdminPayrollDetailScreen({ route }: any) {
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [dailyShiftRows, setDailyShiftRows] = useState<{ work_date: string; shift_id: string | null }[]>([]);
+  const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
+  const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+
+  useEffect(() => {
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
+  }, []);
 
   useEffect(() => {
     supabase
@@ -59,7 +67,29 @@ export default function AdminPayrollDetailScreen({ route }: any) {
       .lte('punch_time', `${end}T23:59:59Z`)
       .then(({ data }) => setLogs((data as AttendanceLog[]) ?? []));
     supabase.from('employee_daily_shifts').select('work_date, shift_id').eq('employee_id', employeeId).gte('work_date', start).lte('work_date', end).then(({ data }) => setDailyShiftRows((data as any) ?? []));
+    supabase.from('company_holidays').select('*').gte('holiday_date', start).lte('holiday_date', end).then(({ data }) => setHolidays((data as CompanyHoliday[]) ?? []));
+    supabase
+      .from('leave_requests')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .eq('status', 'approved')
+      .lte('start_date', end)
+      .gte('end_date', start)
+      .then(({ data }) => setLeaveRequests((data as LeaveRequest[]) ?? []));
   }, [employeeId, start, end]);
+
+  const paidOffDates = useMemo(() => {
+    const set = weekOffDatesInRange(start, end, weeklyOffDay, holidays);
+    for (const req of leaveRequests) {
+      const cur = new Date((req.start_date < start ? start : req.start_date) + 'T00:00:00Z');
+      const endDate = new Date((req.end_date > end ? end : req.end_date) + 'T00:00:00Z');
+      while (cur <= endDate) {
+        set.add(cur.toISOString().slice(0, 10));
+        cur.setUTCDate(cur.getUTCDate() + 1);
+      }
+    }
+    return set;
+  }, [start, end, weeklyOffDay, holidays, leaveRequests]);
 
   const dailyShiftByDate: DailyShiftByDate = useMemo(() => {
     const map: DailyShiftByDate = new Map();
@@ -69,7 +99,10 @@ export default function AdminPayrollDetailScreen({ route }: any) {
     return map;
   }, [dailyShiftRows, employeeId]);
 
-  const dayRows: DayDetail[] = useMemo(() => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate) : []), [employee, shifts, summaries, logs, start, end, dailyShiftByDate]);
+  const dayRows: DayDetail[] = useMemo(
+    () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate, paidOffDates) : []),
+    [employee, shifts, summaries, logs, start, end, dailyShiftByDate, paidOffDates]
+  );
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
 
   const totals = useMemo(() => {
@@ -77,6 +110,7 @@ export default function AdminPayrollDetailScreen({ route }: any) {
     const overtimeHours = dayRows.reduce((s, r) => s + r.overtime, 0);
     const presentDays = dayRows.filter(r => r.checkIn).length;
     const absentDays = dayRows.filter(r => r.status === 'Absent').length;
+    const paidOffDays = dayRows.filter(r => r.status === 'Week Off').length;
     let baseEarning = 0;
     let overtimeEarning = 0;
     for (const r of dayRows) {
@@ -86,7 +120,7 @@ export default function AdminPayrollDetailScreen({ route }: any) {
         overtimeEarning += earning.overtime;
       }
     }
-    return { totalHours, overtimeHours, presentDays, absentDays, totalSalary: baseEarning + overtimeEarning, overtimeEarning };
+    return { totalHours, overtimeHours, presentDays, absentDays, paidOffDays, totalSalary: baseEarning + overtimeEarning, overtimeEarning };
   }, [dayRows, employee, daysInRange]);
 
   function changeMonth(delta: number) {
@@ -174,14 +208,21 @@ export default function AdminPayrollDetailScreen({ route }: any) {
           </>
         }
         renderItem={({ item: row, index }) => {
-          const earning = row.checkIn ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true) : null;
+          const earning =
+            row.checkIn || row.paidOff ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true) : null;
           return (
             <View style={[styles.tr, index % 2 === 1 && styles.trAlt]}>
               <Text style={[styles.td, { flex: 0.15 }]}>{formatDdMmYyyy(row.date, system).slice(0, 5)}</Text>
               <Text style={[styles.td, { flex: 0.15 }]}>{row.checkIn ? fmtHrs(row.hours) : '—'}</Text>
               <Text style={[styles.td, { flex: 0.15, color: colors.infoText }]}>{row.checkIn ? fmtHrs(row.overtime) : '—'}</Text>
-              <Text style={[styles.td, { flex: 0.2 }, row.checkIn ? { color: colors.goodText } : row.status === 'Absent' ? { color: colors.criticalText } : styles.dim]}>
-                {row.checkIn ? 'Present' : row.status === 'Absent' ? 'Absent' : '—'}
+              <Text
+                style={[
+                  styles.td,
+                  { flex: 0.2 },
+                  row.checkIn ? { color: colors.goodText } : row.status === 'Week Off' ? { color: colors.accent } : row.status === 'Absent' ? { color: colors.criticalText } : styles.dim,
+                ]}
+              >
+                {row.checkIn ? 'Present' : row.status === 'Week Off' ? 'Week Off' : row.status === 'Absent' ? 'Absent' : '—'}
               </Text>
               <Text style={[styles.td, styles.tdBold, { flex: 0.35 }]}>
                 {earning ? earning.total.toFixed(0) : '—'}
@@ -198,7 +239,8 @@ export default function AdminPayrollDetailScreen({ route }: any) {
               <Text style={[styles.tf, { flex: 0.15 }]}>{fmtHrs(totals.totalHours)}</Text>
               <Text style={[styles.tf, { flex: 0.15, color: colors.infoText }]}>{fmtHrs(totals.overtimeHours)}</Text>
               <Text style={[styles.tf, { flex: 0.2 }]}>
-                <Text style={{ color: colors.goodText }}>{totals.presentDays}P</Text> <Text style={{ color: colors.criticalText }}>{totals.absentDays}A</Text>
+                <Text style={{ color: colors.goodText }}>{totals.presentDays}P</Text> <Text style={{ color: colors.accent }}>{totals.paidOffDays}W</Text>{' '}
+                <Text style={{ color: colors.criticalText }}>{totals.absentDays}A</Text>
               </Text>
               <Text style={[styles.tf, { flex: 0.35, color: colors.goodText }]}>{Math.round(totals.totalSalary).toLocaleString()}</Text>
             </View>
