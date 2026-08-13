@@ -25,9 +25,17 @@
 // pull bridge) or manual entry in the admin UI to get an employees row.
 require('dotenv').config();
 const http = require('http');
+const WebSocket = require('ws');
 const { createClient } = require('@supabase/supabase-js');
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+// This server never uses Supabase Realtime (no .channel() subscriptions,
+// just plain REST calls) — but createClient() eagerly constructs a
+// RealtimeClient regardless, which throws on Node <22 without a native
+// WebSocket global. Passing `ws` explicitly avoids that crash without
+// requiring a Node upgrade.
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+  realtime: { transport: WebSocket },
+});
 
 const PORT = Number(process.env.PUSH_PORT || 8088);
 const REFRESH_INTERVAL_MS = Number(process.env.REFRESH_INTERVAL_MS || 60 * 1000);
