@@ -2,26 +2,28 @@ import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import * as Application from 'expo-application';
 
-const RELEASES_URL = 'https://api.github.com/repos/sagaritnepal/ATTENDANCENEPAL/releases/latest';
+// Hosted as a static file at admin-web/public/mobile-update.json — Vercel
+// serves it at this path and redeploys it live on every push to main. Bump
+// versionCode/downloadUrl there after each EAS build (see mobile-app/eas.json);
+// no GitHub involved anywhere in this loop.
+const UPDATE_CHECK_URL =
+  process.env.EXPO_PUBLIC_UPDATE_CHECK_URL ?? 'https://YOUR-VERCEL-DOMAIN.vercel.app/mobile-update.json';
 
 type UpdateInfo = { versionCode: number; downloadUrl: string };
 
-// GitHub Actions (.github/workflows/build-android.yml) tags every release
-// "vNNN" where NNN is that build's android versionCode, and attaches the
-// APK as a release asset — parsed back out here rather than trusting
-// versionName, since versionCode is the number Android actually compares.
-function parseRelease(json: any): UpdateInfo | null {
-  const match = /^v(\d+)$/.exec(json?.tag_name ?? '');
-  if (!match) return null;
-  const asset = (json.assets ?? []).find((a: any) => a.name?.endsWith('.apk'));
-  if (!asset) return null;
-  return { versionCode: Number(match[1]), downloadUrl: asset.browser_download_url };
+function parseManifest(json: any): UpdateInfo | null {
+  const versionCode = Number(json?.versionCode);
+  const downloadUrl = json?.downloadUrl;
+  if (!Number.isFinite(versionCode) || versionCode <= 0 || typeof downloadUrl !== 'string' || !downloadUrl) {
+    return null;
+  }
+  return { versionCode, downloadUrl };
 }
 
-/** Checks GitHub's latest release once per app launch and reports back if
+/** Checks the Vercel-hosted manifest once per app launch and reports back if
  * it's newer than the build currently installed — silently gives up on any
- * error (offline, rate-limited, no releases yet) rather than ever blocking
- * the app on this being reachable. */
+ * error (offline, misconfigured URL, no manifest yet) rather than ever
+ * blocking the app on this being reachable. */
 export function useUpdateCheck() {
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
 
@@ -32,13 +34,13 @@ export function useUpdateCheck() {
       try {
         const currentVersionCode = Number(Application.nativeBuildVersion);
         if (!currentVersionCode) return;
-        const res = await fetch(RELEASES_URL, { headers: { Accept: 'application/vnd.github+json' } });
+        const res = await fetch(UPDATE_CHECK_URL, { headers: { Accept: 'application/json' } });
         if (!res.ok) return;
-        const info = parseRelease(await res.json());
+        const info = parseManifest(await res.json());
         if (!active || !info) return;
         if (info.versionCode > currentVersionCode) setUpdate(info);
       } catch {
-        // Offline or GitHub unreachable — not worth surfacing to the user.
+        // Offline or manifest unreachable — not worth surfacing to the user.
       }
     })();
     return () => {

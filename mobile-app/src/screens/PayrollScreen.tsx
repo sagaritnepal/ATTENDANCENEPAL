@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity, Switch, Modal, FlatList } from 'react-native';
 import { supabase } from '../lib/supabase';
-import type { AttendanceLog, Employee, PayrollSummary, Shift } from '../types';
+import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '../types';
+import { fetchMyCompanyWeekOffConfig, leaveDatesByEmployee, weekOffDatesInRange } from '../lib/weekOff';
 import {
   applyOvernightShiftCorrection,
   computeDayStatusForResolvedShift,
@@ -29,6 +30,7 @@ type Row = {
   overtime: number;
   lateDays: number;
   earlyDays: number;
+  paidOffDays: number;
 };
 
 export default function PayrollScreen({ navigation }: any) {
@@ -54,6 +56,13 @@ export default function PayrollScreen({ navigation }: any) {
   const [otMultiplier, setOtMultiplier] = useState('1.5');
   const [overtimeEnabled, setOvertimeEnabled] = useState<Record<string, boolean>>({});
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
+  const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
+  const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+
+  useEffect(() => {
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
+  }, []);
 
   function reload() {
     setLoading(true);
@@ -63,16 +72,23 @@ export default function PayrollScreen({ navigation }: any) {
       supabase.from('shifts').select('*'),
       supabase.from('employees').select('*').eq('status', 'active'),
       supabase.from('employee_daily_shifts').select('employee_id, work_date, shift_id').gte('work_date', start).lte('work_date', end),
-    ]).then(([summariesRes, logsRes, shiftsRes, employeesRes, rosterRes]) => {
+      supabase.from('company_holidays').select('*').gte('holiday_date', start).lte('holiday_date', end),
+      supabase.from('leave_requests').select('*').eq('status', 'approved').lte('start_date', end).gte('end_date', start),
+    ]).then(([summariesRes, logsRes, shiftsRes, employeesRes, rosterRes, holidaysRes, leaveRes]) => {
       setSummaries((summariesRes.data as PayrollSummary[]) ?? []);
       setLogs((logsRes.data as AttendanceLog[]) ?? []);
       setShifts((shiftsRes.data as Shift[]) ?? []);
       setEmployees((employeesRes.data as Employee[]) ?? []);
       setDailyShiftRows((rosterRes.data as any) ?? []);
+      setHolidays((holidaysRes.data as CompanyHoliday[]) ?? []);
+      setLeaveRequests((leaveRes.data as LeaveRequest[]) ?? []);
       setLoading(false);
     });
   }
   useEffect(reload, [start, end]);
+
+  const weekOffDateSet = useMemo(() => weekOffDatesInRange(start, end, weeklyOffDay, holidays), [start, end, weeklyOffDay, holidays]);
+  const leaveByEmployee = useMemo(() => leaveDatesByEmployee(leaveRequests), [leaveRequests]);
 
   const dailyShiftByDate: DailyShiftByDate = useMemo(() => {
     const map: DailyShiftByDate = new Map();
@@ -104,7 +120,7 @@ export default function PayrollScreen({ navigation }: any) {
     }
     const map = new Map<string, Row>();
     for (const emp of employees) {
-      map.set(emp.id, { id: emp.id, enrollId: emp.fingerprint_id ?? '—', name: emp.name, salary: emp.salary, days: 0, hours: 0, overtime: 0, lateDays: 0, earlyDays: 0 });
+      map.set(emp.id, { id: emp.id, enrollId: emp.fingerprint_id ?? '—', name: emp.name, salary: emp.salary, days: 0, hours: 0, overtime: 0, lateDays: 0, earlyDays: 0, paidOffDays: 0 });
     }
     const today = nepalTodayIso();
     const logsByEmployeeDay = new Map<string, Map<string, AttendanceLog[]>>();
@@ -132,7 +148,10 @@ export default function PayrollScreen({ navigation }: any) {
           continue;
         }
         const dayLogs = (logsByEmployeeDay.get(emp.id)?.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
-        if (dayLogs.length === 0) continue;
+        if (dayLogs.length === 0) {
+          if (weekOffDateSet.has(day) || leaveByEmployee.get(emp.id)?.has(day)) row.paidOffDays += 1;
+          continue;
+        }
         const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate);
         const live = computeDayStatusForResolvedShift(dayLogs, resolved);
         row.days += 1;
@@ -143,7 +162,7 @@ export default function PayrollScreen({ navigation }: any) {
       }
     }
     return Array.from(map.values()).sort((a, b) => a.enrollId.localeCompare(b.enrollId, undefined, { numeric: true, sensitivity: 'base' }));
-  }, [summaries, logs, shifts, employees, start, end, dailyShiftByDate]);
+  }, [summaries, logs, shifts, employees, start, end, dailyShiftByDate, weekOffDateSet, leaveByEmployee]);
 
   const otHours = Number(otHoursPerDay) || 0;
   const otMult = Number(otMultiplier) || 0;
@@ -152,7 +171,7 @@ export default function PayrollScreen({ navigation }: any) {
     if (row.salary == null || !otHours) return null;
     const hourlyRate = row.salary / (daysInRange * otHours);
     const regularHours = Math.max(0, row.hours - row.overtime);
-    return Math.round(hourlyRate * regularHours);
+    return Math.round(hourlyRate * regularHours + hourlyRate * otHours * row.paidOffDays);
   }
   function overtimeSalary(row: Row): number | null {
     if (row.salary == null || !otHours) return null;
@@ -170,13 +189,14 @@ export default function PayrollScreen({ navigation }: any) {
     const totalHours = byEmployee.reduce((s, r) => s + r.hours, 0);
     const overtimeHours = byEmployee.reduce((s, r) => s + r.overtime, 0);
     const workedDays = byEmployee.reduce((s, r) => s + r.days, 0);
+    const paidOffDays = byEmployee.reduce((s, r) => s + r.paidOffDays, 0);
     const possibleDays = employees.length * elapsedDaysInRange;
-    const absentDays = Math.max(0, possibleDays - workedDays);
+    const absentDays = Math.max(0, possibleDays - workedDays - paidOffDays);
     const attendancePct = possibleDays ? Math.round((workedDays / possibleDays) * 1000) / 10 : 0;
     const totalEmployeeSalary = byEmployee.reduce((s, r) => s + (r.salary ?? 0), 0);
     const totalSalaryPayable = byEmployee.reduce((s, r) => s + (calculatedSalary(r) ?? 0), 0);
     const totalOvertimeSalary = byEmployee.reduce((s, r) => s + (overtimeSalary(r) ?? 0), 0);
-    return { totalHours, overtimeHours, workedDays, absentDays, attendancePct, totalEmployeeSalary, totalSalaryPayable, totalOvertimeSalary };
+    return { totalHours, overtimeHours, workedDays, paidOffDays, absentDays, attendancePct, totalEmployeeSalary, totalSalaryPayable, totalOvertimeSalary };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [byEmployee, employees.length, elapsedDaysInRange, otHours, otMult, overtimeEnabled]);
 
@@ -375,6 +395,8 @@ export default function PayrollScreen({ navigation }: any) {
         {byEmployee.length > 0 && (
           <View style={styles.footerBar}>
             <Text style={{ color: colors.goodText, fontWeight: '700', fontSize: 12 }}>{totals.workedDays} present days</Text>
+            <Text style={{ color: colors.slate400 }}> · </Text>
+            <Text style={{ color: colors.accent, fontWeight: '700', fontSize: 12 }}>{totals.paidOffDays} paid week-off/leave</Text>
             <Text style={{ color: colors.slate400 }}> · </Text>
             <Text style={{ color: colors.criticalText, fontWeight: '700', fontSize: 12 }}>{totals.absentDays} absent days</Text>
           </View>

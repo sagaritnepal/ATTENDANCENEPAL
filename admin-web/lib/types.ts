@@ -210,6 +210,15 @@ export type LeaderboardRow = {
   profile_photo_url: string | null;
 };
 
+export type CompanyHoliday = {
+  id: string;
+  company_id: string;
+  holiday_date: string;
+  name: string;
+  created_by: string | null;
+  created_at: string;
+};
+
 export type PayrollSummary = {
   id: string;
   employee_id: string;

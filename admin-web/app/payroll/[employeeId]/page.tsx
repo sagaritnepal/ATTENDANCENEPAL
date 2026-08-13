@@ -11,7 +11,8 @@ import { buildMonth, formatAdDate, formatDdMmYyyy, todayAnchor, type CalendarAnc
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { formatHoursMinutes, type DailyShiftByDate } from '@/lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '@/lib/payrollDetail';
-import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
+import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '@/lib/weekOff';
+import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
 
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -28,6 +29,7 @@ function fmtHrs(hours: number) {
 
 function statusBadge(d: DayDetail) {
   if (d.checkIn) return <Badge tone="good">Present</Badge>;
+  if (d.status === 'Week Off') return <Badge tone="neutral">Week Off</Badge>;
   if (d.status === 'Upcoming') return <Badge tone="neutral">Upcoming</Badge>;
   return <Badge tone="critical">Absent</Badge>;
 }
@@ -72,7 +74,14 @@ function PayrollEmployeeDetailView() {
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [dailyShiftRows, setDailyShiftRows] = useState<{ work_date: string; shift_id: string | null }[]>([]);
+  const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
+  const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -92,12 +101,16 @@ function PayrollEmployeeDetailView() {
         .eq('employee_id', employeeId)
         .gte('work_date', start)
         .lte('work_date', end),
-    ]).then(([empRes, shiftsRes, summariesRes, logsRes, rosterRes]) => {
+      supabase.from('company_holidays').select('*').gte('holiday_date', start).lte('holiday_date', end),
+      supabase.from('leave_requests').select('*').eq('employee_id', employeeId).eq('status', 'approved').lte('start_date', end).gte('end_date', start),
+    ]).then(([empRes, shiftsRes, summariesRes, logsRes, rosterRes, holidaysRes, leaveRes]) => {
       setEmployee(empRes.data ?? null);
       setShifts(shiftsRes.data ?? []);
       setSummaries(summariesRes.data ?? []);
       setLogs(logsRes.data ?? []);
       setDailyShiftRows(rosterRes.data ?? []);
+      setHolidays(holidaysRes.data ?? []);
+      setLeaveRequests(leaveRes.data ?? []);
       setLoading(false);
     });
   }, [employeeId, start, end]);
@@ -117,9 +130,22 @@ function PayrollEmployeeDetailView() {
   // hour instead (see dailySalaryEarning() in lib/payrollDetail.ts).
   const salaryPerDay = useMemo(() => (employee?.salary != null ? employee.salary / daysInRange : null), [employee, daysInRange]);
 
+  const paidOffDates = useMemo(() => {
+    const set = weekOffDatesInRange(start, end, weeklyOffDay, holidays);
+    for (const req of leaveRequests) {
+      const cur = new Date((req.start_date < start ? start : req.start_date) + 'T00:00:00Z');
+      const endDate = new Date((req.end_date > end ? end : req.end_date) + 'T00:00:00Z');
+      while (cur <= endDate) {
+        set.add(cur.toISOString().slice(0, 10));
+        cur.setUTCDate(cur.getUTCDate() + 1);
+      }
+    }
+    return set;
+  }, [start, end, weeklyOffDay, holidays, leaveRequests]);
+
   const dayRows = useMemo(
-    () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate) : []),
-    [employee, shifts, summaries, logs, start, end, dailyShiftByDate]
+    () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate, paidOffDates) : []),
+    [employee, shifts, summaries, logs, start, end, dailyShiftByDate, paidOffDates]
   );
 
   const dayTotals = useMemo(() => {
@@ -132,12 +158,14 @@ function PayrollEmployeeDetailView() {
     let totalSalary = 0;
     let presentDays = 0;
     let absentDays = 0;
+    let paidOffDays = 0;
     for (const d of dayRows) {
       hours += d.hours;
       overtime += d.overtime;
       lateMinutes += d.lateMinutes;
       earlyMinutes += d.earlyMinutes;
       if (d.checkIn) presentDays += 1;
+      else if (d.status === 'Week Off') paidOffDays += 1;
       else if (d.status !== 'Upcoming') absentDays += 1;
       const earning = dailySalaryEarning(d, employee?.salary ?? null, daysInRange, otHoursPerDay, otMultiplier, otOn);
       if (earning) {
@@ -146,7 +174,7 @@ function PayrollEmployeeDetailView() {
         totalSalary += earning.total;
       }
     }
-    return { hours, overtime, lateMinutes, earlyMinutes, mySalary, otSalary, totalSalary, presentDays, absentDays };
+    return { hours, overtime, lateMinutes, earlyMinutes, mySalary, otSalary, totalSalary, presentDays, absentDays, paidOffDays };
   }, [dayRows, employee, daysInRange, otHoursPerDay, otMultiplier, otOn]);
 
 
@@ -255,7 +283,7 @@ function PayrollEmployeeDetailView() {
                       attendancePct >= 75 ? 'text-good-text/70' : attendancePct >= 50 ? 'text-warning-text/70' : 'text-critical-text/70'
                     }`}
                   >
-                    {dayTotals.presentDays}P / {dayTotals.absentDays}A
+                    {dayTotals.presentDays}P / {dayTotals.paidOffDays}W / {dayTotals.absentDays}A
                   </div>
                 </div>
               );
@@ -336,7 +364,7 @@ function PayrollEmployeeDetailView() {
                         {dayTotals.lateMinutes === 0 && dayTotals.earlyMinutes === 0 && '—'}
                       </td>
                       <td className="truncate px-0.5 py-1 font-semibold text-[9px]">
-                        <span className="text-good-text">{dayTotals.presentDays}P</span> / <span className="text-critical-text">{dayTotals.absentDays}A</span>
+                        <span className="text-good-text">{dayTotals.presentDays}P</span> / <span className="text-accent">{dayTotals.paidOffDays}W</span> / <span className="text-critical-text">{dayTotals.absentDays}A</span>
                       </td>
                       <td className="whitespace-normal break-words px-0.5 py-1 font-semibold leading-tight text-info-text">
                         {fmtHrs(dayTotals.overtime)}

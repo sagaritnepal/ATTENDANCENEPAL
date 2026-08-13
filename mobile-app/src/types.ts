@@ -164,6 +164,15 @@ export type LeaveRequest = {
   created_at: string;
 };
 
+export type CompanyHoliday = {
+  id: string;
+  company_id: string;
+  holiday_date: string;
+  name: string;
+  created_by: string | null;
+  created_at: string;
+};
+
 export type CorrectionRequest = {
   id: string;
   employee_id: string;

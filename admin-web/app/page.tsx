@@ -6,8 +6,9 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
-import type { AttendanceLog, Device, Employee, LeaveRequest, Shift } from '@/lib/types';
+import type { AttendanceLog, CompanyHoliday, Device, Employee, LeaveRequest, Shift } from '@/lib/types';
 import { dateKey, firstCheckIn, isLate, last7Days, presentEmployeeIds, WEEKDAY_LABEL } from '@/lib/metrics';
+import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '@/lib/weekOff';
 import {
   applyOvernightShiftCorrection,
   computeDayStatusForResolvedShift,
@@ -27,7 +28,7 @@ const OTHER_COLOR = '#94a3b8';
 
 type FeedItem = AttendanceLog & { employee_name: string };
 type DetailRow = { id: string; primary: string; secondary?: string };
-type DetailKey = 'total' | 'present' | 'late' | 'leave' | 'absent' | 'hours' | 'overtime';
+type DetailKey = 'total' | 'present' | 'late' | 'leave' | 'weekOff' | 'absent' | 'hours' | 'overtime';
 
 export default function DashboardPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -37,6 +38,8 @@ export default function DashboardPage() {
   const [onLeave, setOnLeave] = useState<LeaveRequest[]>([]);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [todayRoster, setTodayRoster] = useState<{ employee_id: string; shift_id: string | null }[]>([]);
+  const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
+  const [todayHoliday, setTodayHoliday] = useState<CompanyHoliday | null>(null);
   const [detailKey, setDetailKey] = useState<DetailKey | null>(null);
 
   useEffect(() => {
@@ -59,6 +62,8 @@ export default function DashboardPage() {
       .select('employee_id, shift_id')
       .eq('work_date', today)
       .then(({ data }) => setTodayRoster(data ?? []));
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
+    supabase.from('company_holidays').select('*').eq('holiday_date', today).maybeSingle().then(({ data }) => setTodayHoliday(data ?? null));
     supabase
       .from('attendance_logs')
       .select('*')
@@ -126,6 +131,14 @@ export default function DashboardPage() {
   const lateCount = lateEmployees.length;
 
   const onLeaveIds = useMemo(() => new Set(onLeave.map(l => l.employee_id)), [onLeave]);
+
+  // Company-wide Week-off: recurring weekly day (e.g. every Saturday) or an
+  // ad-hoc holiday for today specifically. Distinct from per-employee roster
+  // Week Off (dailyShiftByDate) and approved Leave (onLeaveIds) above.
+  const todayIsWeekOff = useMemo(
+    () => weekOffDatesInRange(today, today, weeklyOffDay, todayHoliday ? [todayHoliday] : []).has(today),
+    [today, weeklyOffDay, todayHoliday]
+  );
   const attendancePct = activeEmployees.length ? Math.round((presentIds.size / activeEmployees.length) * 100) : 0;
 
   const totalEmployeeRows = useMemo<DetailRow[]>(
@@ -158,10 +171,12 @@ export default function DashboardPage() {
 
   const absentRows = useMemo<DetailRow[]>(
     () =>
-      activeEmployees
-        .filter(emp => !presentIds.has(emp.id) && !onLeaveIds.has(emp.id))
-        .map(emp => ({ id: emp.id, primary: emp.name, secondary: emp.department ?? undefined })),
-    [activeEmployees, presentIds, onLeaveIds]
+      todayIsWeekOff
+        ? []
+        : activeEmployees
+            .filter(emp => !presentIds.has(emp.id) && !onLeaveIds.has(emp.id))
+            .map(emp => ({ id: emp.id, primary: emp.name, secondary: emp.department ?? undefined })),
+    [activeEmployees, presentIds, onLeaveIds, todayIsWeekOff]
   );
   const absentCount = absentRows.length;
 
@@ -216,7 +231,18 @@ export default function DashboardPage() {
     present: { title: 'Present Today', rows: presentRows, emptyText: 'Nobody has checked in yet today.' },
     late: { title: 'Late Arrivals', rows: lateEmployees, emptyText: 'No late arrivals today.' },
     leave: { title: 'On Leave Today', rows: leaveRows, emptyText: 'Nobody is on approved leave today.' },
-    absent: { title: 'Absent Today', rows: absentRows, emptyText: 'No one is absent — everyone is present or on leave.' },
+    weekOff: {
+      title: 'Week-off Today',
+      rows: todayIsWeekOff
+        ? [{ id: 'week-off', primary: todayHoliday?.name ?? 'Recurring weekly off day', secondary: 'No one is expected to work today.' }]
+        : [],
+      emptyText: 'Today is not a company-wide Week-off. Manage this under Attendance → Week-off.',
+    },
+    absent: {
+      title: 'Absent Today',
+      rows: absentRows,
+      emptyText: todayIsWeekOff ? 'Today is a company Week-off — nobody is marked absent.' : 'No one is absent — everyone is present or on leave.',
+    },
     hours: { title: 'Total Work Hours', rows: workHoursRows, emptyText: 'No work hours recorded yet today.' },
     overtime: { title: 'Overtime', rows: overtimeRows, emptyText: 'No overtime recorded today.' },
   };
@@ -263,6 +289,12 @@ export default function DashboardPage() {
         <StatCard label="Present Today" value={String(presentIds.size)} hint={`${attendancePct}% attendance`} onClick={() => setDetailKey('present')} />
         <StatCard label="Late Arrivals" value={String(lateCount)} hint="Past grace period" onClick={() => setDetailKey('late')} />
         <StatCard label="On Leave" value={String(onLeaveIds.size)} hint="Approved today" onClick={() => setDetailKey('leave')} />
+        <StatCard
+          label="Week-off Today"
+          value={todayIsWeekOff ? 'Yes' : 'No'}
+          hint={todayHoliday?.name ?? (todayIsWeekOff ? 'Recurring weekly day' : 'Not a company off-day')}
+          onClick={() => setDetailKey('weekOff')}
+        />
         <StatCard label="Absent Today" value={String(absentCount)} hint="No punch, not on leave" onClick={() => setDetailKey('absent')} />
         <StatCard label="Total Work Hours" value={todayWorkHours.toFixed(1)} hint="Today, all staff" onClick={() => setDetailKey('hours')} />
         <StatCard

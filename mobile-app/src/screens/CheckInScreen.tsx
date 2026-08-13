@@ -10,6 +10,8 @@ import { formatAdDate, localDateKey } from '../lib/calendar';
 import type { CalendarSystem } from '../lib/calendar';
 import { useCalendarSystem } from '../lib/CalendarSystemContext';
 import DatePicker from '../components/DatePicker';
+import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '../lib/weekOff';
+import type { CompanyHoliday } from '../types';
 
 type ViewMode = 'menu' | 'fix';
 type PunchModal = {
@@ -54,6 +56,19 @@ export default function CheckInScreen({ navigation }: any) {
   const [reason, setReason] = useState('');
   const [submittingCorrection, setSubmittingCorrection] = useState(false);
   const [correctionError, setCorrectionError] = useState<string | null>(null);
+  const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
+  const [todayHoliday, setTodayHoliday] = useState<CompanyHoliday | null>(null);
+
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
+    supabase.from('company_holidays').select('*').eq('holiday_date', today).maybeSingle().then(({ data }) => setTodayHoliday((data as CompanyHoliday) ?? null));
+  }, []);
+
+  const todayIsWeekOff = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return weekOffDatesInRange(today, today, weeklyOffDay, todayHoliday ? [todayHoliday] : []).has(today);
+  }, [weeklyOffDay, todayHoliday]);
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -275,6 +290,13 @@ export default function CheckInScreen({ navigation }: any) {
         contentContainerStyle={{ padding: 16 }}
         ListHeaderComponent={
           <>
+            {todayIsWeekOff && (
+              <View style={[styles.banner, { backgroundColor: colors.infoBg }]}>
+                <Text style={{ color: colors.infoText, fontSize: 13, fontWeight: '600' }}>
+                  Today is a Week-off{todayHoliday?.name ? ` — ${todayHoliday.name}` : ''}. No one is expected to work today.
+                </Text>
+              </View>
+            )}
             {message && (
               <View style={[styles.banner, { backgroundColor: message.kind === 'good' ? colors.goodBg : colors.criticalBg }]}>
                 <Text style={{ color: message.kind === 'good' ? colors.goodText : colors.criticalText, fontSize: 13 }}>{message.text}</Text>

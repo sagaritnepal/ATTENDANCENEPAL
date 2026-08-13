@@ -21,7 +21,8 @@ import {
   resolveShiftForDate,
   type DailyShiftByDate,
 } from '@/lib/shift';
-import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
+import { fetchMyCompanyWeekOffConfig, leaveDatesByEmployee, weekOffDatesInRange } from '@/lib/weekOff';
+import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
 
 /** Decimal hours (e.g. row.hours, row.overtime) -> "Xh Ym". */
 function fmtHrs(hours: number) {
@@ -39,6 +40,9 @@ export default function PayrollPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [dailyShiftRows, setDailyShiftRows] = useState<{ employee_id: string; work_date: string; shift_id: string | null }[]>([]);
+  const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
+  const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [pendingSalary, setPendingSalary] = useState<Record<string, string>>({});
   const [savingRowId, setSavingRowId] = useState<string | null>(null);
   const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
@@ -73,6 +77,10 @@ export default function PayrollPage() {
 
   // The oldest/newest punch on record — bounds the period dropdown to
   // months that actually have data instead of listing years of empty ones.
+  useEffect(() => {
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
+  }, []);
+
   useEffect(() => {
     Promise.all([
       supabase.from('attendance_logs').select('punch_time').order('punch_time', { ascending: true }).limit(1),
@@ -121,12 +129,16 @@ export default function PayrollPage() {
       supabase.from('shifts').select('*'),
       supabase.from('employees').select('*').eq('status', 'active'),
       supabase.from('employee_daily_shifts').select('employee_id, work_date, shift_id').gte('work_date', start).lte('work_date', end),
-    ]).then(([summariesRes, logsRes, shiftsRes, employeesRes, rosterRes]) => {
+      supabase.from('company_holidays').select('*').gte('holiday_date', start).lte('holiday_date', end),
+      supabase.from('leave_requests').select('*').eq('status', 'approved').lte('start_date', end).gte('end_date', start),
+    ]).then(([summariesRes, logsRes, shiftsRes, employeesRes, rosterRes, holidaysRes, leaveRes]) => {
       setSummaries(summariesRes.data ?? []);
       setLogs(logsRes.data ?? []);
       setShifts(shiftsRes.data ?? []);
       setEmployees(employeesRes.data ?? []);
       setDailyShiftRows(rosterRes.data ?? []);
+      setHolidays(holidaysRes.data ?? []);
+      setLeaveRequests(leaveRes.data ?? []);
       setLoading(false);
     });
   }
@@ -145,6 +157,13 @@ export default function PayrollPage() {
     }
     return map;
   }, [dailyShiftRows]);
+
+  // Company-wide Week-off (recurring day + ad-hoc holidays) and approved
+  // Leave both count as paid days below, even with zero punches — distinct
+  // from the per-employee roster Week Off (dailyShiftByDate), which affects
+  // late/early classification but was never actually paid (see calc below).
+  const weekOffDateSet = useMemo(() => weekOffDatesInRange(start, end, weeklyOffDay, holidays), [start, end, weeklyOffDay, holidays]);
+  const leaveByEmployee = useMemo(() => leaveDatesByEmployee(leaveRequests), [leaveRequests]);
 
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
   // For attendance counting only (possibleDays/absentDays below) — a period
@@ -184,6 +203,7 @@ export default function PayrollPage() {
         overtime: number;
         lateDays: number;
         earlyDays: number;
+        paidOffDays: number;
       }
     >();
     for (const emp of scopedEmployees) {
@@ -197,6 +217,7 @@ export default function PayrollPage() {
         overtime: 0,
         lateDays: 0,
         earlyDays: 0,
+        paidOffDays: 0,
       });
     }
 
@@ -235,7 +256,16 @@ export default function PayrollPage() {
           continue;
         }
         const dayLogs = (logsByEmployeeDay.get(emp.id)?.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
-        if (dayLogs.length === 0) continue;
+        if (dayLogs.length === 0) {
+          // No punch, but still a paid day: company Week-off or approved
+          // Leave. Tracked separately from `hours`/`days` (which stay a pure
+          // worked-attendance count) and added as its own credit in
+          // calculatedSalary() below.
+          if (weekOffDateSet.has(day) || leaveByEmployee.get(emp.id)?.has(day)) {
+            row.paidOffDays += 1;
+          }
+          continue;
+        }
         // Not yet processed by compute_payroll_summaries() — compute live
         // from the raw punches, same as the Attendance Report page does.
         const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate);
@@ -248,16 +278,17 @@ export default function PayrollPage() {
       }
     }
     return Array.from(map.values()).sort((a, b) => a.enrollId.localeCompare(b.enrollId, undefined, { numeric: true, sensitivity: 'base' }));
-  }, [summaries, logs, shifts, scopedEmployees, start, end, dailyShiftByDate]);
+  }, [summaries, logs, shifts, scopedEmployees, start, end, dailyShiftByDate, weekOffDateSet, leaveByEmployee]);
 
   const totals = useMemo(() => {
     const totalHours = byEmployee.reduce((s, r) => s + r.hours, 0);
     const overtimeHours = byEmployee.reduce((s, r) => s + r.overtime, 0);
     const workedDays = byEmployee.reduce((s, r) => s + r.days, 0);
+    const paidOffDays = byEmployee.reduce((s, r) => s + r.paidOffDays, 0);
     const lateDays = byEmployee.reduce((s, r) => s + r.lateDays, 0);
     const earlyDays = byEmployee.reduce((s, r) => s + r.earlyDays, 0);
     const possibleDays = scopedEmployees.length * elapsedDaysInRange;
-    const absentDays = Math.max(0, possibleDays - workedDays);
+    const absentDays = Math.max(0, possibleDays - workedDays - paidOffDays);
     const attendancePct = possibleDays ? Math.round((workedDays / possibleDays) * 1000) / 10 : 0;
     const totalEmployeeSalary = byEmployee.reduce((s, r) => s + (r.salary ?? 0), 0);
     const totalSalaryPayable = byEmployee.reduce((s, r) => s + (calculatedSalary(r) ?? 0), 0);
@@ -270,6 +301,7 @@ export default function PayrollPage() {
       totalHours,
       overtimeHours,
       workedDays,
+      paidOffDays,
       absentDays,
       lateDays,
       earlyDays,
@@ -285,11 +317,17 @@ export default function PayrollPage() {
   // Overtime hours are already counted inside `hours` (see computeDayStatus),
   // so they're subtracted back out here and paid separately below at the
   // overtime multiplier instead of twice at the regular rate.
-  function calculatedSalary(row: { salary: number | null; hours: number; overtime: number }): number | null {
+  //
+  // paidOffDays (company Week-off / approved Leave with no punch) each add
+  // one full standard day's pay — hourlyRate * otHoursPerDay is exactly
+  // salary / daysInRange, i.e. one clean day of the monthly salary — kept as
+  // a separate term rather than folded into `hours` so "Total Hours" keeps
+  // meaning actual worked hours.
+  function calculatedSalary(row: { salary: number | null; hours: number; overtime: number; paidOffDays: number }): number | null {
     if (row.salary == null) return null;
     const hourlyRate = row.salary / (daysInRange * otHoursPerDay);
     const regularHours = Math.max(0, row.hours - row.overtime);
-    return Math.round(hourlyRate * regularHours);
+    return Math.round(hourlyRate * regularHours + hourlyRate * otHoursPerDay * row.paidOffDays);
   }
 
   function overtimeSalary(row: { id: string; salary: number | null; overtime: number }): number | null {
@@ -299,7 +337,7 @@ export default function PayrollPage() {
     return Math.round(hourlyRate * otMultiplier * row.overtime);
   }
 
-  function totalSalary(row: { id: string; salary: number | null; hours: number; overtime: number }): number | null {
+  function totalSalary(row: { id: string; salary: number | null; hours: number; overtime: number; paidOffDays: number }): number | null {
     const calculated = calculatedSalary(row);
     if (calculated == null) return null;
     return calculated + (overtimeSalary(row) ?? 0);
@@ -562,7 +600,7 @@ export default function PayrollPage() {
                       {row.name}
                     </Link>
                     <div className="text-xs text-slate-500">
-                      ID {row.enrollId} · {row.days} days · {row.lateDays} late · {row.earlyDays} early
+                      ID {row.enrollId} · {row.days} days{row.paidOffDays > 0 && ` · ${row.paidOffDays} paid off`} · {row.lateDays} late · {row.earlyDays} early
                     </div>
                   </div>
                 </div>
@@ -607,6 +645,8 @@ export default function PayrollPage() {
             <div className="flex items-center justify-center gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold">
               <span className="text-good-text">{totals.workedDays} present days</span>
               <span className="text-slate-300">·</span>
+              <span className="text-accent">{totals.paidOffDays} paid week-off/leave days</span>
+              <span className="text-slate-300">·</span>
               <span className="text-critical-text">{totals.absentDays} absent days</span>
             </div>
           )}
@@ -642,7 +682,10 @@ export default function PayrollPage() {
                       {row.name}
                     </Link>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">{row.days}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+                    {row.days}
+                    {row.paidOffDays > 0 && <span className="text-accent"> (+{row.paidOffDays})</span>}
+                  </td>
                   <td className="whitespace-nowrap px-3 py-2 text-slate-600">{fmtHrs(row.hours)}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-slate-600">{fmtHrs(row.overtime)}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-xs">
@@ -680,6 +723,8 @@ export default function PayrollPage() {
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-xs">
                   <span className="text-good-text">{totals.workedDays}P</span>
+                  {' / '}
+                  <span className="text-accent">{totals.paidOffDays}W</span>
                   {' / '}
                   <span className="text-critical-text">{totals.absentDays}A</span>
                 </td>

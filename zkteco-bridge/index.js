@@ -6,13 +6,17 @@
 // admin console never talk to devices directly; everything flows through attendance_logs.
 require('dotenv').config();
 const ZKLib = require('node-zklib');
+const WebSocket = require('ws');
 const { createClient } = require('@supabase/supabase-js');
 
 const SYNC_INTERVAL_MS = Number(process.env.SYNC_INTERVAL_MS || 15 * 1000);
 const SYNC_REQUEST_POLL_MS = Number(process.env.SYNC_REQUEST_POLL_MS || 15000);
 const MAX_BACKOFF_MS = 10 * 60 * 1000;
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+// Same Node<22 WebSocket workaround as push-server.js — see its comment.
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+  realtime: { transport: WebSocket },
+});
 
 // Tracks consecutive failures per device_id for exponential backoff.
 const failureCounts = new Map();

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
+import { registerForPushNotifications } from './pushNotifications';
 import type { Profile } from '../types';
 
 type FullProfile = Profile & {
@@ -66,6 +67,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .single()
       .then(({ data }) => setProfile(data as FullProfile));
   }, [session, refreshTick]);
+
+  // Best-effort — registers this device for Week-off (and future) push
+  // notifications once we know which employee is logged in. No-ops quietly
+  // on simulators or before a real EAS projectId is configured (see
+  // lib/pushNotifications.ts), so it never blocks login on an incomplete
+  // push setup.
+  useEffect(() => {
+    if (profile?.employee_id) registerForPushNotifications(profile.employee_id).catch(() => {});
+  }, [profile?.employee_id]);
 
   return (
     <AuthContext.Provider

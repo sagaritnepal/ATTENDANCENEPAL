@@ -8,12 +8,13 @@ import { buildPeriodOptions, currentSystemYearMonth, formatDdMmYyyy, systemPerio
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { formatHoursMinutes, nepalTodayIso, type DailyShiftByDate } from '@/lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '@/lib/payrollDetail';
+import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '@/lib/weekOff';
 
 /** Decimal hours -> "Xh Ym". */
 function fmtHrs(hours: number) {
   return formatHoursMinutes(Math.round(hours * 60));
 }
-import type { AttendanceLog, Employee, PayrollSummary, Shift } from '@/lib/types';
+import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
 
 // No otHoursPerDay/otMultiplier/otOn controls on this page (those are an
 // admin-only setting on the Payroll page) — same defaults the admin side
@@ -38,8 +39,15 @@ export default function MyPayrollPage() {
   const [lifetimeSummaries, setLifetimeSummaries] = useState<PayrollSummary[]>([]);
   const [lifetimeLogs, setLifetimeLogs] = useState<AttendanceLog[]>([]);
   const [dailyShiftRows, setDailyShiftRows] = useState<{ work_date: string; shift_id: string | null }[]>([]);
+  const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
+  const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
 
   const { start, end } = period;
+
+  useEffect(() => {
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
+  }, []);
 
   // Toggling AD/BS resets to "this month" in the newly active system — the
   // previously selected month rarely has an equivalent boundary in the
@@ -140,7 +148,35 @@ export default function MyPayrollPage() {
       .gte('work_date', from)
       .lte('work_date', today)
       .then(({ data }) => setDailyShiftRows(data ?? []));
+    supabase.from('company_holidays').select('*').gte('holiday_date', from).lte('holiday_date', today).then(({ data }) => setHolidays(data ?? []));
+    supabase
+      .from('leave_requests')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .eq('status', 'approved')
+      .lte('start_date', today)
+      .gte('end_date', from)
+      .then(({ data }) => setLeaveRequests(data ?? []));
   }, [employeeId, employee?.date_of_joining]);
+
+  // One combined set of paid-off dates spanning this employee's whole
+  // employment history — reused for both the selected period's rows and the
+  // lifetime rows below (a Set containing dates outside the immediate range
+  // being iterated is harmless, .has() just never matches them).
+  const paidOffDates = useMemo(() => {
+    if (!employee?.date_of_joining) return new Set<string>();
+    const today = nepalTodayIso();
+    const set = weekOffDatesInRange(employee.date_of_joining, today, weeklyOffDay, holidays);
+    for (const req of leaveRequests) {
+      const cur = new Date(req.start_date + 'T00:00:00Z');
+      const endDate = new Date(req.end_date + 'T00:00:00Z');
+      while (cur <= endDate) {
+        set.add(cur.toISOString().slice(0, 10));
+        cur.setUTCDate(cur.getUTCDate() + 1);
+      }
+    }
+    return set;
+  }, [employee?.date_of_joining, weeklyOffDay, holidays, leaveRequests]);
 
   // employeeId -> work_date -> shift_id, covering this employee's whole
   // employment history so it's valid for both the selected period's rows
@@ -158,8 +194,8 @@ export default function MyPayrollPage() {
   // uses, so this page's figures are never a second, independently-computed
   // version of the same numbers — both read through lib/payrollDetail.ts.
   const dayRows: DayDetail[] = useMemo(
-    () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate) : []),
-    [employee, shifts, summaries, logs, start, end, dailyShiftByDate]
+    () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate, paidOffDates) : []),
+    [employee, shifts, summaries, logs, start, end, dailyShiftByDate, paidOffDates]
   );
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
 
@@ -173,10 +209,11 @@ export default function MyPayrollPage() {
             lifetimeLogs,
             employee.date_of_joining,
             nepalTodayIso(),
-            dailyShiftByDate
+            dailyShiftByDate,
+            paidOffDates
           )
         : [],
-    [employee, shifts, lifetimeSummaries, lifetimeLogs, dailyShiftByDate]
+    [employee, shifts, lifetimeSummaries, lifetimeLogs, dailyShiftByDate, paidOffDates]
   );
 
   // Prorates each day against the actual number of days in ITS OWN calendar
@@ -211,6 +248,7 @@ export default function MyPayrollPage() {
     const earlyDays = dayRows.filter(r => r.earlyMinutes > 0).length;
     const presentDays = dayRows.filter(r => r.checkIn).length;
     const absentDays = dayRows.filter(r => r.status === 'Absent').length;
+    const paidOffDays = dayRows.filter(r => r.status === 'Week Off').length;
     let baseEarning = 0;
     let overtimeEarning = 0;
     for (const r of dayRows) {
@@ -220,7 +258,17 @@ export default function MyPayrollPage() {
         overtimeEarning += earning.overtime;
       }
     }
-    return { totalHours, overtimeHours, presentDays, lateDays, earlyDays, absentDays, totalSalary: baseEarning + overtimeEarning, overtimeEarning };
+    return {
+      totalHours,
+      overtimeHours,
+      presentDays,
+      lateDays,
+      earlyDays,
+      absentDays,
+      paidOffDays,
+      totalSalary: baseEarning + overtimeEarning,
+      overtimeEarning,
+    };
   }, [dayRows, employee, daysInRange]);
 
   const received = employee?.salary != null ? Math.round(totals.totalSalary) : null;
@@ -229,9 +277,8 @@ export default function MyPayrollPage() {
   const chartData = useMemo(
     () =>
       dayRows.map(r => {
-        const earning = r.checkIn
-          ? dailySalaryEarning(r, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true)
-          : null;
+        const earning =
+          r.checkIn || r.paidOff ? dailySalaryEarning(r, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true) : null;
         return {
           label: formatDdMmYyyy(r.date, system).slice(0, 2),
           earning: earning ? Math.round(earning.total) : 0,
@@ -315,9 +362,10 @@ export default function MyPayrollPage() {
                 </thead>
                 <tbody>
                   {dayRows.map((row, i) => {
-                    const earning = row.checkIn
-                      ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true)
-                      : null;
+                    const earning =
+                      row.checkIn || row.paidOff
+                        ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true)
+                        : null;
                     return (
                       <tr key={row.date} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
                         <td className="truncate px-1 py-0.5 text-ink">{formatDdMmYyyy(row.date, system).slice(0, 5)}</td>
@@ -326,6 +374,8 @@ export default function MyPayrollPage() {
                         <td className="truncate px-0.5 py-0.5 font-medium">
                           {row.checkIn ? (
                             <span className="text-good-text">Present</span>
+                          ) : row.status === 'Week Off' ? (
+                            <span className="text-accent">Week Off</span>
                           ) : row.status === 'Absent' ? (
                             <span className="text-critical-text">Absent</span>
                           ) : (
@@ -369,10 +419,11 @@ export default function MyPayrollPage() {
                   </tr>
                   <tr className="border-t border-slate-200 bg-slate-50 text-ink">
                     <td className="truncate px-1 py-1 font-semibold" colSpan={4}>
-                      P/A
+                      P/W/A
                     </td>
                     <td className="truncate px-0.5 py-1 font-semibold text-good-text" colSpan={2}>
-                      {totals.presentDays} / <span className="text-critical-text">{totals.absentDays}</span>
+                      {totals.presentDays} / <span className="text-accent">{totals.paidOffDays}</span> /{' '}
+                      <span className="text-critical-text">{totals.absentDays}</span>
                     </td>
                   </tr>
                 </tfoot>
