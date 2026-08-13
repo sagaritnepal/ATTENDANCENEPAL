@@ -88,11 +88,27 @@ async function sweepOfflineDevices() {
   if (error) console.error('[push] offline sweep failed:', error.message);
 }
 
+// Defensive counterpart to sweepOfflineDevices(): something outside this
+// process has been observed re-marking a device 'offline' within seconds of
+// markOnline() setting it 'online' (last_sync stays fresh, only status
+// reverts) — a source never pinned down despite checking every known
+// process/trigger/cron. Running this every REASSERT_INTERVAL_MS, well under
+// that observed ~10-15s window, wins the race and keeps the displayed status
+// honest regardless of what the other writer turns out to be. Actual
+// attendance data was never affected by this — only the online/offline badge.
+const REASSERT_INTERVAL_MS = Number(process.env.REASSERT_INTERVAL_MS || 10 * 1000);
+async function reassertOnlineForRecentDevices() {
+  const cutoff = new Date(Date.now() - OFFLINE_AFTER_MS).toISOString();
+  const { error } = await supabase.from('devices').update({ status: 'online' }).eq('status', 'offline').gte('last_sync', cutoff);
+  if (error) console.error('[push] reassert-online failed:', error.message);
+}
+
 refreshDevices();
 refreshEmployees();
 setInterval(refreshDevices, REFRESH_INTERVAL_MS);
 setInterval(refreshEmployees, REFRESH_INTERVAL_MS);
 setInterval(sweepOfflineDevices, 60 * 1000);
+setInterval(reassertOnlineForRecentDevices, REASSERT_INTERVAL_MS);
 
 // Warn once per (company, fingerprint) or per unknown serial instead of
 // spamming the log every single push from the same misconfigured/unenrolled
