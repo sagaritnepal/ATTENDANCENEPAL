@@ -125,9 +125,29 @@ function readBody(req) {
   });
 }
 
+// This specific K40 unit (serial A6F5211860719) runs its internal clock
+// exactly 2h15m ahead of real time — confirmed by comparing server receipt
+// time against its reported punch time across multiple punches, consistent
+// to the second (matches China Standard Time, UTC+8, vs Nepal, UTC+5:45 —
+// very likely a factory-hardcoded home-region default in the firmware that
+// only manifests once the device gets real internet access). No exposed
+// setting on the device corrects this, so we compensate for this one
+// device's known-bad clock here instead of at the device itself. A
+// different device with correct time reporting would NOT get this
+// adjustment — keyed by serial number, not applied globally.
+const CLOCK_OFFSET_MINUTES_BY_SERIAL = {
+  A6F5211860719: -135,
+};
+
+function correctDeviceTimestamp(serialNumber, rawTimestamp) {
+  const raw = new Date(rawTimestamp.replace(' ', 'T'));
+  const offsetMinutes = CLOCK_OFFSET_MINUTES_BY_SERIAL[serialNumber] ?? 0;
+  return new Date(raw.getTime() + offsetMinutes * 60000);
+}
+
 // ATTLOG line format (from the device vendor's own protocol doc):
 // UserID <tab> Timestamp <tab> State <tab> VerifyType <tab> ...
-async function handleAttlog(companyId, deviceId, body) {
+async function handleAttlog(companyId, deviceId, serialNumber, body) {
   const byFingerprint = employeesByCompany.get(companyId) ?? new Map();
   const lines = body.split(/\r\n|\n/).map(l => l.trim()).filter(Boolean);
   const rows = [];
@@ -149,7 +169,7 @@ async function handleAttlog(companyId, deviceId, body) {
     rows.push({
       employee_id: employeeId,
       device_id: deviceId,
-      punch_time: new Date(timestamp.replace(' ', 'T')).toISOString(),
+      punch_time: correctDeviceTimestamp(serialNumber, timestamp).toISOString(),
       punch_type: state === '1' ? '1' : '0',
       method: 'zkteco',
       verification_mode: verifyType ?? '1',
@@ -231,7 +251,7 @@ const server = http.createServer(async (req, res) => {
       const table = url.searchParams.get('table') ?? '';
       const body = await readBody(req);
       if (table === 'ATTLOG') {
-        const count = await handleAttlog(device.companyId, device.deviceId, body);
+        const count = await handleAttlog(device.companyId, device.deviceId, sn, body);
         console.log(`[push] ${device.name}: ${count} punch(es) upserted`);
       } else {
         logRawPayload(table, sn, body);
