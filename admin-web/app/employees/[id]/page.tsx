@@ -36,6 +36,10 @@ const EMPTY_CORE_FORM = {
   emergency_contact_phone: '',
   pan_no: '',
   ssf_no: '',
+  allowance: '',
+  pf_rate: '',
+  ssf_rate: '',
+  tds_rate: '',
 };
 
 async function toDataUrl(url: string): Promise<string | null> {
@@ -114,6 +118,10 @@ export default function EmployeeCvPage() {
             emergency_contact_phone: data.emergency_contact_phone ?? '',
             pan_no: data.pan_no ?? '',
             ssf_no: data.ssf_no ?? '',
+            allowance: data.allowance != null ? String(data.allowance) : '',
+            pf_rate: data.pf_rate != null ? String(data.pf_rate) : '',
+            ssf_rate: data.ssf_rate != null ? String(data.ssf_rate) : '',
+            tds_rate: data.tds_rate != null ? String(data.tds_rate) : '',
           });
           if (data.branch_id) {
             supabase
@@ -177,6 +185,10 @@ export default function EmployeeCvPage() {
         emergency_contact_phone: coreForm.emergency_contact_phone || null,
         pan_no: coreForm.pan_no || null,
         ssf_no: coreForm.ssf_no || null,
+        allowance: coreForm.allowance ? Number(coreForm.allowance) : null,
+        pf_rate: coreForm.pf_rate ? Number(coreForm.pf_rate) : null,
+        ssf_rate: coreForm.ssf_rate ? Number(coreForm.ssf_rate) : null,
+        tds_rate: coreForm.tds_rate ? Number(coreForm.tds_rate) : null,
       })
       .eq('id', employee.id);
     setSavingCore(false);
@@ -555,6 +567,16 @@ export default function EmployeeCvPage() {
               <span className="block text-xs text-slate-400">SSF No.</span>
               <span className="text-ink">{employee.ssf_no || '—'}</span>
             </div>
+            <div>
+              <span className="block text-xs text-slate-400">Allowance</span>
+              <span className="text-ink">{employee.allowance != null ? employee.allowance.toLocaleString() : '—'}</span>
+            </div>
+            <div>
+              <span className="block text-xs text-slate-400">PF / SSF / TDS Rate</span>
+              <span className="text-ink">
+                {employee.pf_rate ?? '—'}% / {employee.ssf_rate ?? '—'}% / {employee.tds_rate ?? '—'}%
+              </span>
+            </div>
             <div className="col-span-2 sm:col-span-3">
               <span className="block text-xs text-slate-400">Address</span>
               <span className="text-ink">{employee.address || '—'}</span>
@@ -720,6 +742,58 @@ export default function EmployeeCvPage() {
                 value={coreForm.address}
                 onChange={e => setCoreForm(f => ({ ...f, address: e.target.value }))}
                 rows={2}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+
+          <h2 className="mb-3 mt-5 border-t border-slate-100 pt-4 text-sm font-semibold text-ink">Salary Structure</h2>
+          <p className="mb-3 -mt-2 text-xs text-slate-400">
+            Basic Salary is set on the Payroll page. These feed the salary breakdown shown on the employee&apos;s My Payroll page — PF/SSF/TDS
+            are each a % of Basic Salary.
+          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Allowance</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={coreForm.allowance}
+                onChange={e => setCoreForm(f => ({ ...f, allowance: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">PF Rate (%)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={coreForm.pf_rate}
+                onChange={e => setCoreForm(f => ({ ...f, pf_rate: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">SSF Rate (%)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={coreForm.ssf_rate}
+                onChange={e => setCoreForm(f => ({ ...f, ssf_rate: e.target.value }))}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">TDS Rate (%)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={coreForm.tds_rate}
+                onChange={e => setCoreForm(f => ({ ...f, tds_rate: e.target.value }))}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
               />
             </div>

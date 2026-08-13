@@ -271,8 +271,25 @@ export default function MyPayrollPage() {
     };
   }, [dayRows, employee, daysInRange]);
 
-  const received = employee?.salary != null ? Math.round(totals.totalSalary) : null;
-  const receivedOvertime = Math.round(totals.overtimeEarning);
+  // Payslip-style breakdown for the selected period. Basic Salary is the
+  // attendance-prorated base earning (same figure "Receivable" used to show
+  // before OT); Allowance scales by that same attendance fraction so a
+  // partial/absent period doesn't pay a full allowance. PF/SSF/TDS are each
+  // a % of Basic Salary (not Allowance) — the common convention, and the
+  // only one we have a rate for per employee.
+  const breakdown = useMemo(() => {
+    if (employee?.salary == null) return null;
+    const basic = Math.round(totals.totalSalary - totals.overtimeEarning);
+    const earnedFraction = employee.salary > 0 ? basic / employee.salary : 0;
+    const allowance = Math.round((employee.allowance ?? 0) * earnedFraction);
+    const total = basic + allowance;
+    const pf = Math.round((basic * (employee.pf_rate ?? 0)) / 100);
+    const ssf = Math.round((basic * (employee.ssf_rate ?? 0)) / 100);
+    const ot = Math.round(totals.overtimeEarning);
+    const tds = Math.round((basic * (employee.tds_rate ?? 0)) / 100);
+    const totalSalary = total + ot - pf - ssf - tds;
+    return { basic, allowance, total, pf, ssf, ot, tds, totalSalary };
+  }, [employee, totals]);
 
   const chartData = useMemo(
     () =>
@@ -295,24 +312,23 @@ export default function MyPayrollPage() {
         <p className="mt-10 text-center text-sm text-warning-text">Your account isn&apos;t linked to an employee record yet.</p>
       ) : (
         <>
-          {employee?.salary != null && (
-            <div className="mb-5 grid grid-cols-3 gap-3">
-              <div className="rounded-xl bg-good-bg p-3 text-center">
-                <div className="text-[10px] font-medium uppercase text-good-text">My Salary / Per Day</div>
-                <div className="text-sm font-bold text-ink">{employee.salary.toLocaleString()}</div>
-                <div className="text-[10px] text-good-text/70">{Math.round(employee.salary / daysInRange).toLocaleString()}/day</div>
+          {employee?.salary != null && breakdown && (
+            <>
+              <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <SalaryTile label="Basic Salary" value={breakdown.basic} tone="good" />
+                <SalaryTile label="Allowance" value={breakdown.allowance} tone="info" />
+                <SalaryTile label="Total" value={breakdown.total} tone="accent" />
+                <SalaryTile label="PF" value={breakdown.pf} tone="critical" negative />
+                <SalaryTile label="SSF" value={breakdown.ssf} tone="critical" negative />
+                <SalaryTile label="OT" value={breakdown.ot} tone="info" />
+                <SalaryTile label="TDS" value={breakdown.tds} tone="critical" negative />
+                <SalaryTile label="Total Salary" value={breakdown.totalSalary} tone="warning" bold />
               </div>
-              <div className="rounded-xl bg-info-bg p-3 text-center">
-                <div className="text-[10px] font-medium uppercase text-info-text">Receivable</div>
-                <div className="text-sm font-bold text-ink">{received != null ? received.toLocaleString() : '—'}</div>
-                {received != null && <div className="text-[10px] text-info-text/70">(OT: {receivedOvertime.toLocaleString()})</div>}
-              </div>
-              <div className="rounded-xl bg-warning-bg p-3 text-center">
-                <div className="text-[10px] font-medium uppercase text-warning-text">Total Earned</div>
+              <div className="mb-5 rounded-xl bg-slate-50 p-3 text-center">
+                <div className="text-[10px] font-medium uppercase text-slate-500">Total Earned till date</div>
                 <div className="text-sm font-bold text-ink">{totalEarned != null ? totalEarned.toLocaleString() : '—'}</div>
-                <div className="text-[10px] text-warning-text/70">till date</div>
               </div>
-            </div>
+            </>
           )}
 
           <div className="mb-4 space-y-2">
@@ -488,5 +504,38 @@ function CalendarIcon({ className }: { className?: string }) {
       <rect x="3" y="5" width="18" height="16" rx="2" />
       <path strokeLinecap="round" d="M3 10h18M8 3v4M16 3v4" />
     </svg>
+  );
+}
+
+const TILE_TONES = {
+  good: { bg: 'bg-good-bg', text: 'text-good-text' },
+  info: { bg: 'bg-info-bg', text: 'text-info-text' },
+  warning: { bg: 'bg-warning-bg', text: 'text-warning-text' },
+  critical: { bg: 'bg-critical-bg', text: 'text-critical-text' },
+  accent: { bg: 'bg-accent/10', text: 'text-accent' },
+} as const;
+
+function SalaryTile({
+  label,
+  value,
+  tone,
+  negative,
+  bold,
+}: {
+  label: string;
+  value: number;
+  tone: keyof typeof TILE_TONES;
+  negative?: boolean;
+  bold?: boolean;
+}) {
+  const { bg, text } = TILE_TONES[tone];
+  return (
+    <div className={`rounded-xl ${bg} p-2.5 text-center`}>
+      <div className={`text-[9px] font-medium uppercase ${text}`}>{label}</div>
+      <div className={`text-sm ${bold ? 'font-extrabold' : 'font-bold'} text-ink`}>
+        {negative && value > 0 ? '-' : ''}
+        {value.toLocaleString()}
+      </div>
+    </div>
   );
 }

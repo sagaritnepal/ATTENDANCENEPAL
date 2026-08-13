@@ -205,8 +205,23 @@ export default function MyPayrollScreen() {
     return { totalHours, overtimeHours, presentDays, absentDays, paidOffDays, totalSalary: baseEarning + overtimeEarning, overtimeEarning };
   }, [dayRows, employee, daysInRange]);
 
-  const received = employee?.salary != null ? Math.round(totals.totalSalary) : null;
-  const receivedOvertime = Math.round(totals.overtimeEarning);
+  // Payslip-style breakdown for the selected period — mirrors the web My
+  // Payroll page. Basic Salary is the attendance-prorated base earning;
+  // Allowance scales by that same attendance fraction; PF/SSF/TDS are each
+  // a % of Basic Salary.
+  const breakdown = useMemo(() => {
+    if (employee?.salary == null) return null;
+    const basic = Math.round(totals.totalSalary - totals.overtimeEarning);
+    const earnedFraction = employee.salary > 0 ? basic / employee.salary : 0;
+    const allowance = Math.round((employee.allowance ?? 0) * earnedFraction);
+    const total = basic + allowance;
+    const pf = Math.round((basic * (employee.pf_rate ?? 0)) / 100);
+    const ssf = Math.round((basic * (employee.ssf_rate ?? 0)) / 100);
+    const ot = Math.round(totals.overtimeEarning);
+    const tds = Math.round((basic * (employee.tds_rate ?? 0)) / 100);
+    const totalSalary = total + ot - pf - ssf - tds;
+    return { basic, allowance, total, pf, ssf, ot, tds, totalSalary };
+  }, [employee, totals]);
 
   function changePeriod(delta: number) {
     const idx = periodOptions.findIndex(o => o.key === period.key);
@@ -237,24 +252,23 @@ export default function MyPayrollScreen() {
         keyExtractor={item => item.date}
         ListHeaderComponent={
           <>
-            {employee?.salary != null && (
-              <View style={styles.statsRow}>
-                <View style={[styles.statCard, { backgroundColor: colors.goodBg }]}>
-                  <Text style={[styles.statLabel, { color: colors.goodText }]}>Salary/Day</Text>
-                  <Text style={styles.statValue}>{employee.salary.toLocaleString()}</Text>
-                  <Text style={[styles.statHint, { color: colors.goodText }]}>{Math.round(employee.salary / daysInRange).toLocaleString()}/day</Text>
+            {employee?.salary != null && breakdown && (
+              <>
+                <View style={styles.salaryGrid}>
+                  <SalaryTile label="Basic Salary" value={breakdown.basic} bg={colors.goodBg} fg={colors.goodText} />
+                  <SalaryTile label="Allowance" value={breakdown.allowance} bg={colors.infoBg} fg={colors.infoText} />
+                  <SalaryTile label="Total" value={breakdown.total} bg={colors.accentLight} fg={colors.accent} />
+                  <SalaryTile label="PF" value={breakdown.pf} bg={colors.criticalBg} fg={colors.criticalText} negative />
+                  <SalaryTile label="SSF" value={breakdown.ssf} bg={colors.criticalBg} fg={colors.criticalText} negative />
+                  <SalaryTile label="OT" value={breakdown.ot} bg={colors.infoBg} fg={colors.infoText} />
+                  <SalaryTile label="TDS" value={breakdown.tds} bg={colors.criticalBg} fg={colors.criticalText} negative />
+                  <SalaryTile label="Total Salary" value={breakdown.totalSalary} bg={colors.warningBg} fg={colors.warningText} bold />
                 </View>
-                <View style={[styles.statCard, { backgroundColor: colors.infoBg }]}>
-                  <Text style={[styles.statLabel, { color: colors.infoText }]}>Receivable</Text>
-                  <Text style={styles.statValue}>{received != null ? received.toLocaleString() : '—'}</Text>
-                  {received != null && <Text style={[styles.statHint, { color: colors.infoText }]}>(OT: {receivedOvertime.toLocaleString()})</Text>}
-                </View>
-                <View style={[styles.statCard, { backgroundColor: colors.warningBg }]}>
-                  <Text style={[styles.statLabel, { color: colors.warningText }]}>Total Earned</Text>
+                <View style={[styles.statCard, { backgroundColor: colors.slate100, marginBottom: 12 }]}>
+                  <Text style={[styles.statLabel, { color: colors.slate500 }]}>Total Earned till date</Text>
                   <Text style={styles.statValue}>{totalEarned != null ? totalEarned.toLocaleString() : '—'}</Text>
-                  <Text style={[styles.statHint, { color: colors.warningText }]}>till date</Text>
                 </View>
-              </View>
+              </>
             )}
 
             <View style={styles.periodBar}>
@@ -371,6 +385,18 @@ export default function MyPayrollScreen() {
   );
 }
 
+function SalaryTile({ label, value, bg, fg, negative, bold }: { label: string; value: number; bg: string; fg: string; negative?: boolean; bold?: boolean }) {
+  return (
+    <View style={[styles.tile, { backgroundColor: bg }]}>
+      <Text style={[styles.statLabel, { color: fg }]}>{label}</Text>
+      <Text style={[styles.statValue, bold && styles.tileBold]}>
+        {negative && value > 0 ? '-' : ''}
+        {value.toLocaleString()}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.slate50 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.slate50 },
@@ -380,6 +406,9 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
   statValue: { fontSize: 14, fontWeight: '700', color: colors.ink, marginTop: 2 },
   statHint: { fontSize: 9, marginTop: 1 },
+  salaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  tile: { width: '47%', borderRadius: 10, padding: 8, alignItems: 'center' },
+  tileBold: { fontWeight: '800' },
   periodBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 10, borderWidth: 1, borderColor: colors.slate200, padding: 8 },
   periodArrow: { padding: 8 },
   periodLabelBtn: { flex: 1 },
