@@ -145,6 +145,24 @@ function correctDeviceTimestamp(serialNumber, rawTimestamp) {
   return new Date(raw.getTime() + offsetMinutes * 60000);
 }
 
+// This device reads the HTTP `Date` response header off its cloud-server
+// requests and sets its own on-screen clock from it (applying its own
+// fixed/unchangeable +8h-ish internal offset on top) — which is exactly why
+// its display runs 2h15m ahead of real time once it starts talking to a
+// cloud server at all. We can't change the device's internal offset, but we
+// CAN pre-cancel it: send a `Date` header that is already offsetMinutes
+// early, so after the device applies its own bad offset the displayed time
+// lands on the real one. This only works when reached directly on this port —
+// nginx's proxy in front of port 80 unconditionally regenerates a fresh,
+// genuine `Date` header on every response and can't be made to pass a
+// custom one through, which is why this device's Cloud Server port must
+// point at this server directly (8088), not through the nginx proxy.
+function spoofedDateHeader(serialNumber) {
+  const offsetMinutes = CLOCK_OFFSET_MINUTES_BY_SERIAL[serialNumber];
+  if (offsetMinutes === undefined) return null;
+  return new Date(Date.now() + offsetMinutes * 60000).toUTCString();
+}
+
 // ATTLOG line format (from the device vendor's own protocol doc):
 // UserID <tab> Timestamp <tab> State <tab> VerifyType <tab> ...
 async function handleAttlog(companyId, deviceId, serialNumber, body) {
@@ -209,6 +227,12 @@ const server = http.createServer(async (req, res) => {
   }
   const sn = url.searchParams.get('SN');
   const device = sn ? deviceBySerial.get(sn) : undefined;
+
+  const dateOverride = sn ? spoofedDateHeader(sn) : null;
+  if (dateOverride) {
+    res.sendDate = false;
+    res.setHeader('Date', dateOverride);
+  }
 
   // Always answer 200/OK even for an unrecognized device — returning an
   // error here just makes the device retry-storm the exact same rejected
