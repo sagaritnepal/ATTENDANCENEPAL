@@ -82,6 +82,65 @@ async function refreshEmployees() {
   employeesByCompany = next;
 }
 
+function cacheEmployeeId(companyId, fingerprintId, employeeId) {
+  let byFingerprint = employeesByCompany.get(companyId);
+  if (!byFingerprint) {
+    byFingerprint = new Map();
+    employeesByCompany.set(companyId, byFingerprint);
+  }
+  byFingerprint.set(fingerprintId, employeeId);
+}
+
+// A fingerprint enrolled directly on the device (never entered in the admin
+// UI first) has no employees row yet — rather than dropping its punches
+// forever, auto-create a placeholder ("Device User <id>") the first time one
+// shows up, same naming scheme index.js's old upsertUsers() used for its
+// LAN-pull "Sync Users" flow. The admin renames it later via the normal Edit
+// flow; that rename automatically pushes the corrected name back down to
+// every device (see queue_device_userinfo_sync in the device_command_queue
+// migration) — so a device-enrolled person just needs one punch to appear,
+// then a rename, and both the cloud record and the device's own display end
+// up correct.
+async function getOrCreateEmployeeId(companyId, deviceId, fingerprintId) {
+  const existing = employeesByCompany.get(companyId)?.get(fingerprintId);
+  if (existing) return existing;
+
+  const { data, error } = await supabase
+    .from('employees')
+    .insert({
+      employee_code: `ZK-${deviceId.slice(0, 8)}-${fingerprintId}`,
+      name: `Device User ${fingerprintId}`,
+      fingerprint_id: fingerprintId,
+      status: 'active',
+      company_id: companyId,
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    // Unique violation on (company_id, fingerprint_id) means a request
+    // processed a moment ago already created this exact employee (e.g. two
+    // lines for the same brand-new fingerprint in one ATTLOG batch) — look
+    // it up instead of dropping this punch. Anything else is a real failure.
+    const { data: found } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('fingerprint_id', fingerprintId)
+      .maybeSingle();
+    if (found) {
+      cacheEmployeeId(companyId, fingerprintId, found.id);
+      return found.id;
+    }
+    console.error(`[push] auto-creating employee for fingerprint ${fingerprintId} failed:`, error.message);
+    return null;
+  }
+
+  cacheEmployeeId(companyId, fingerprintId, data.id);
+  console.log(`[push] auto-created "Device User ${fingerprintId}" (company ${companyId}) for a previously unknown fingerprint — rename it on the Employee Directory`);
+  return data.id;
+}
+
 async function sweepOfflineDevices() {
   const cutoff = new Date(Date.now() - OFFLINE_AFTER_MS).toISOString();
   const { error } = await supabase.from('devices').update({ status: 'offline' }).eq('status', 'online').lt('last_sync', cutoff);
@@ -110,10 +169,8 @@ setInterval(refreshEmployees, REFRESH_INTERVAL_MS);
 setInterval(sweepOfflineDevices, 60 * 1000);
 setInterval(reassertOnlineForRecentDevices, REASSERT_INTERVAL_MS);
 
-// Warn once per (company, fingerprint) or per unknown serial instead of
-// spamming the log every single push from the same misconfigured/unenrolled
-// source.
-const warnedUnmapped = new Set();
+// Warn once per unknown device serial instead of spamming the log every
+// single push from the same unregistered device.
 const warnedUnknownSerial = new Set();
 
 function readBody(req) {
@@ -166,7 +223,6 @@ function spoofedDateHeader(serialNumber) {
 // ATTLOG line format (from the device vendor's own protocol doc):
 // UserID <tab> Timestamp <tab> State <tab> VerifyType <tab> ...
 async function handleAttlog(companyId, deviceId, serialNumber, body) {
-  const byFingerprint = employeesByCompany.get(companyId) ?? new Map();
   const lines = body.split(/\r\n|\n/).map(l => l.trim()).filter(Boolean);
   const rows = [];
   for (const line of lines) {
@@ -174,15 +230,8 @@ async function handleAttlog(companyId, deviceId, serialNumber, body) {
     const [userId, timestamp, state, verifyType] = fields;
     if (!userId || !timestamp) continue;
 
-    const employeeId = byFingerprint.get(String(userId));
-    if (!employeeId) {
-      const key = `${companyId}:${userId}`;
-      if (!warnedUnmapped.has(key)) {
-        warnedUnmapped.add(key);
-        console.warn(`[push] no employee mapped to fingerprint_id ${userId} for company ${companyId}, skipping (will not repeat this warning)`);
-      }
-      continue;
-    }
+    const employeeId = await getOrCreateEmployeeId(companyId, deviceId, String(userId));
+    if (!employeeId) continue;
 
     rows.push({
       employee_id: employeeId,
