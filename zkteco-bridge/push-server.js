@@ -216,6 +216,68 @@ async function markOnline(deviceId) {
   if (error) console.error('[push] marking device online failed:', error.message);
 }
 
+// A device's periodic GET /iclock/getrequest poll is the ONLY way to reach
+// it — there's no way to push a command outside that window. Queued rows
+// come from queue_device_userinfo_sync() (a trigger on employees, see the
+// device_command_queue migration): a name/fingerprint_id change there queues
+// one row per device for that employee's company. Serves up to 10 at once,
+// each as its own `C:<cmd_seq>:<command>` line (the format this protocol's
+// command channel uses), and marks them 'sent' immediately — a device that
+// never ACKs (see ackPendingCommands) just leaves that row stuck at 'sent'
+// forever rather than retried, since we have no reliable way to tell "device
+// ignored it" apart from "device hasn't polled again yet".
+async function deliverPendingCommands(deviceId, res) {
+  const { data: pending, error } = await supabase
+    .from('device_command_queue')
+    .select('id, cmd_seq, command')
+    .eq('device_id', deviceId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+    .limit(10);
+  if (error) {
+    console.error('[push] fetching pending commands failed:', error.message);
+    return 0;
+  }
+  if (!pending || pending.length === 0) return 0;
+
+  const { error: updateError } = await supabase
+    .from('device_command_queue')
+    .update({ status: 'sent', sent_at: new Date().toISOString() })
+    .in(
+      'id',
+      pending.map(p => p.id)
+    );
+  if (updateError) console.error('[push] marking commands sent failed:', updateError.message);
+
+  const body = pending.map(p => `C:${p.cmd_seq}:${p.command}`).join('\r\n') + '\r\n';
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end(body);
+  return pending.length;
+}
+
+// The device ACKs each command it received on its next POST /iclock/devicecmd,
+// one `ID=<cmd_seq>&Return=<code>&CMD=<name>` line per command — Return=0
+// means it applied the command, anything else means it rejected it (bad
+// field, unsupported command, etc). cmd_seq is the same short sequential
+// token deliverPendingCommands() embedded, not the device_command_queue uuid.
+async function ackPendingCommands(body) {
+  const lines = body.split(/\r\n|\n/).map(l => l.trim()).filter(Boolean);
+  for (const line of lines) {
+    const params = new URLSearchParams(line);
+    const cmdSeq = params.get('ID');
+    if (!cmdSeq) continue;
+    const { error } = await supabase
+      .from('device_command_queue')
+      .update({
+        status: params.get('Return') === '0' ? 'success' : 'failed',
+        acked_at: new Date().toISOString(),
+        response: line,
+      })
+      .eq('cmd_seq', cmdSeq);
+    if (error) console.error('[push] recording command ack failed:', error.message);
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   let url;
   try {
@@ -287,15 +349,18 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && url.pathname === '/iclock/getrequest') {
-      // No pending commands to hand back right now.
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('OK');
+      const count = await deliverPendingCommands(device.deviceId, res);
+      if (count === 0) {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('OK');
+      }
       return;
     }
 
     if (req.method === 'POST' && url.pathname === '/iclock/devicecmd') {
       const body = await readBody(req);
       console.log(`[push] ${device.name} command ack:`, body);
+      await ackPendingCommands(body);
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end('OK');
       return;
