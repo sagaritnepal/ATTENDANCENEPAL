@@ -196,10 +196,38 @@ const CLOCK_OFFSET_MINUTES_BY_SERIAL = {
   A6F5211860719: -135,
 };
 
+// How far a raw timestamp's apparent skew is allowed to drift from the
+// expected ~135 minutes before we stop trusting "yes, this one needs the
+// correction" — real network/processing delay between a punch and this
+// server receiving it is seconds, not minutes, so this tolerance exists
+// only to absorb minor clock jitter, not to paper over genuine uncertainty.
+const CLOCK_SKEW_TOLERANCE_MINUTES = 15;
+
+// The blanket "always subtract 135 minutes" version of this function
+// (this device's fix from earlier) turned out to be unsafe once the
+// separate Date-header display fix started intermittently correcting the
+// device's own internal clock too, not just its on-screen display — some
+// punches now arrive with an ALREADY-correct raw timestamp, and blindly
+// subtracting 135 minutes from one of those shoves it 2h15m into the wrong
+// past, which is exactly what made a later punch sort before an earlier
+// one in the report. Confirmed via a direct data check: one live punch had
+// created_at (real receipt time) 135 minutes AFTER its stored punch_time,
+// the opposite direction from every other correctly-adjusted row.
+//
+// Fix: only apply the known offset when the raw timestamp actually looks
+// skewed the way this device is known to sometimes be — i.e. close to 135
+// minutes ahead of the server's own current clock (which is real, since
+// this server's own time isn't in question). A raw timestamp that's
+// already close to "now" is trusted as-is instead.
 function correctDeviceTimestamp(serialNumber, rawTimestamp) {
   const raw = new Date(rawTimestamp.replace(' ', 'T'));
-  const offsetMinutes = CLOCK_OFFSET_MINUTES_BY_SERIAL[serialNumber] ?? 0;
-  return new Date(raw.getTime() + offsetMinutes * 60000);
+  const offsetMinutes = CLOCK_OFFSET_MINUTES_BY_SERIAL[serialNumber];
+  if (offsetMinutes === undefined) return raw;
+
+  const expectedSkewMinutes = -offsetMinutes; // e.g. 135, for a -135 correction
+  const actualSkewMinutes = (raw.getTime() - Date.now()) / 60000;
+  const looksSkewed = Math.abs(actualSkewMinutes - expectedSkewMinutes) <= CLOCK_SKEW_TOLERANCE_MINUTES;
+  return looksSkewed ? new Date(raw.getTime() + offsetMinutes * 60000) : raw;
 }
 
 // This device reads the HTTP `Date` response header off its cloud-server
