@@ -24,6 +24,29 @@ for a machine's very first launch with no internet yet; **keep both copies in sy
 `admin-web/public/lan-bridge.js`) whenever the bridge logic changes, since the bundled one only
 ever gets used before a fetch has ever succeeded.
 
+## Updating the app itself (not just the bridge logic)
+
+The app shell (this file, the tray, the settings window) auto-updates too, via `electron-updater`
+— but **only on machines running the installer** (`Setup.exe`), never the portable single-file
+exe, since a portable app has no fixed install location for an updater to replace in place. Every
+installed copy checks for updates on launch and every 4 hours, and installs silently the next time
+it quits.
+
+To ship a new version:
+
+1. Bump `"version"` in `package.json`.
+2. `npm run build` — produces `dist/Attendance Nepal Setup <version>.exe`, its `.blockmap`, and
+   `dist/latest.yml`.
+3. Upload those three files to `~/app/admin-web/public/desktop-updates/` on the VPS, overwriting
+   what's there (this folder is intentionally outside git — these installer files are far too
+   large to belong in a git repo; `scp` them up directly instead).
+4. Restart `admin-web` (`pm2 restart admin-web`) — Next.js only picks up a *new* file under
+   `public/` once the server restarts; files added to an already-known folder without restarting
+   won't be served until it does.
+
+Every already-installed copy of the app picks up the new version on its own from there — no need
+to touch any individual device again.
+
 ## Building it
 
 ```

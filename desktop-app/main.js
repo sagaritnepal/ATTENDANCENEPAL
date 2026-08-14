@@ -30,7 +30,18 @@
 // has no internet yet; once a fetch ever succeeds, the fetched copy — cached
 // to disk — is preferred over the bundled one from then on, including for
 // any offline launch after that.
+//
+// The app shell itself (this file, the tray, the settings window) updates
+// the traditional way instead — via electron-updater, checking
+// admin-web/public/desktop-updates/ (a static folder on the same server,
+// outside git — these installer files are far too large to belong in a git
+// repo) for a newer installed version and silently installing it. This ONLY
+// works for the installer distribution (Setup.exe), not the portable
+// single-file exe — a portable app has no fixed install location for an
+// updater to replace in place, so it can't self-update by design. Use the
+// installer on every device that should stay current without manual action.
 const { app, BrowserWindow, Menu, Tray, ipcMain, safeStorage, shell } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const Module = require('module');
@@ -292,6 +303,32 @@ ipcMain.handle('bridge:get-saved', () => {
   return saved ? { email: saved.email } : null;
 });
 
+const AUTO_UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+
+function setupAutoUpdater() {
+  // Only meaningful for an installed build — running via `npm start`
+  // (app.isPackaged === false) has no update metadata to check against and
+  // would just log noisy errors every launch during development.
+  if (!app.isPackaged) return;
+
+  autoUpdater.autoDownload = true;
+  // Installs the next time the app actually quits, not the instant a
+  // download finishes — this app is meant to sit in the tray for long
+  // stretches, so this avoids yanking the window/tray away from someone
+  // mid-use. Quit only ever happens via the tray menu, so in practice an
+  // update applies the next time this machine restarts or someone chooses
+  // Quit.
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('error', err => console.error('[main] auto-update error:', err.message));
+  autoUpdater.on('update-available', info => console.log(`[main] update v${info.version} found, downloading…`));
+  autoUpdater.on('update-downloaded', info => console.log(`[main] update v${info.version} downloaded — installs next time the app quits`));
+
+  const check = () => autoUpdater.checkForUpdates().catch(err => console.error('[main] update check failed:', err.message));
+  check();
+  setInterval(check, AUTO_UPDATE_CHECK_INTERVAL_MS);
+}
+
 app.whenReady().then(async () => {
   // Nothing in the dashboard needs File/Edit/View/Window/Help — this is a
   // wrapped website, not a native editor, and that default Electron menu
@@ -302,6 +339,7 @@ app.whenReady().then(async () => {
   // has actually configured a device bridge.
   createWindow();
   createTray();
+  setupAutoUpdater();
 
   await loadLanBridge();
   if (tray) tray.setContextMenu(buildTrayMenu());

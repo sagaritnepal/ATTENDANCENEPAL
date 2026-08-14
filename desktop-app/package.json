@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
+    "electron-updater": "^6.8.9",
     "node-zklib": "^1.0.3",
     "ws": "^8.21.3"
   },
@@ -20,6 +21,10 @@
   "build": {
     "appId": "com.attendancenepal.desktop",
     "productName": "Attendance Nepal",
+    "publish": {
+      "provider": "generic",
+      "url": "https://203-134-250-70.sslip.io/desktop-updates/"
+    },
     "files": [
       "main.js",
       "lan-bridge.js",
