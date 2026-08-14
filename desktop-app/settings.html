@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Device Bridge Settings</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, sans-serif; background: #0f172a; color: #e2e8f0;
+    margin: 0; padding: 24px; }
+  h1 { font-size: 15px; margin: 0 0 4px; }
+  p.hint { color: #94a3b8; font-size: 12px; line-height: 1.5; margin: 0 0 16px; }
+  label { display: block; font-size: 12px; color: #94a3b8; margin: 12px 0 4px; }
+  input { width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 6px;
+    border: 1px solid #334155; background: #1e293b; color: #e2e8f0; font-size: 13px; }
+  input:focus { outline: none; border-color: #2563eb; }
+  button { margin-top: 18px; padding: 9px 18px; border-radius: 6px; border: none;
+    background: #2563eb; color: white; font-size: 13px; font-weight: 600; cursor: pointer; }
+  button:hover { background: #1d4ed8; }
+  button:disabled { opacity: 0.6; cursor: default; }
+  #status { margin-top: 14px; font-size: 12px; padding: 10px; border-radius: 6px; display: none; }
+  #status.ok { display: block; background: #052e1a; color: #4ade80; }
+  #status.err { display: block; background: #2e0505; color: #f87171; }
+  #current { margin-top: 18px; padding-top: 14px; border-top: 1px solid #1e293b; font-size: 12px; color: #94a3b8; }
+  #current b { color: #e2e8f0; }
+</style>
+</head>
+<body>
+  <h1>Device Bridge</h1>
+  <p class="hint">
+    Paste in a device bridge credential (generate one from the dashboard's Devices page →
+    "Generate Bridge Credentials") to let this PC pull attendance from any ZKTeco device on
+    its local network and sync it to the cloud, running in the background even with this
+    window closed.
+  </p>
+
+  <label for="email">Email</label>
+  <input id="email" type="text" autocomplete="off" spellcheck="false" />
+
+  <label for="password">Password</label>
+  <input id="password" type="password" autocomplete="off" />
+
+  <button id="saveBtn">Save & Connect</button>
+  <div id="status"></div>
+
+  <div id="current"></div>
+
+  <script src="settings-renderer.js"></script>
+</body>
+</html>

@@ -8,6 +8,11 @@
     "start": "electron .",
     "build": "electron-builder --win"
   },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "node-zklib": "^1.0.3",
+    "ws": "^8.21.3"
+  },
   "devDependencies": {
     "electron": "^31.3.0",
     "electron-builder": "^24.13.3"
@@ -17,6 +22,10 @@
     "productName": "Attendance Nepal",
     "files": [
       "main.js",
+      "lan-bridge.js",
+      "preload-settings.js",
+      "settings.html",
+      "settings-renderer.js",
       "package.json"
     ],
     "win": {

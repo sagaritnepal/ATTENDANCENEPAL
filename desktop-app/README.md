@@ -5,6 +5,16 @@ A Windows desktop wrapper around the live admin-web dashboard (`main.js` just op
 tab, with a remembered window size and a proper offline/retry screen. It's the same dashboard,
 same login, same per-company data — nothing about the web app itself changed.
 
+It also embeds the LAN device bridge (`lan-bridge.js`, the same logic as
+`zkteco-bridge/index.js`) — so a single install on a PC that's on the same local network as a
+ZKTeco terminal can both show the dashboard *and* pull attendance from that device, without
+needing a second always-running program. Configure it from the tray icon → **Configure Device
+Bridge…**, pasting in a credential generated from the dashboard's Devices page. Once connected,
+sync keeps running in the background even with the window closed — closing the window only hides
+it to the tray; **Quit** from the tray menu is what actually exits (and stops sync). The
+credential is stored encrypted at rest via the OS's own credential store (Windows DPAPI, through
+Electron's `safeStorage`), not plain text.
+
 ## Building it
 
 ```
