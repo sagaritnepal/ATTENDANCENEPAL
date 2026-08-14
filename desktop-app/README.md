@@ -9,26 +9,25 @@ same login, same per-company data — nothing about the web app itself changed.
 
 ```
 npm install
-npx electron-packager . "Attendance Nepal" --platform=win32 --arch=x64 --icon=build/icon.ico --out=dist --overwrite
+npm run build
 ```
 
-That produces `dist/Attendance Nepal-win32-x64/`, a folder containing `Attendance Nepal.exe` and
-everything it needs alongside it — hand out that whole folder (zip it) and double-clicking the
-`.exe` inside is the entire install step; there's no separate installer yet (see below).
+That produces two files in `dist/`, both genuinely standalone — no accompanying folder needed,
+hand out either one by itself:
+
+- **`Attendance Nepal 1.0.0.exe`** — portable. Copy it anywhere (including a different PC) and
+  double-click; it runs directly, no install step. This is what "just transfer one file" wants.
+- **`Attendance Nepal Setup 1.0.0.exe`** — a real installer: Start Menu shortcut, Desktop shortcut,
+  proper uninstall entry in Windows Settings. Better for a machine this will live on long-term.
 
 `build/icon.ico` is generated from `admin-web/public/logo-mark.png` via `build/make-icon.js` — run
 that again if the logo ever changes, and commit the resulting `.ico`.
 
-## Known gap: no single-file installer yet
-
-`electron-builder` (which produces a proper NSIS installer with Start Menu shortcuts, a real
-uninstaller, etc.) needs a Windows symlink privilege this machine's account doesn't have by
-default, which made its build fail here. Two ways to unblock it later:
-
-- Enable **Developer Mode** (Settings → For Developers) on whichever machine does the official
-  build, or
-- Build in CI (e.g. a GitHub Actions Windows runner) instead of locally, where this restriction
-  doesn't apply.
-
-Once either is true, `npm run build` (electron-builder, already configured in `package.json`)
-produces both an NSIS installer and a portable single-file `.exe`.
+`signAndEditExecutable: false` in `package.json`'s `build.win` config is intentional: without it,
+electron-builder unconditionally downloads a macOS-targeted signing/resource-editing bundle (even
+though nothing here is ever actually code-signed) and that download fails to extract without a
+Windows symlink privilege most accounts don't have by default. Skipping that step is what makes
+`npm run build` work without needing Developer Mode enabled or an admin account — the small
+tradeoff is the bundled `Attendance Nepal.exe` sitting inside the packed app (never seen directly;
+only the outer installer/portable exe's icon, which comes from NSIS itself, is user-visible) keeps
+a generic Electron icon instead of the logo.

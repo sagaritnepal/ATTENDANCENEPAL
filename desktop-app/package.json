@@ -10,8 +10,7 @@
   },
   "devDependencies": {
     "electron": "^31.3.0",
-    "electron-builder": "^24.13.3",
-    "electron-packager": "^17.1.2"
+    "electron-builder": "^24.13.3"
   },
   "build": {
     "appId": "com.attendancenepal.desktop",
@@ -25,7 +24,8 @@
         "nsis",
         "portable"
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
