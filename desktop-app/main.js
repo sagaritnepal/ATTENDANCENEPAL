@@ -12,7 +12,7 @@
 // in via a browser — Supabase Auth, same per-company data via the same RLS
 // rules — so this one build works for every company/customer, not just one;
 // each admin just signs into their own account like they already do today.
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, Menu, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -107,6 +107,10 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Nothing in the dashboard needs File/Edit/View/Window/Help — this is a
+  // wrapped website, not a native editor, and that default Electron menu
+  // just looks like leftover dev tooling.
+  Menu.setApplicationMenu(null);
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
