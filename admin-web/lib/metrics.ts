@@ -28,6 +28,7 @@ export function isLate(
   date: string,
   dailyShiftByDate?: DailyShiftByDate
 ) {
+  if (employee.attendance_exempt) return false;
   const checkIn = firstCheckIn(logsForDay);
   if (!checkIn) return false;
   const shift = resolveShiftForDate(employee, shifts, date, dailyShiftByDate);

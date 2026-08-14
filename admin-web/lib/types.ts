@@ -45,6 +45,7 @@ export type Employee = {
   skills: string[];
   pan_no: string | null;
   ssf_no: string | null;
+  attendance_exempt: boolean;
   created_at: string;
 };
 

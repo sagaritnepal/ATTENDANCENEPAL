@@ -739,6 +739,7 @@ function EmployeesView() {
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     <Badge tone={emp.fingerprint_id ? 'good' : 'neutral'}>{emp.fingerprint_id ? 'Bio Enrolled' : 'Not Enrolled'}</Badge>
                     {linkedEmployeeIds.has(emp.id) && <Badge tone="good">Login Active</Badge>}
+                    {emp.attendance_exempt && <Badge tone="neutral">Excused</Badge>}
                   </div>
                 </div>
 
@@ -914,9 +915,12 @@ function EmployeesView() {
                           )}
                         </button>
                         <div className="min-w-0">
-                          <Link href={`/employees/${emp.id}`} className="block truncate font-medium text-ink hover:text-accent hover:underline">
-                            {emp.name}
-                          </Link>
+                          <div className="flex items-center gap-1.5">
+                            <Link href={`/employees/${emp.id}`} className="block truncate font-medium text-ink hover:text-accent hover:underline">
+                              {emp.name}
+                            </Link>
+                            {emp.attendance_exempt && <Badge tone="neutral">Excused</Badge>}
+                          </div>
                           <div className="truncate text-xs text-slate-400">{emp.phone ?? '—'}</div>
                           {emp.email && <div className="truncate text-xs text-slate-400">{emp.email}</div>}
                           <div className="truncate text-xs text-slate-400">

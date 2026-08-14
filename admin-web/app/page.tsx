@@ -174,7 +174,7 @@ export default function DashboardPage() {
       todayIsWeekOff
         ? []
         : activeEmployees
-            .filter(emp => !presentIds.has(emp.id) && !onLeaveIds.has(emp.id))
+            .filter(emp => !presentIds.has(emp.id) && !onLeaveIds.has(emp.id) && !emp.attendance_exempt)
             .map(emp => ({ id: emp.id, primary: emp.name, secondary: emp.department ?? undefined })),
     [activeEmployees, presentIds, onLeaveIds, todayIsWeekOff]
   );
