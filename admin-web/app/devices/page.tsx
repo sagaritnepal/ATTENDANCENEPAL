@@ -13,6 +13,19 @@ function deviceErrorMessage(error: { code?: string; message: string }): string {
   return error.message;
 }
 
+type BridgeCredential = { id: string; email: string; createdAt: string };
+type BridgeResult = { email: string; password: string; envFile: string };
+
+function downloadEnvFile(envFile: string) {
+  const blob = new Blob([envFile], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '.env';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function DevicesPage() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -27,13 +40,77 @@ export default function DevicesPage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
 
+  const [bridgeCredentials, setBridgeCredentials] = useState<BridgeCredential[]>([]);
+  const [generatingBridge, setGeneratingBridge] = useState(false);
+  const [bridgeError, setBridgeError] = useState<string | null>(null);
+  const [bridgeResult, setBridgeResult] = useState<BridgeResult | null>(null);
+  const [revokingBridgeId, setRevokingBridgeId] = useState<string | null>(null);
+
   function reload() {
     supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
     supabase.from('branches').select('*').then(({ data }) => setBranches(data ?? []));
     supabase.from('employees').select('*').then(({ data }) => setEmployees(data ?? []));
     supabase.from('attendance_logs').select('*').eq('method', 'zkteco').then(({ data }) => setLogs(data ?? []));
+    loadBridgeCredentials();
   }
   useEffect(reload, []);
+
+  async function loadBridgeCredentials() {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) return;
+    const res = await fetch('/api/bridge-credentials', { headers: { Authorization: `Bearer ${token}` } });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) setBridgeCredentials(body.credentials ?? []);
+  }
+
+  async function handleGenerateBridge() {
+    setGeneratingBridge(true);
+    setBridgeError(null);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setGeneratingBridge(false);
+      setBridgeError('Your session expired — please sign in again.');
+      return;
+    }
+    const res = await fetch('/api/bridge-credentials', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = await res.json().catch(() => ({}));
+    setGeneratingBridge(false);
+    if (!res.ok) {
+      setBridgeError(body.error ?? 'Could not generate the credential.');
+      return;
+    }
+    setBridgeResult({ email: body.email, password: body.password, envFile: body.envFile });
+    loadBridgeCredentials();
+  }
+
+  async function handleRevokeBridge(id: string) {
+    if (!confirm('Revoke this bridge credential? Any machine still using it will stop being able to sync immediately.')) return;
+    setRevokingBridgeId(id);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setRevokingBridgeId(null);
+      alert('Your session expired — please sign in again.');
+      return;
+    }
+    const res = await fetch('/api/bridge-credentials', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ id }),
+    });
+    const body = await res.json().catch(() => ({}));
+    setRevokingBridgeId(null);
+    if (!res.ok) {
+      alert(body.error ?? 'Could not revoke the credential.');
+      return;
+    }
+    loadBridgeCredentials();
+  }
 
   // Reflects zkteco-bridge's status/last_sync writes the moment they land, instead of
   // requiring a manual "Refresh" click.
@@ -174,6 +251,85 @@ export default function DevicesPage() {
         })}
         {devices.length === 0 && <p className="text-sm text-slate-400">No devices registered yet.</p>}
       </div>
+
+      <div className="mt-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-ink">Device Bridge Credentials</h2>
+            <p className="mt-1 max-w-2xl text-xs text-slate-500">
+              For a device that only reaches you over a local network, not the internet: generate a credential scoped to
+              just this company, and hand its <code className="rounded bg-slate-100 px-1 py-0.5">.env</code> file to
+              whoever runs the bridge on-site — no GitHub access or shared master key involved.
+            </p>
+          </div>
+          <button
+            onClick={handleGenerateBridge}
+            disabled={generatingBridge}
+            className="shrink-0 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+          >
+            {generatingBridge ? 'Generating…' : '+ Generate Bridge Credentials'}
+          </button>
+        </div>
+        {bridgeError && <p className="mb-3 text-sm text-critical">{bridgeError}</p>}
+        {bridgeCredentials.length === 0 ? (
+          <p className="text-sm text-slate-400">No bridge credentials issued yet.</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {bridgeCredentials.map(c => (
+              <div key={c.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <div className="min-w-0">
+                  <div className="truncate font-mono text-xs text-ink">{c.email}</div>
+                  <div className="text-xs text-slate-400">Issued {new Date(c.createdAt).toLocaleString()}</div>
+                </div>
+                <button
+                  onClick={() => handleRevokeBridge(c.id)}
+                  disabled={revokingBridgeId === c.id}
+                  className="shrink-0 text-xs font-medium text-critical hover:underline disabled:opacity-60"
+                >
+                  {revokingBridgeId === c.id ? 'Revoking…' : 'Revoke'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {bridgeResult && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+            <h3 className="mb-1 text-lg font-semibold text-ink">Bridge credential created</h3>
+            <p className="mb-4 text-xs text-slate-500">
+              This password won&apos;t be shown again. Download the <code className="rounded bg-slate-100 px-1 py-0.5">.env</code>{' '}
+              below and place it alongside <code className="rounded bg-slate-100 px-1 py-0.5">index.js</code> on the
+              on-site machine.
+            </p>
+            <div className="mb-4 space-y-2 rounded-lg bg-slate-50 p-3 text-sm">
+              <div>
+                <span className="text-xs uppercase text-slate-400">Email</span>
+                <div className="break-all font-mono text-xs font-medium text-ink">{bridgeResult.email}</div>
+              </div>
+              <div>
+                <span className="text-xs uppercase text-slate-400">Password</span>
+                <div className="break-all font-mono text-xs font-medium text-ink">{bridgeResult.password}</div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => downloadEnvFile(bridgeResult.envFile)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                ⬇ Download .env
+              </button>
+              <button
+                onClick={() => setBridgeResult(null)}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
