@@ -287,10 +287,10 @@ function EmployeesView() {
           .some(v => (v as string).toLowerCase().includes(term));
       });
     }
-    // Newest first, so a just-added or just-synced employee is easy to spot
-    // at the top instead of buried wherever their fingerprint ID happens to
-    // fall.
-    return [...list].sort((a, b) => b.created_at.localeCompare(a.created_at));
+    // By employee code, so the list stays in a stable, predictable sequence
+    // instead of a just-added (often not-yet-enrolled) employee jumping to
+    // the top and reshuffling everyone else.
+    return [...list].sort((a, b) => a.employee_code.localeCompare(b.employee_code, undefined, { numeric: true }));
   }, [employees, shifts, filter, search]);
 
   const searchSuggestions = useMemo(() => {
