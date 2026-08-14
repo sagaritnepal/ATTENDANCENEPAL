@@ -15,7 +15,7 @@ export type DayDetail = {
   overtime: number;
   lateMinutes: number;
   earlyMinutes: number;
-  status: 'Present' | 'Late' | 'Absent' | 'Upcoming' | 'Week Off';
+  status: 'Present' | 'Late' | 'Absent' | 'Upcoming' | 'Week Off' | 'Leave';
   /** No payroll_summaries row yet (only computed by the nightly job or
    * "Recalculate month" on the Payroll page) — computed live client-side
    * from the raw punches instead of left blank until that job runs. */
@@ -38,10 +38,13 @@ export function buildEmployeeDayRows(
   start: string,
   end: string,
   dailyShiftByDate?: DailyShiftByDate,
-  /** Company-wide Week-off dates (weekOffDatesInRange()) and this employee's
-   * own approved-Leave dates — a punchless day matching either is 'Week Off'
-   * (paid), not 'Absent'/'Upcoming'. */
-  paidOffDates?: Set<string>
+  /** Company-wide Week-off dates (weekOffDatesInRange()) — a punchless day
+   * matching this is 'Week Off' (paid), not 'Absent'/'Upcoming'. */
+  weekOffDates?: Set<string>,
+  /** This employee's own approved-Leave dates — takes priority over
+   * weekOffDates for the label (a requested leave is a Leave even if it
+   * happens to fall on a company off day), but is paid identically. */
+  leaveDates?: Set<string>
 ): DayDetail[] {
   const days: string[] = [];
   const cur = new Date(start + 'T00:00:00Z');
@@ -84,8 +87,12 @@ export function buildEmployeeDayRows(
     if (dayLogs.length === 0) {
       // A company Week-off or approved Leave day is a known, paid day off
       // regardless of whether it's already passed — takes priority over the
-      // Upcoming/Absent distinction below.
-      if (paidOffDates?.has(day)) {
+      // Upcoming/Absent distinction below. Leave wins the label if both
+      // happen to match the same date; either way it's paid the same.
+      if (leaveDates?.has(day)) {
+        return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status: 'Leave', paidOff: true };
+      }
+      if (weekOffDates?.has(day)) {
         return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status: 'Week Off', paidOff: true };
       }
       // A day that hasn't happened yet isn't "Absent" — it just hasn't

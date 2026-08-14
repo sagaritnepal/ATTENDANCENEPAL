@@ -30,6 +30,7 @@ function fmtHrs(hours: number) {
 function statusBadge(d: DayDetail) {
   if (d.checkIn) return <Badge tone="good">Present</Badge>;
   if (d.status === 'Week Off') return <Badge tone="neutral">Week Off</Badge>;
+  if (d.status === 'Leave') return <Badge tone="info">Leave</Badge>;
   if (d.status === 'Upcoming') return <Badge tone="neutral">Upcoming</Badge>;
   return <Badge tone="critical">Absent</Badge>;
 }
@@ -130,8 +131,10 @@ function PayrollEmployeeDetailView() {
   // hour instead (see dailySalaryEarning() in lib/payrollDetail.ts).
   const salaryPerDay = useMemo(() => (employee?.salary != null ? employee.salary / daysInRange : null), [employee, daysInRange]);
 
-  const paidOffDates = useMemo(() => {
-    const set = weekOffDatesInRange(start, end, weeklyOffDay, holidays);
+  const weekOffDates = useMemo(() => weekOffDatesInRange(start, end, weeklyOffDay, holidays), [start, end, weeklyOffDay, holidays]);
+
+  const leaveDates = useMemo(() => {
+    const set = new Set<string>();
     for (const req of leaveRequests) {
       const cur = new Date((req.start_date < start ? start : req.start_date) + 'T00:00:00Z');
       const endDate = new Date((req.end_date > end ? end : req.end_date) + 'T00:00:00Z');
@@ -141,11 +144,11 @@ function PayrollEmployeeDetailView() {
       }
     }
     return set;
-  }, [start, end, weeklyOffDay, holidays, leaveRequests]);
+  }, [start, end, leaveRequests]);
 
   const dayRows = useMemo(
-    () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate, paidOffDates) : []),
-    [employee, shifts, summaries, logs, start, end, dailyShiftByDate, paidOffDates]
+    () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate, weekOffDates, leaveDates) : []),
+    [employee, shifts, summaries, logs, start, end, dailyShiftByDate, weekOffDates, leaveDates]
   );
 
   const dayTotals = useMemo(() => {
@@ -165,7 +168,7 @@ function PayrollEmployeeDetailView() {
       lateMinutes += d.lateMinutes;
       earlyMinutes += d.earlyMinutes;
       if (d.checkIn) presentDays += 1;
-      else if (d.status === 'Week Off') paidOffDays += 1;
+      else if (d.status === 'Week Off' || d.status === 'Leave') paidOffDays += 1;
       else if (d.status !== 'Upcoming') absentDays += 1;
       const earning = dailySalaryEarning(d, employee?.salary ?? null, daysInRange, otHoursPerDay, otMultiplier, otOn);
       if (earning) {

@@ -28,7 +28,7 @@ type Row = {
   checkIn: string | null;
   checkOut: string | null;
   hours: number;
-  status: 'Present' | 'Late' | 'Absent' | 'Upcoming' | 'Week Off' | 'Exempt';
+  status: 'Present' | 'Late' | 'Absent' | 'Upcoming' | 'Week Off' | 'Leave' | 'Exempt';
   lateMinutes: number;
   earlyMinutes: number;
   overtime: number;
@@ -53,6 +53,7 @@ function isoDaysAgo(n: number) {
 function statusBadge(r: Row) {
   if (r.checkIn) return <Badge tone="good">Present</Badge>;
   if (r.status === 'Week Off') return <Badge tone="neutral">Week Off</Badge>;
+  if (r.status === 'Leave') return <Badge tone="info">Leave</Badge>;
   if (r.status === 'Upcoming') return <Badge tone="neutral">Upcoming</Badge>;
   if (r.status === 'Exempt') return <Badge tone="neutral">Excused</Badge>;
   return <Badge tone="critical">Absent</Badge>;
@@ -62,7 +63,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
   const { system } = useCalendarSystem();
   const [from, setFrom] = useState(isoDaysAgo(0));
   const [to, setTo] = useState(isoDaysAgo(0));
-  const [status, setStatus] = useState<'All' | 'Present' | 'Late' | 'Early' | 'Absent' | 'Week Off' | 'Exempt'>('All');
+  const [status, setStatus] = useState<'All' | 'Present' | 'Late' | 'Early' | 'Absent' | 'Week Off' | 'Leave' | 'Exempt'>('All');
   const [employeeId, setEmployeeId] = useState<string>(initialEmployeeId ?? 'all');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -207,8 +208,11 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
         } else {
           // A company Week-off or approved Leave day is a known, paid day
           // off — takes priority over the Upcoming/Absent distinction below,
-          // whether it's already passed or not.
-          const isPaidOff = weekOffDateSet.has(day) || leaveByEmployee.get(emp.id)?.has(day);
+          // whether it's already passed or not. A requested (and approved)
+          // Leave keeps its own label even on a day that's also a company
+          // Week-off — it's still paid the same either way.
+          const isOnLeave = leaveByEmployee.get(emp.id)?.has(day);
+          const isWeekOff = weekOffDateSet.has(day);
           out.push({
             key: `${emp.id}-${day}`,
             date: day,
@@ -222,7 +226,15 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             // A day that hasn't happened yet isn't "Absent" — it just
             // hasn't occurred (only relevant if the picked range runs past
             // today).
-            status: isPaidOff ? 'Week Off' : day > today ? 'Upcoming' : emp.attendance_exempt ? 'Exempt' : 'Absent',
+            status: isOnLeave
+              ? 'Leave'
+              : isWeekOff
+                ? 'Week Off'
+                : day > today
+                  ? 'Upcoming'
+                  : emp.attendance_exempt
+                    ? 'Exempt'
+                    : 'Absent',
             lateMinutes: 0,
             earlyMinutes: 0,
             overtime: 0,
@@ -340,6 +352,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                 <option value="Late">Late</option>
                 <option value="Early">Early</option>
                 <option value="Week Off">Week Off</option>
+                <option value="Leave">Leave</option>
                 <option value="Exempt">Excused</option>
               </select>
             </div>
