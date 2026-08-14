@@ -5,15 +5,24 @@ A Windows desktop wrapper around the live admin-web dashboard (`main.js` just op
 tab, with a remembered window size and a proper offline/retry screen. It's the same dashboard,
 same login, same per-company data — nothing about the web app itself changed.
 
-It also embeds the LAN device bridge (`lan-bridge.js`, the same logic as
-`zkteco-bridge/index.js`) — so a single install on a PC that's on the same local network as a
-ZKTeco terminal can both show the dashboard *and* pull attendance from that device, without
-needing a second always-running program. Configure it from the tray icon → **Configure Device
-Bridge…**, pasting in a credential generated from the dashboard's Devices page. Once connected,
-sync keeps running in the background even with the window closed — closing the window only hides
-it to the tray; **Quit** from the tray menu is what actually exits (and stops sync). The
-credential is stored encrypted at rest via the OS's own credential store (Windows DPAPI, through
-Electron's `safeStorage`), not plain text.
+It also embeds the LAN device bridge (same logic as `zkteco-bridge/index.js`) — so a single
+install on a PC that's on the same local network as a ZKTeco terminal can both show the dashboard
+*and* pull attendance from that device, without needing a second always-running program. Configure
+it from the tray icon → **Configure Device Bridge…**, pasting in a credential generated from the
+dashboard's Devices page. Once connected, sync keeps running in the background even with the
+window closed — closing the window only hides it to the tray; **Quit** from the tray menu is what
+actually exits (and stops sync). The credential is stored encrypted at rest via the OS's own
+credential store (Windows DPAPI, through Electron's `safeStorage`), not plain text.
+
+The bridge logic isn't frozen into the `.exe` the way it first was — the canonical copy lives at
+`admin-web/public/lan-bridge.js` and is served live at `<domain>/lan-bridge.js`. Every time the app
+starts, it fetches that file fresh and runs whatever's currently there (caching the last
+successful fetch to disk as a fallback for an offline launch). So a fix to the bridge itself ships
+the moment `admin-web/public/lan-bridge.js` is deployed, exactly like a dashboard change — no new
+`.exe` needed. The copy of `lan-bridge.js` bundled in this folder is only a last-resort fallback
+for a machine's very first launch with no internet yet; **keep both copies in sync** (this file and
+`admin-web/public/lan-bridge.js`) whenever the bridge logic changes, since the bundled one only
+ever gets used before a fetch has ever succeeded.
 
 ## Building it
 

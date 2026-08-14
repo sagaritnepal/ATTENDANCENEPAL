@@ -13,24 +13,72 @@
 // rules — so this one build works for every company/customer, not just one;
 // each admin just signs into their own account like they already do today.
 //
-// Also embeds the LAN device bridge (lan-bridge.js) — if a device bridge
-// credential is configured (Tray icon → Configure Device Bridge…), this PC
-// also pulls attendance from any ZKTeco terminal on its own local network
-// and syncs it to the cloud, running in the background via the system tray
-// even when this window is closed. Closing the window only hides it; Quit
-// from the tray menu is what actually exits (and stops that background
-// sync) — see the isQuitting flag below.
+// Also embeds the LAN device bridge — if a device bridge credential is
+// configured (Tray icon → Configure Device Bridge…), this PC also pulls
+// attendance from any ZKTeco terminal on its own local network and syncs it
+// to the cloud, running in the background via the system tray even when
+// this window is closed. Closing the window only hides it; Quit from the
+// tray menu is what actually exits (and stops that background sync) — see
+// the isQuitting flag below.
+//
+// Unlike the dashboard (which is never bundled at all, just loaded live),
+// the bridge logic itself is fetched from admin-web/public/lan-bridge.js at
+// every startup instead of being frozen into this .exe forever — a bug fix
+// there ships the moment it's deployed, the same way a dashboard change
+// does, with no new .exe to hand out. The bundled lan-bridge.js next to this
+// file is only a fallback for the (rare) case a machine's very first launch
+// has no internet yet; once a fetch ever succeeds, the fetched copy — cached
+// to disk — is preferred over the bundled one from then on, including for
+// any offline launch after that.
 const { app, BrowserWindow, Menu, Tray, ipcMain, safeStorage, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const lanBridge = require('./lan-bridge');
+const Module = require('module');
 
 // Update this the day a real domain replaces the sslip.io placeholder — the
 // whole app is this one line, nothing else needs to change.
 const APP_URL = 'https://203-134-250-70.sslip.io';
+const LAN_BRIDGE_URL = `${APP_URL}/lan-bridge.js`;
+const LAN_BRIDGE_FETCH_TIMEOUT_MS = 5000;
 
 const boundsFile = path.join(app.getPath('userData'), 'window-bounds.json');
 const bridgeConfigFile = path.join(app.getPath('userData'), 'bridge-config.json');
+const lanBridgeCacheFile = path.join(app.getPath('userData'), 'lan-bridge-cached.js');
+
+let lanBridge = null;
+
+// A file fetched to userData has no node_modules anywhere near it, so a
+// plain require() of it would fail to resolve node-zklib/@supabase/
+// supabase-js/ws — this loads it as a real module but resolves ITS require()
+// calls against this app's own bundled node_modules (via __dirname) instead
+// of wherever the file happens to live on disk, so the fetched code can stay
+// a plain, dependency-using Node file with no special packaging of its own.
+function loadModuleWithOwnDependencies(filePath) {
+  const code = fs.readFileSync(filePath, 'utf8');
+  const mod = new Module(filePath, module);
+  mod.filename = filePath;
+  mod.paths = Module._nodeModulePaths(__dirname);
+  mod._compile(code, filePath);
+  return mod.exports;
+}
+
+async function loadLanBridge() {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), LAN_BRIDGE_FETCH_TIMEOUT_MS);
+    const res = await fetch(LAN_BRIDGE_URL, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const code = await res.text();
+    fs.writeFileSync(lanBridgeCacheFile, code);
+    console.log('[main] fetched latest lan-bridge.js');
+  } catch (err) {
+    console.warn(`[main] could not fetch latest lan-bridge.js (${err.message}), using a cached/bundled copy instead`);
+  }
+
+  const sourcePath = fs.existsSync(lanBridgeCacheFile) ? lanBridgeCacheFile : path.join(__dirname, 'lan-bridge.js');
+  lanBridge = loadModuleWithOwnDependencies(sourcePath);
+}
 
 let mainWindow = null;
 let tray = null;
@@ -192,12 +240,14 @@ function openSettingsWindow() {
 }
 
 function buildTrayMenu() {
-  const status = lanBridge.getStatus();
-  const bridgeLabel = !status.configured
-    ? 'Device bridge: not configured'
-    : status.running
-      ? 'Device bridge: syncing'
-      : 'Device bridge: stopped';
+  const status = lanBridge?.getStatus();
+  const bridgeLabel = !lanBridge
+    ? 'Device bridge: loading…'
+    : !status.configured
+      ? 'Device bridge: not configured'
+      : status.running
+        ? 'Device bridge: syncing'
+        : 'Device bridge: stopped';
   return Menu.buildFromTemplate([
     { label: 'Open Dashboard', click: showMainWindow },
     { label: bridgeLabel, enabled: false },
@@ -224,6 +274,7 @@ function createTray() {
 }
 
 ipcMain.handle('bridge:save', async (_event, { email, password }) => {
+  if (!lanBridge) return { ok: false, error: 'Still starting up — try again in a moment.' };
   try {
     await lanBridge.configure(email, password);
     saveBridgeConfig(email, password);
@@ -234,20 +285,26 @@ ipcMain.handle('bridge:save', async (_event, { email, password }) => {
   }
 });
 
-ipcMain.handle('bridge:status', () => lanBridge.getStatus());
+ipcMain.handle('bridge:status', () => lanBridge?.getStatus() ?? { configured: false, running: false, lastError: null, lastSyncAt: null });
 
 ipcMain.handle('bridge:get-saved', () => {
   const saved = loadBridgeConfig();
   return saved ? { email: saved.email } : null;
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Nothing in the dashboard needs File/Edit/View/Window/Help — this is a
   // wrapped website, not a native editor, and that default Electron menu
   // just looks like leftover dev tooling.
   Menu.setApplicationMenu(null);
+  // The dashboard window shows immediately — it doesn't wait on the bridge
+  // fetch below, since that's a background concern only relevant to whoever
+  // has actually configured a device bridge.
   createWindow();
   createTray();
+
+  await loadLanBridge();
+  if (tray) tray.setContextMenu(buildTrayMenu());
 
   const saved = loadBridgeConfig();
   if (saved) {
