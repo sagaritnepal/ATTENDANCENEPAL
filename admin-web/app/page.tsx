@@ -114,11 +114,24 @@ export default function DashboardPage() {
     return map;
   }, [todayRoster, today]);
 
+  // Company-wide Week-off: recurring weekly day (e.g. every Saturday) or an
+  // ad-hoc holiday for today specifically. Distinct from per-employee roster
+  // Week Off (dailyShiftByDate) and approved Leave (onLeaveIds) below — but
+  // treated identically to a roster Week Off wherever a resolved shift
+  // matters (isLate, applyOvernightShiftCorrection, resolveShiftForDate),
+  // so someone who does show up on a company-wide off day isn't marked Late
+  // against a shift they were never expecting to work.
+  const companyWeekOffDates = useMemo(
+    () => weekOffDatesInRange(today, today, weeklyOffDay, todayHoliday ? [todayHoliday] : []),
+    [today, weeklyOffDay, todayHoliday]
+  );
+  const todayIsWeekOff = companyWeekOffDates.has(today);
+
   const lateEmployees = useMemo(() => {
     const rows: DetailRow[] = [];
     for (const emp of activeEmployees) {
       const empLogs = todayLogs.filter(l => l.employee_id === emp.id);
-      if (!empLogs.length || !isLate(emp, shifts, empLogs, today, dailyShiftByDate)) continue;
+      if (!empLogs.length || !isLate(emp, shifts, empLogs, today, dailyShiftByDate, companyWeekOffDates)) continue;
       const checkIn = firstCheckIn(empLogs);
       rows.push({
         id: emp.id,
@@ -127,18 +140,10 @@ export default function DashboardPage() {
       });
     }
     return rows;
-  }, [activeEmployees, todayLogs, shifts, today, dailyShiftByDate]);
+  }, [activeEmployees, todayLogs, shifts, today, dailyShiftByDate, companyWeekOffDates]);
   const lateCount = lateEmployees.length;
 
   const onLeaveIds = useMemo(() => new Set(onLeave.map(l => l.employee_id)), [onLeave]);
-
-  // Company-wide Week-off: recurring weekly day (e.g. every Saturday) or an
-  // ad-hoc holiday for today specifically. Distinct from per-employee roster
-  // Week Off (dailyShiftByDate) and approved Leave (onLeaveIds) above.
-  const todayIsWeekOff = useMemo(
-    () => weekOffDatesInRange(today, today, weeklyOffDay, todayHoliday ? [todayHoliday] : []).has(today),
-    [today, weeklyOffDay, todayHoliday]
-  );
   const attendancePct = activeEmployees.length ? Math.round((presentIds.size / activeEmployees.length) * 100) : 0;
 
   const totalEmployeeRows = useMemo<DetailRow[]>(
@@ -197,14 +202,14 @@ export default function DashboardPage() {
         if (list) list.push(log);
         else byDate.set(key, [log]);
       }
-      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate);
+      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, companyWeekOffDates);
       const dayLogs = byDate.get(today);
       if (!dayLogs || dayLogs.length === 0) continue;
-      const resolved = resolveShiftForDate(emp, shifts, today, dailyShiftByDate);
+      const resolved = resolveShiftForDate(emp, shifts, today, dailyShiftByDate, companyWeekOffDates);
       map.set(emp.id, computeDayStatusForResolvedShift(dayLogs, resolved));
     }
     return map;
-  }, [activeEmployees, logs, shifts, dailyShiftByDate, today]);
+  }, [activeEmployees, logs, shifts, dailyShiftByDate, today, companyWeekOffDates]);
 
   const workHoursRows = useMemo<DetailRow[]>(() => {
     const entries: { id: string; name: string; hours: number }[] = [];

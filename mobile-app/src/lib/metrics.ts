@@ -25,11 +25,12 @@ export function isLate(
   shifts: Shift[],
   logsForDay: AttendanceLog[],
   date: string,
-  dailyShiftByDate?: DailyShiftByDate
+  dailyShiftByDate?: DailyShiftByDate,
+  companyWeekOffDates?: Set<string>
 ) {
   const checkIn = firstCheckIn(logsForDay);
   if (!checkIn) return false;
-  const shift = resolveShiftForDate(employee, shifts, date, dailyShiftByDate);
+  const shift = resolveShiftForDate(employee, shifts, date, dailyShiftByDate, companyWeekOffDates);
   if (isWeekOff(shift)) return false;
   const startMin = toMinutes(shift.start_time);
   return minutesOfDayUTC(checkIn.punch_time) > startMin + shift.grace_minutes;

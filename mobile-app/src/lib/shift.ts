@@ -31,7 +31,8 @@ export function resolveShiftForDate(
   employee: Employee,
   shifts: Shift[],
   date: string,
-  dailyShiftByDate?: DailyShiftByDate
+  dailyShiftByDate?: DailyShiftByDate,
+  companyWeekOffDates?: Set<string>
 ): ResolvedShift {
   const perDate = dailyShiftByDate?.get(employee.id);
   if (perDate?.has(date)) {
@@ -40,6 +41,7 @@ export function resolveShiftForDate(
     const shift = shifts.find(s => s.id === shiftId);
     if (shift) return shift;
   }
+  if (companyWeekOffDates?.has(date)) return WEEK_OFF;
   return resolveShift(employee, shifts);
 }
 
@@ -175,14 +177,15 @@ export function applyOvernightShiftCorrection(
   allLogs: AttendanceLog[],
   employee: Employee,
   shifts: Shift[],
-  dailyShiftByDate?: DailyShiftByDate
+  dailyShiftByDate?: DailyShiftByDate,
+  companyWeekOffDates?: Set<string>
 ): Map<string, AttendanceLog[]> {
   const dates = [...byDate.keys()];
   const claimed = new Set<string>();
   const overnightDates = new Set<string>();
 
   for (const date of dates) {
-    const resolved = resolveShiftForDate(employee, shifts, date, dailyShiftByDate);
+    const resolved = resolveShiftForDate(employee, shifts, date, dailyShiftByDate, companyWeekOffDates);
     if (isWeekOff(resolved) || !isOvernightShift(resolved)) continue;
     overnightDates.add(date);
 

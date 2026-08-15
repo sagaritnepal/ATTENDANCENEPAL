@@ -34,14 +34,18 @@ export function isWeekOff(shift: ResolvedShift): shift is typeof WEEK_OFF {
 
 /** Mirrors find_employee_shift_for_date() in the roster migration: an
  * employee_daily_shifts row for this exact date wins (its shift, or
- * WEEK_OFF if shift_id is null); no row at all falls through to the
- * unchanged resolveShift() behavior — companies not using the roster
- * feature see no change. */
+ * WEEK_OFF if shift_id is null) — a deliberate, specific override, so it
+ * beats everything else including a company-wide Week-off below. No roster
+ * row at all falls through to a company-wide Week-off date (weeklyOffDay or
+ * a company_holidays row, passed in by the caller — see lib/weekOff.ts) if
+ * this date is one, and only then to the normal own-shift/department/
+ * default chain — companies not using either feature see no change. */
 export function resolveShiftForDate(
   employee: Employee,
   shifts: Shift[],
   date: string,
-  dailyShiftByDate?: DailyShiftByDate
+  dailyShiftByDate?: DailyShiftByDate,
+  companyWeekOffDates?: Set<string>
 ): ResolvedShift {
   const perDate = dailyShiftByDate?.get(employee.id);
   if (perDate?.has(date)) {
@@ -50,6 +54,7 @@ export function resolveShiftForDate(
     const shift = shifts.find(s => s.id === shiftId);
     if (shift) return shift;
   }
+  if (companyWeekOffDates?.has(date)) return WEEK_OFF;
   return resolveShift(employee, shifts);
 }
 
@@ -229,14 +234,15 @@ export function applyOvernightShiftCorrection(
   allLogs: AttendanceLog[],
   employee: Employee,
   shifts: Shift[],
-  dailyShiftByDate?: DailyShiftByDate
+  dailyShiftByDate?: DailyShiftByDate,
+  companyWeekOffDates?: Set<string>
 ): Map<string, AttendanceLog[]> {
   const dates = [...byDate.keys()];
   const claimed = new Set<string>();
   const overnightDates = new Set<string>();
 
   for (const date of dates) {
-    const resolved = resolveShiftForDate(employee, shifts, date, dailyShiftByDate);
+    const resolved = resolveShiftForDate(employee, shifts, date, dailyShiftByDate, companyWeekOffDates);
     if (isWeekOff(resolved) || !isOvernightShift(resolved)) continue;
     overnightDates.add(date);
 

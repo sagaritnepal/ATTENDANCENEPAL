@@ -146,7 +146,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
         const dayLogs = empLogs.filter(l => l.punch_time.slice(0, 10) === day);
         if (dayLogs.length > 0) byDate.set(day, dayLogs);
       }
-      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate);
+      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, weekOffDateSet);
       logsByEmployeeDay.set(emp.id, byDate);
     }
 
@@ -161,7 +161,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
         // past days' summaries are final and safe to trust.
         const summary = day === today ? undefined : summaries.find(s => s.employee_id === emp.id && s.work_date === day);
         const dayLogs = (logsByEmployeeDay.get(emp.id)?.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
-        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate);
+        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, weekOffDateSet);
         const shiftLabel = isWeekOff(resolved)
           ? 'Week Off'
           : `${resolved.name} (${resolved.start_time.slice(0, 5)}–${resolved.end_time.slice(0, 5)})`;

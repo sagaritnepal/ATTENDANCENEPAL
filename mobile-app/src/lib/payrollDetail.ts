@@ -43,7 +43,7 @@ export function buildEmployeeDayRows(
     const dayLogs = employeeLogs.filter(l => l.punch_time.slice(0, 10) === day);
     if (dayLogs.length > 0) byDate.set(day, dayLogs);
   }
-  applyOvernightShiftCorrection(byDate, employeeLogs, employee, shifts, dailyShiftByDate);
+  applyOvernightShiftCorrection(byDate, employeeLogs, employee, shifts, dailyShiftByDate, paidOffDates);
 
   const today = nepalTodayIso();
   return days.map(day => {
@@ -68,7 +68,7 @@ export function buildEmployeeDayRows(
       const status = day > today ? ('Upcoming' as const) : ('Absent' as const);
       return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status };
     }
-    const resolved = resolveShiftForDate(employee, shifts, day, dailyShiftByDate);
+    const resolved = resolveShiftForDate(employee, shifts, day, dailyShiftByDate, paidOffDates);
     const live = computeDayStatusForResolvedShift(dayLogs, resolved);
     return {
       date: day,
