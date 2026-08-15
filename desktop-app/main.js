@@ -17,9 +17,12 @@
 // configured (Tray icon → Configure Device Bridge…), this PC also pulls
 // attendance from any ZKTeco terminal on its own local network and syncs it
 // to the cloud, running in the background via the system tray even when
-// this window is closed. Closing the window only hides it; Quit from the
-// tray menu is what actually exits (and stops that background sync) — see
-// the isQuitting flag below.
+// this window is closed. On a machine actually running a bridge, closing
+// the window only hides it — Quit from the tray menu is what actually
+// exits (and stops that background sync). On a machine with no bridge
+// configured (most of them — just people viewing the dashboard), closing
+// the window quits the whole app normally instead, since there's nothing
+// worth keeping alive in the background — see the isQuitting flag below.
 //
 // Unlike the dashboard (which is never bundled at all, just loaded live),
 // the bridge logic itself is fetched from admin-web/public/lan-bridge.js at
@@ -215,11 +218,16 @@ function createWindow() {
   win.on('resize', scheduleSave);
   win.on('move', scheduleSave);
 
-  // Closing the window (the X button) only hides it, so background device
-  // sync keeps running — matches how a real background service behaves.
-  // The tray menu's "Quit" is the only thing that actually exits the app.
+  // Closing the window (the X button) only hides it to the tray IF a device
+  // bridge is actually configured on this machine — that's the only reason
+  // to keep a background process alive after the window's gone. On a
+  // machine that's just viewing the dashboard, with no bridge configured,
+  // there's nothing worth keeping alive for, so the close proceeds normally
+  // and the whole app quits like any ordinary program — no silently running
+  // in the background eating battery/RAM for no reason.
   win.on('close', event => {
     if (isQuitting) return;
+    if (!lanBridge?.getStatus().configured) return;
     event.preventDefault();
     win.hide();
   });
@@ -395,10 +403,14 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  // Windows/Linux normally quit here once every window is gone — deliberately
-  // not doing that: the tray icon is the app's real "still alive" indicator
-  // now, since background device sync should keep running even with every
-  // window closed. Quit only ever happens via the tray menu.
+  // Only stay running with no windows open if there's an actual device
+  // bridge configured to keep syncing in the background — otherwise this
+  // behaves like an ordinary app and quits fully once its window is closed,
+  // same as win.on('close') above already decided.
+  if (!lanBridge?.getStatus().configured) {
+    isQuitting = true;
+    app.quit();
+  }
 });
 
 app.on('before-quit', () => {
