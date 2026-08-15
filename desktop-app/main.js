@@ -16,13 +16,9 @@
 // Also embeds the LAN device bridge — if a device bridge credential is
 // configured (Tray icon → Configure Device Bridge…), this PC also pulls
 // attendance from any ZKTeco terminal on its own local network and syncs it
-// to the cloud, running in the background via the system tray even when
-// this window is closed. On a machine actually running a bridge, closing
-// the window only hides it — Quit from the tray menu is what actually
-// exits (and stops that background sync). On a machine with no bridge
-// configured (most of them — just people viewing the dashboard), closing
-// the window quits the whole app normally instead, since there's nothing
-// worth keeping alive in the background — see the isQuitting flag below.
+// to the cloud, for as long as the app is open. Closing the window always
+// fully quits the app (no hiding to the tray to keep syncing in the
+// background) — see the isQuitting flag below.
 //
 // Unlike the dashboard (which is never bundled at all, just loaded live),
 // the bridge logic itself is fetched from admin-web/public/lan-bridge.js at
@@ -48,6 +44,22 @@ const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const Module = require('module');
+
+// Without this, launching the app a second time (double-clicking the
+// Desktop shortcut again, clicking it in the Start Menu while it's already
+// running, etc.) starts a completely independent second copy — its own
+// Electron main process plus its own full set of Chromium sub-processes
+// (GPU, renderer, network service...) on top of the first one, and a third
+// launch stacks a third full copy on top of that. Each individual copy
+// isn't unusually heavy; the multiplying is the problem. This claims a lock
+// so only the FIRST launch actually starts the app — any later launch
+// attempt just asks that first instance to focus its window (below) and
+// then quits immediately instead of spawning anything.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+  process.exit(0);
+}
 
 // Update this the day a real domain replaces the sslip.io placeholder — the
 // whole app is this one line, nothing else needs to change.
@@ -393,6 +405,14 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
     else showMainWindow();
+  });
+
+  // Fires in THIS (the first, already-running) instance whenever a second
+  // launch attempt happens and gets turned away by the lock above — bring
+  // the existing window to the front instead of leaving the user wondering
+  // why clicking the icon again seemingly did nothing.
+  app.on('second-instance', () => {
+    showMainWindow();
   });
 });
 
