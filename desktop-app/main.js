@@ -359,17 +359,33 @@ app.whenReady().then(async () => {
   // fetch below, since that's a background concern only relevant to whoever
   // has actually configured a device bridge.
   createWindow();
-  createTray();
-  setupAutoUpdater();
 
-  await loadLanBridge();
-  if (tray) tray.setContextMenu(buildTrayMenu());
-
-  const saved = loadBridgeConfig();
-  if (saved) {
-    lanBridge.configure(saved.email, saved.password).catch(err => {
-      console.error('[main] auto-starting device bridge failed:', err.message);
-    });
+  // Each of these is independent — a failure in one (e.g. a bad icon path
+  // throwing inside createTray()) must never silently abort the ones after
+  // it the way an unguarded synchronous throw here once did, taking down
+  // the tray icon, the auto-updater, AND the device bridge auto-start
+  // together from a single unrelated failure.
+  try {
+    createTray();
+  } catch (err) {
+    console.error('[main] createTray failed:', err.message);
+  }
+  try {
+    setupAutoUpdater();
+  } catch (err) {
+    console.error('[main] setupAutoUpdater failed:', err.message);
+  }
+  try {
+    await loadLanBridge();
+    if (tray) tray.setContextMenu(buildTrayMenu());
+    const saved = loadBridgeConfig();
+    if (saved) {
+      lanBridge.configure(saved.email, saved.password).catch(err => {
+        console.error('[main] auto-starting device bridge failed:', err.message);
+      });
+    }
+  } catch (err) {
+    console.error('[main] device bridge startup failed:', err.message);
   }
 
   app.on('activate', () => {

@@ -1,6 +1,6 @@
 {
   "name": "attendance-nepal-desktop",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Attendance Nepal admin dashboard as a Windows desktop app",
   "main": "main.js",
   "private": true,
@@ -31,7 +31,9 @@
       "preload-settings.js",
       "settings.html",
       "settings-renderer.js",
-      "package.json"
+      "package.json",
+      "build/icon.png",
+      "build/icon.ico"
     ],
     "win": {
       "target": [
