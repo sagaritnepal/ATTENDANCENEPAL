@@ -277,6 +277,13 @@ function buildTrayMenu() {
     { label: 'Open Dashboard', click: showMainWindow },
     { label: bridgeLabel, enabled: false },
     { label: 'Configure Device Bridge…', click: openSettingsWindow },
+    {
+      label: 'Open DevTools (troubleshooting)',
+      click: () => {
+        showMainWindow();
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.openDevTools({ mode: 'detach' });
+      },
+    },
     { type: 'separator' },
     {
       label: 'Quit',
