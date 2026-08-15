@@ -218,20 +218,14 @@ function createWindow() {
   win.on('resize', scheduleSave);
   win.on('move', scheduleSave);
 
-  // Closing the window (the X button) only hides it to the tray IF a device
-  // bridge is actually configured on this machine — that's the only reason
-  // to keep a background process alive after the window's gone. On a
-  // machine that's just viewing the dashboard, with no bridge configured,
-  // there's nothing worth keeping alive for, so the close proceeds normally
-  // and the whole app quits like any ordinary program — no silently running
-  // in the background eating battery/RAM for no reason.
-  win.on('close', event => {
-    if (isQuitting) return;
-    if (!lanBridge?.getStatus().configured) return;
-    event.preventDefault();
-    win.hide();
-  });
-
+  // Closing the window (the X button) always fully quits the app now —
+  // deliberately NOT hiding to the tray to keep a background process alive.
+  // That was tried (conditional on whether a device bridge was configured)
+  // but even that traded away something the user cares more about: not
+  // having this sit in memory eating RAM/battery after they think they've
+  // closed it. If background device-bridge sync while the window is closed
+  // is ever wanted again, it needs to be an explicit opt-in the user
+  // chooses, not a default behavior imposed on everyone.
   mainWindow = win;
   return win;
 }
@@ -403,14 +397,11 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  // Only stay running with no windows open if there's an actual device
-  // bridge configured to keep syncing in the background — otherwise this
-  // behaves like an ordinary app and quits fully once its window is closed,
-  // same as win.on('close') above already decided.
-  if (!lanBridge?.getStatus().configured) {
-    isQuitting = true;
-    app.quit();
-  }
+  // Always quit once the window is closed — see the comment in
+  // createWindow() for why this app doesn't try to keep running in the
+  // background/tray after that.
+  isQuitting = true;
+  app.quit();
 });
 
 app.on('before-quit', () => {
