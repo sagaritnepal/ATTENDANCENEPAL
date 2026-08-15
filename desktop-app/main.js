@@ -170,7 +170,21 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
+      // Explicit, not the implicit default — makes it unambiguous that
+      // Supabase's login session (stored via localStorage by its SDK) is
+      // meant to survive between app restarts, the same way it would in a
+      // real browser tab, instead of relying on nobody ever changing this.
+      partition: 'persist:dashboard',
+      // NOT sandboxed: on some Windows setups, Chromium's renderer sandbox
+      // has been observed interfering with a renderer's ability to persist
+      // its own storage partition to disk between process restarts — which
+      // is exactly the "have to log in every single time" symptom this was
+      // causing. The real security boundary for a website-wrapper app like
+      // this is contextIsolation + nodeIntegration: false above (stops the
+      // loaded site from ever reaching Node/the filesystem) — sandbox is an
+      // extra hardening layer on top of that, not the boundary itself, so
+      // dropping it here doesn't meaningfully weaken anything.
+      sandbox: false,
     },
   });
 
