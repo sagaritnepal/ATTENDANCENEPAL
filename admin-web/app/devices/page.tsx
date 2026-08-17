@@ -141,7 +141,7 @@ export default function DevicesPage() {
     setFormError(null);
     const { error } = await supabase.from('devices').insert({
       name: form.name,
-      branch_id: form.branch_id,
+      branch_id: form.branch_id || null,
       ip_address: form.ip_address,
       port: form.port,
       serial_number: form.serial_number,
@@ -167,7 +167,7 @@ export default function DevicesPage() {
     setEditingDevice(d);
     setEditForm({
       name: d.name,
-      branch_id: d.branch_id,
+      branch_id: d.branch_id ?? '',
       ip_address: d.ip_address,
       port: d.port,
       serial_number: d.serial_number ?? '',
@@ -184,7 +184,7 @@ export default function DevicesPage() {
       .from('devices')
       .update({
         name: editForm.name,
-        branch_id: editForm.branch_id,
+        branch_id: editForm.branch_id || null,
         ip_address: editForm.ip_address,
         port: editForm.port,
         serial_number: editForm.serial_number || null,
@@ -338,9 +338,9 @@ export default function DevicesPage() {
             <h3 className="mb-4 text-lg font-semibold text-ink">Add Device</h3>
             <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
             <input required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-            <label className="mb-1 block text-xs font-medium text-slate-600">Branch</label>
-            <select required value={form.branch_id} onChange={e => setForm(f => ({ ...f, branch_id: e.target.value }))} className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
-              <option value="">Select a branch…</option>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Branch (optional)</label>
+            <select value={form.branch_id} onChange={e => setForm(f => ({ ...f, branch_id: e.target.value }))} className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+              <option value="">Unassigned</option>
               {branches.map(b => (
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}
@@ -387,14 +387,13 @@ export default function DevicesPage() {
               onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
               className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
             />
-            <label className="mb-1 block text-xs font-medium text-slate-600">Branch</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Branch (optional)</label>
             <select
-              required
               value={editForm.branch_id}
               onChange={e => setEditForm(f => ({ ...f, branch_id: e.target.value }))}
               className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
             >
-              <option value="">Select a branch…</option>
+              <option value="">Unassigned</option>
               {branches.map(b => (
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}

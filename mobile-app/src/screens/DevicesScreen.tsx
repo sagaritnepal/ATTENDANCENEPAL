@@ -97,15 +97,15 @@ export default function DevicesScreen() {
   }
 
   async function handleCreate() {
-    if (!form.name.trim() || !form.branch_id || !form.serial_number.trim()) {
-      setFormError('Name, branch, and serial number are required.');
+    if (!form.name.trim() || !form.serial_number.trim()) {
+      setFormError('Name and serial number are required.');
       return;
     }
     setSaving(true);
     setFormError(null);
     const { error } = await supabase.from('devices').insert({
       name: form.name,
-      branch_id: form.branch_id,
+      branch_id: form.branch_id || null,
       ip_address: form.ip_address,
       port: Number(form.port) || 4370,
       serial_number: form.serial_number,
@@ -215,10 +215,10 @@ export default function DevicesScreen() {
             <Text style={styles.formTitle}>Add Device</Text>
             <Text style={styles.formLabel}>Name</Text>
             <TextInput style={styles.input} value={form.name} onChangeText={v => setForm(f => ({ ...f, name: v }))} />
-            <Text style={styles.formLabel}>Branch</Text>
+            <Text style={styles.formLabel}>Branch (optional)</Text>
             <TouchableOpacity style={styles.input} onPress={() => setBranchPickerOpen(true)}>
               <Text style={{ color: form.branch_id ? colors.ink : colors.slate400 }}>
-                {branches.find(b => b.id === form.branch_id)?.name ?? 'Select a branch…'}
+                {branches.find(b => b.id === form.branch_id)?.name ?? 'Unassigned'}
               </Text>
             </TouchableOpacity>
             <Text style={styles.formLabel}>IP address</Text>
@@ -244,8 +244,8 @@ export default function DevicesScreen() {
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setBranchPickerOpen(false)}>
           <View style={styles.modalSheet}>
             <FlatList
-              data={branches}
-              keyExtractor={item => item.id}
+              data={[{ id: '', name: 'Unassigned' }, ...branches]}
+              keyExtractor={item => item.id || 'unassigned'}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.modalOption}

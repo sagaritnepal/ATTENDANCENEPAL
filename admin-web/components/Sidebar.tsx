@@ -10,6 +10,18 @@ type NavItem = { href: string; label: string; icon: (props: IconProps) => JSX.El
 const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: HomeIcon, adminOnly: false },
   {
+    href: '/attendance',
+    label: 'Attendance',
+    icon: ClockIcon,
+    adminOnly: false,
+    children: [
+      { href: '/calendar', label: 'Calendar', icon: CalendarViewIcon, adminOnly: false },
+      { href: '/leave', label: 'Leave', icon: LeaveIcon, adminOnly: false },
+      { href: '/corrections', label: 'Corrections', icon: CorrectionIcon, adminOnly: false },
+      { href: '/week-off', label: 'Holidays', icon: CalendarViewIcon, adminOnly: true },
+    ],
+  },
+  {
     href: '/employees',
     label: 'Employees',
     icon: UsersIcon,
@@ -18,18 +30,6 @@ const NAV_ITEMS: NavItem[] = [
       { href: '/shifts', label: 'Shifts', icon: CalendarIcon, adminOnly: true },
       { href: '/branches', label: 'Branch/Depart', icon: BranchIcon, adminOnly: true },
       { href: '/employees?filter=Resigned', label: 'Resigned', icon: ResignedIcon, adminOnly: true },
-    ],
-  },
-  {
-    href: '/attendance',
-    label: 'Attendance',
-    icon: ClockIcon,
-    adminOnly: false,
-    children: [
-      { href: '/leave', label: 'Leave', icon: LeaveIcon, adminOnly: false },
-      { href: '/corrections', label: 'Corrections', icon: CorrectionIcon, adminOnly: false },
-      { href: '/calendar', label: 'Calendar', icon: CalendarViewIcon, adminOnly: false },
-      { href: '/week-off', label: 'Week-off', icon: CalendarViewIcon, adminOnly: true },
     ],
   },
   { href: '/payroll', label: 'Payroll', icon: CardIcon, adminOnly: false },
