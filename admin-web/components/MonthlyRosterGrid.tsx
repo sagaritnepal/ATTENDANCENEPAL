@@ -217,16 +217,22 @@ export default function MonthlyRosterGrid() {
                               value={value}
                               disabled={isSaving}
                               onChange={e => handleCellChange(emp.id, date, e.target.value)}
-                              title={shiftById.get(value)?.name}
-                              className={`w-14 rounded-md border px-0.5 py-1 text-[11px] shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50 ${cellTone(
+                              title={
+                                shiftById.get(value)
+                                  ? `${shiftById.get(value)!.name} (${shiftById.get(value)!.start_time.slice(0, 5)}–${shiftById
+                                      .get(value)!
+                                      .end_time.slice(0, 5)})`
+                                  : undefined
+                              }
+                              className={`w-24 rounded-md border px-1 py-1 text-[11px] shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50 ${cellTone(
                                 value
                               )} ${justSaved ? 'ring-2 ring-good' : ''}`}
                             >
                               <option value={UNSET}>—</option>
-                              <option value={WEEK_OFF_VALUE}>Off</option>
+                              <option value={WEEK_OFF_VALUE}>Week Off</option>
                               {templateShifts.map(s => (
                                 <option key={s.id} value={s.id}>
-                                  {s.name} ({s.start_time.slice(0, 5)}–{s.end_time.slice(0, 5)})
+                                  {s.name} {s.start_time.slice(0, 2)}-{s.end_time.slice(0, 2)}
                                 </option>
                               ))}
                             </select>
