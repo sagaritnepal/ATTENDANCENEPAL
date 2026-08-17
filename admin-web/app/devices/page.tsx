@@ -203,9 +203,10 @@ export default function DevicesPage() {
     <AppShell title="Biometric Sync Devices">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-2xl text-sm text-slate-500">
-          Biometric terminal integrations, synced automatically both ways over the internet — no manual sync needed. A punch from a
-          fingerprint the app doesn&apos;t recognize yet creates a placeholder employee right away; renaming an employee here pushes
-          that name back down to every device.
+          Biometric terminal integrations, synced automatically both ways — no manual sync needed. Renaming an employee here pushes
+          that name back down to every device. For a cloud-connected device, a punch from a fingerprint the app doesn&apos;t
+          recognize yet creates a placeholder employee right away; for a LAN-bridge device, register the employee first and set
+          their Biometric/Registration ID to match, or its punches are skipped rather than recorded.
         </p>
         <div className="flex gap-2">
           <button onClick={reload} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
