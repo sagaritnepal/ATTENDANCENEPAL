@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import NepaliDate from 'nepali-date-converter';
 import { supabase } from '@/lib/supabase';
 import Avatar from '@/components/Avatar';
-import { stepWeek, weekRange } from '@/lib/calendar';
+import { buildMonth, monthDateRange, stepWeek, weekRange, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { Employee, Shift } from '@/lib/types';
 
@@ -43,6 +43,15 @@ function bsWeekLabel(startKey: string, endKey: string): string {
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
+function parseAdKey(value: string): CalendarAnchor {
+  const [y, m, d] = value.split('-').map(Number);
+  return { year: y, month: m - 1, day: d };
+}
+
+function weekdayOf(date: string): number {
+  return new Date(date + 'T00:00:00Z').getUTCDay();
+}
+
 export default function WeeklyRosterGrid() {
   const { system } = useCalendarSystem();
   const [anchor, setAnchor] = useState(todayIso);
@@ -53,11 +62,41 @@ export default function WeeklyRosterGrid() {
   const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
   const [flashKeys, setFlashKeys] = useState<Set<string>>(new Set());
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [copyModalOpen, setCopyModalOpen] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const [copyDone, setCopyDone] = useState(false);
 
   const week = useMemo(() => weekRange(anchor), [anchor]);
   const templateShifts = useMemo(() => shifts.filter(s => s.employee_id === null), [shifts]);
   const shiftById = useMemo(() => new Map(templateShifts.map(s => [s.id, s])), [templateShifts]);
   const today = todayIso();
+
+  // "The month" this bulk-copy fills the rest of — whichever AD or BS month
+  // (matching the active toggle) the currently viewed week's first day
+  // falls in, same boundary Monthly Roster itself uses for a month.
+  const monthAnchor = useMemo(() => parseAdKey(week.start), [week.start]);
+  const monthRange = useMemo(() => monthDateRange(system, monthAnchor), [system, monthAnchor]);
+  const monthLabel = useMemo(() => buildMonth(system, monthAnchor).label, [system, monthAnchor]);
+  const remainingDates = useMemo(() => {
+    const weekSet = new Set(week.dates);
+    const out: string[] = [];
+    const cur = new Date(monthRange.start + 'T00:00:00Z');
+    const end = new Date(monthRange.end + 'T00:00:00Z');
+    while (cur <= end) {
+      const key = cur.toISOString().slice(0, 10);
+      if (!weekSet.has(key)) out.push(key);
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+    return out;
+  }, [monthRange, week.dates]);
+  // Only employees with at least one real pick (shift or Week Off) this
+  // week have anything to propagate — an all-unset row copies nothing.
+  const copyCandidateCount = useMemo(
+    () => employees.filter(emp => week.dates.some(date => currentValue(emp.id, date) !== UNSET)).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [employees, week.dates, rosterRows]
+  );
 
   function reload() {
     setLoading(true);
@@ -156,6 +195,49 @@ export default function WeeklyRosterGrid() {
     flash(keys);
   }
 
+  // Takes this week's Sun-Sat pattern (per employee) and writes it into
+  // every remaining day of the month it falls in, matched by weekday — Monday
+  // this week's pick lands on every other Monday left in the month, and so
+  // on. Only days where the source week actually has a pick propagate; an
+  // employee's untouched (—) weekday leaves whatever's already on the
+  // target days alone rather than clearing it. Stays a real, per-day write
+  // to employee_daily_shifts (no separate "recurring template" concept) —
+  // any single day can still be hand-edited afterward, same as always.
+  async function performCopyToMonth() {
+    setCopying(true);
+    setCopyError(null);
+    const upserts: { employee_id: string; work_date: string; shift_id: string | null }[] = [];
+    for (const emp of employees) {
+      const byWeekday = new Map<number, string | null>();
+      week.dates.forEach((date, i) => {
+        const value = currentValue(emp.id, date);
+        if (value !== UNSET) byWeekday.set(i, value === WEEK_OFF_VALUE ? null : value);
+      });
+      if (byWeekday.size === 0) continue;
+      for (const date of remainingDates) {
+        const wd = byWeekday.get(weekdayOf(date));
+        if (wd !== undefined) upserts.push({ employee_id: emp.id, work_date: date, shift_id: wd });
+      }
+    }
+    if (upserts.length === 0) {
+      setCopying(false);
+      setCopyModalOpen(false);
+      return;
+    }
+    const { error } = await supabase.from('employee_daily_shifts').upsert(upserts, { onConflict: 'employee_id,work_date' });
+    setCopying(false);
+    if (error) {
+      setCopyError(error.message);
+      return;
+    }
+    // Every written date is outside the currently displayed week (see
+    // remainingDates), so nothing on screen changes — no need to touch
+    // rosterRows or reload for a view that can't show those dates anyway.
+    setCopyModalOpen(false);
+    setCopyDone(true);
+    setTimeout(() => setCopyDone(false), 3000);
+  }
+
   function cellTone(value: string) {
     if (value === WEEK_OFF_VALUE) return 'border-warning/30 bg-warning-bg text-warning-text font-semibold';
     if (value === UNSET) return 'border-slate-200 text-slate-400';
@@ -176,7 +258,19 @@ export default function WeeklyRosterGrid() {
             →
           </button>
         </div>
-        <span className="text-xs text-slate-400">Autosaves as you pick — no separate save step</span>
+        <div className="flex items-center gap-3">
+          {copyDone && <span className="text-xs font-semibold text-good-text">✓ Copied to rest of {monthLabel}</span>}
+          <button
+            type="button"
+            onClick={() => setCopyModalOpen(true)}
+            disabled={copyCandidateCount === 0 || remainingDates.length === 0}
+            title={remainingDates.length === 0 ? 'This week already covers the whole month' : undefined}
+            className="rounded-md border border-accent/30 bg-white px-2.5 py-1.5 text-xs font-semibold text-accent shadow-sm hover:bg-accent/5 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            ⧉ Copy this week to rest of {monthLabel}
+          </button>
+          <span className="hidden text-xs text-slate-400 sm:inline">Autosaves as you pick</span>
+        </div>
       </div>
 
       <div className="p-4 sm:p-6">
@@ -270,6 +364,40 @@ export default function WeeklyRosterGrid() {
 
         {saveError && <p className="mt-3 text-sm text-critical">Could not save: {saveError}</p>}
       </div>
+
+      {copyModalOpen && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+            <h3 className="mb-2 text-lg font-semibold text-ink">Copy this week to the rest of {monthLabel}?</h3>
+            <p className="mb-4 text-sm text-slate-600">
+              {copyCandidateCount} employee{copyCandidateCount === 1 ? '' : 's'} with a pick this week will get that same
+              Sun–Sat pattern applied to every other day in {monthLabel} ({remainingDates.length} day
+              {remainingDates.length === 1 ? '' : 's'}), matched by weekday. A day this week is left blank (—) leaves any
+              existing pick on the matching days untouched — this only fills in, it never clears. You can still hand-edit
+              any single day afterward.
+            </p>
+            {copyError && <p className="mb-3 text-sm text-critical">Could not copy: {copyError}</p>}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCopyModalOpen(false)}
+                disabled={copying}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={performCopyToMonth}
+                disabled={copying}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+              >
+                {copying ? 'Copying…' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
