@@ -230,7 +230,7 @@ function PayrollEmployeeDetailView() {
             {employee.name} — {monthLabel} Breakdown
           </h2>
 
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-gradient-to-r from-accent/10 via-accent/5 to-transparent p-4 shadow-sm sm:p-6">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-gradient-to-r from-accent/10 via-accent/5 to-transparent p-4 shadow-sm sm:p-6 print:hidden">
             <div className="flex items-center gap-3">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-base font-bold text-white">
                 {employee.name
@@ -255,7 +255,7 @@ function PayrollEmployeeDetailView() {
             </div>
           </div>
 
-          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 print:hidden">
             <div className="rounded-xl bg-accent/10 p-3 shadow-sm ring-1 ring-inset ring-accent/10">
               <span className="text-xs font-medium text-accent/80">My Salary</span>
               <div className="mt-1 text-base font-bold text-accent">{Math.round(dayTotals.mySalary).toLocaleString()}</div>

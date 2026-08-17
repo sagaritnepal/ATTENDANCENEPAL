@@ -15,12 +15,29 @@ html, body {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
-  /* Every exported table gets visible gridlines — much easier to read as a
+  /* Landscape + tight margins: these tables run wide (8-13 columns) —
+     portrait forced most of them onto a second page no matter how small
+     the text got. */
+  @page {
+    size: landscape;
+    margin: 10mm;
+  }
+  /* Every exported table gets visible gridlines, and shrinks down to
+     something that actually fits a page — much easier to read as a
      printed/PDF report than the screen's whitespace-only row separation. */
   table {
     border-collapse: collapse !important;
+    font-size: 9px !important;
+    width: 100% !important;
   }
   th, td {
     border: 1px solid #cbd5e1 !important;
+    padding: 2px 4px !important;
+    white-space: nowrap !important;
+  }
+  /* Row striping/hover states rely on screen-only inline JS state or take
+     up visual space meant for scanning on a monitor, not a printed page. */
+  tr {
+    break-inside: avoid;
   }
 }

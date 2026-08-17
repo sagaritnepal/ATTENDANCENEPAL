@@ -476,7 +476,7 @@ export default function PayrollPage() {
 
   return (
     <AppShell title="Attendance-based Payroll Controller">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 print:hidden">
         <div className="rounded-xl bg-warning-bg p-3 shadow-sm ring-1 ring-inset ring-warning/10">
           <span className="text-xs font-medium text-warning-text/80">Overtime Salary</span>
           <div className="mt-1 text-base font-bold text-warning-text">
