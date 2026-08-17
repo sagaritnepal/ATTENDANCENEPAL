@@ -121,10 +121,6 @@ export default function RegisterPage() {
         >
           {submitting ? 'Creating account…' : 'Create account'}
         </button>
-        <p className="mt-2 text-center text-[11px] leading-snug text-slate-500">
-          Creating an account here sets up a brand-new company workspace, and you become its admin. If your company
-          already uses this system, ask your admin to create your employee login instead.
-        </p>
         <p className="mt-2 text-center text-sm text-slate-600">
           Already have an account?{' '}
           <Link href="/login" className="font-medium text-accent hover:underline">
