@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import Avatar from '@/components/Avatar';
 import { buildMonth, stepAnchor, todayAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { Employee, Shift } from '@/lib/types';
@@ -17,6 +18,8 @@ const WEEK_OFF_VALUE = 'week-off';
 
 type RosterRow = { employee_id: string; work_date: string; shift_id: string | null };
 
+const todayIso = () => new Date().toISOString().slice(0, 10);
+
 /** Same grid/data model as WeeklyRosterGrid (employee_daily_shifts, one exact
  * date per column) just spanning a whole AD/BS month instead of one week —
  * filling in a month of exceptions (someone covering nights all month, a
@@ -28,14 +31,16 @@ export default function MonthlyRosterGrid() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [rosterRows, setRosterRows] = useState<RosterRow[]>([]);
   const [loading, setLoading] = useState(true);
-  // "employeeId|date" -> a real shift_id, WEEK_OFF_VALUE, or UNSET.
-  const [pending, setPending] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [flashKey, setFlashKey] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const month = useMemo(() => buildMonth(system, anchor), [system, anchor]);
-  const dates = useMemo(() => month.weeks.flat().filter(c => c.inMonth).map(c => c.adKey), [month]);
+  const monthCells = useMemo(() => month.weeks.flat().filter(c => c.inMonth), [month]);
+  const dates = useMemo(() => monthCells.map(c => c.adKey), [monthCells]);
   const templateShifts = useMemo(() => shifts.filter(s => s.employee_id === null), [shifts]);
+  const shiftById = useMemo(() => new Map(templateShifts.map(s => [s.id, s])), [templateShifts]);
+  const today = todayIso();
 
   function reload() {
     if (dates.length === 0) return;
@@ -56,160 +61,131 @@ export default function MonthlyRosterGrid() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(reload, [dates.join(',')]);
 
-  useEffect(() => {
-    setPending({});
-    setSaveError(null);
-  }, [dates.join(',')]);
-
   function currentValue(employeeId: string, date: string): string {
-    const key = `${employeeId}|${date}`;
-    if (key in pending) return pending[key];
     const row = rosterRows.find(r => r.employee_id === employeeId && r.work_date === date);
     if (!row) return UNSET;
     return row.shift_id === null ? WEEK_OFF_VALUE : row.shift_id;
   }
 
-  function setCell(employeeId: string, date: string, value: string) {
-    setPending(p => ({ ...p, [`${employeeId}|${date}`]: value }));
+  async function handleCellChange(employeeId: string, date: string, value: string) {
+    const key = `${employeeId}|${date}`;
+    setSavingKey(key);
+    setSaveError(null);
+    const { error } =
+      value === UNSET
+        ? await supabase.from('employee_daily_shifts').delete().eq('employee_id', employeeId).eq('work_date', date)
+        : await supabase
+            .from('employee_daily_shifts')
+            .upsert({ employee_id: employeeId, work_date: date, shift_id: value === WEEK_OFF_VALUE ? null : value }, { onConflict: 'employee_id,work_date' });
+    setSavingKey(null);
+    if (error) {
+      setSaveError(error.message);
+      return;
+    }
+    setRosterRows(rows => {
+      const rest = rows.filter(r => !(r.employee_id === employeeId && r.work_date === date));
+      return value === UNSET ? rest : [...rest, { employee_id: employeeId, work_date: date, shift_id: value === WEEK_OFF_VALUE ? null : value }];
+    });
+    setFlashKey(key);
+    setTimeout(() => setFlashKey(k => (k === key ? null : k)), 900);
   }
 
-  const pendingCount = Object.keys(pending).length;
-
-  async function handleSave() {
-    setSaving(true);
-    setSaveError(null);
-
-    const toUpsert: { employee_id: string; work_date: string; shift_id: string | null }[] = [];
-    const toDelete: { employee_id: string; work_date: string }[] = [];
-    for (const [key, value] of Object.entries(pending)) {
-      const [employeeId, date] = key.split('|');
-      if (value === UNSET) toDelete.push({ employee_id: employeeId, work_date: date });
-      else toUpsert.push({ employee_id: employeeId, work_date: date, shift_id: value === WEEK_OFF_VALUE ? null : value });
-    }
-
-    if (toUpsert.length > 0) {
-      const { error } = await supabase.from('employee_daily_shifts').upsert(toUpsert, { onConflict: 'employee_id,work_date' });
-      if (error) {
-        setSaving(false);
-        setSaveError(error.message);
-        return;
-      }
-    }
-    for (const d of toDelete) {
-      const { error } = await supabase
-        .from('employee_daily_shifts')
-        .delete()
-        .eq('employee_id', d.employee_id)
-        .eq('work_date', d.work_date);
-      if (error) {
-        setSaving(false);
-        setSaveError(error.message);
-        return;
-      }
-    }
-
-    setSaving(false);
-    setPending({});
-    reload();
+  function cellTone(value: string) {
+    if (value === WEEK_OFF_VALUE) return 'border-warning/30 bg-warning-bg text-warning-text font-semibold';
+    if (value === UNSET) return 'border-slate-200 text-slate-400';
+    return 'border-accent/30 bg-accent/5 text-ink font-medium';
   }
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-center gap-3">
-        <button onClick={() => setAnchor(a => stepAnchor(system, a, -1))} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
-          ←
-        </button>
-        <span className="text-sm font-semibold text-ink">{month.label}</span>
-        <button onClick={() => setAnchor(a => stepAnchor(system, a, 1))} className="rounded-md border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50">
-          →
-        </button>
-        <button onClick={() => setAnchor(todayAnchor())} className="text-xs font-medium text-accent hover:underline">
-          Today
-        </button>
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-accent/10 via-accent/5 to-transparent px-4 py-3 sm:px-6">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setAnchor(a => stepAnchor(system, a, -1))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-slate-500 shadow-sm hover:bg-slate-50">
+            ←
+          </button>
+          <span className="text-sm font-semibold text-ink">{month.label}</span>
+          <button onClick={() => setAnchor(a => stepAnchor(system, a, 1))} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-slate-500 shadow-sm hover:bg-slate-50">
+            →
+          </button>
+          <button onClick={() => setAnchor(todayAnchor())} className="text-xs font-medium text-accent hover:underline">
+            Today
+          </button>
+        </div>
+        <span className="text-xs text-slate-400">Autosaves as you pick — no separate save step</span>
       </div>
 
-      {loading ? (
-        <p className="text-center text-sm text-slate-400">Loading…</p>
-      ) : employees.length === 0 ? (
-        <p className="text-center text-sm text-slate-400">No active employees.</p>
-      ) : templateShifts.length === 0 ? (
-        <p className="text-center text-sm text-slate-400">
-          Create at least one shift above first (e.g. Day Duty, Night Duty, Day &amp; Night Duty) — this roster assigns one of
-          those to each employee per day.
-        </p>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                <th className="sticky left-0 z-10 whitespace-nowrap bg-slate-50 px-3 py-2 font-medium">Employee</th>
-                {month.weeks.flat().filter(c => c.inMonth).map(cell => (
-                  <th key={cell.adKey} className="whitespace-nowrap px-1 py-2 text-center font-medium">
-                    {WEEKDAY_LABELS[new Date(cell.adKey + 'T00:00:00Z').getUTCDay()]}
-                    <div className="text-[11px] font-normal normal-case text-slate-400">{cell.displayDay}</div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {employees.map((emp, i) => {
-                const rowBg = i % 2 === 1 ? 'bg-slate-50' : 'bg-white';
-                return (
-                  <tr key={emp.id} className="border-b border-slate-100 last:border-0">
-                    <td className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 font-medium text-ink ${rowBg}`}>{emp.name}</td>
-                    {dates.map(date => {
-                      const value = currentValue(emp.id, date);
-                      const dirty = `${emp.id}|${date}` in pending;
-                      return (
-                        <td key={date} className={`px-0.5 py-1.5 text-center ${rowBg}`}>
-                          <select
-                            value={value}
-                            onChange={e => setCell(emp.id, date, e.target.value)}
-                            title={templateShifts.find(s => s.id === value)?.name}
-                            className={`w-14 rounded-md border px-0.5 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-accent/30 ${
-                              dirty ? 'border-accent bg-accent/5' : value === UNSET ? 'border-slate-200 text-slate-400' : 'border-slate-200'
-                            }`}
-                          >
-                            <option value={UNSET}>—</option>
-                            <option value={WEEK_OFF_VALUE}>Off</option>
-                            {templateShifts.map(s => (
-                              <option key={s.id} value={s.id}>
-                                {s.name}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {saveError && <p className="mt-3 text-sm text-critical">{saveError}</p>}
-
-      {pendingCount > 0 && (
-        <div className="mt-4 flex items-center justify-between rounded-lg border border-accent/30 bg-accent/5 px-4 py-3">
-          <span className="text-sm font-medium text-ink">
-            {pendingCount} unsaved change{pendingCount === 1 ? '' : 's'}
-          </span>
-          <div className="flex gap-2">
-            <button onClick={() => setPending({})} className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100">
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
-            >
-              {saving ? 'Saving…' : 'Save changes'}
-            </button>
+      <div className="p-4 sm:p-6">
+        {loading ? (
+          <p className="text-center text-sm text-slate-400">Loading…</p>
+        ) : employees.length === 0 ? (
+          <p className="text-center text-sm text-slate-400">No active employees.</p>
+        ) : templateShifts.length === 0 ? (
+          <p className="text-center text-sm text-slate-400">
+            Create at least one shift above first (e.g. Day Duty, Night Duty, Day &amp; Night Duty) — this roster assigns one of
+            those to each employee per day.
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <th className="sticky left-0 z-10 whitespace-nowrap bg-slate-50 px-3 py-2.5 font-medium">Employee</th>
+                  {monthCells.map(cell => (
+                    <th key={cell.adKey} className={`whitespace-nowrap px-1 py-2.5 text-center font-medium ${cell.adKey === today ? 'bg-accent/10 text-accent' : ''}`}>
+                      {WEEKDAY_LABELS[new Date(cell.adKey + 'T00:00:00Z').getUTCDay()]}
+                      <div className="text-[11px] font-normal normal-case text-slate-400">{cell.displayDay}</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {employees.map((emp, i) => {
+                  const rowBg = i % 2 === 1 ? 'bg-slate-50' : 'bg-white';
+                  return (
+                    <tr key={emp.id} className="border-b border-slate-100 last:border-0">
+                      <td className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 ${rowBg}`}>
+                        <div className="flex items-center gap-2">
+                          <Avatar name={emp.name} className="h-6 w-6 text-[10px]" />
+                          <span className="truncate font-medium text-ink">{emp.name}</span>
+                        </div>
+                      </td>
+                      {dates.map(date => {
+                        const value = currentValue(emp.id, date);
+                        const key = `${emp.id}|${date}`;
+                        const isSaving = savingKey === key;
+                        const justSaved = flashKey === key;
+                        return (
+                          <td key={date} className={`px-0.5 py-1.5 text-center ${date === today ? 'bg-accent/5' : rowBg}`}>
+                            <select
+                              value={value}
+                              disabled={isSaving}
+                              onChange={e => handleCellChange(emp.id, date, e.target.value)}
+                              title={shiftById.get(value)?.name}
+                              className={`w-14 rounded-md border px-0.5 py-1 text-[11px] shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50 ${cellTone(
+                                value
+                              )} ${justSaved ? 'ring-2 ring-good' : ''}`}
+                            >
+                              <option value={UNSET}>—</option>
+                              <option value={WEEK_OFF_VALUE}>Off</option>
+                              {templateShifts.map(s => (
+                                <option key={s.id} value={s.id}>
+                                  {s.name}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        </div>
-      )}
+        )}
+
+        {saveError && <p className="mt-3 text-sm text-critical">Could not save: {saveError}</p>}
+      </div>
     </div>
   );
 }

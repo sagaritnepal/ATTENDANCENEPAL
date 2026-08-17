@@ -1,5 +1,5 @@
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '../types';
-import { applyOvernightShiftCorrection, computeDayStatusForResolvedShift, nepalTodayIso, resolveShiftForDate, type DailyShiftByDate } from './shift';
+import { applyOvernightShiftCorrection, computeDayStatusForResolvedShift, isWeekOff, nepalTodayIso, resolveShiftForDate, type DailyShiftByDate } from './shift';
 
 export type DayDetail = {
   date: string;
@@ -62,7 +62,11 @@ export function buildEmployeeDayRows(
     }
     const dayLogs = (byDate.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
     if (dayLogs.length === 0) {
-      if (paidOffDates?.has(day)) {
+      // A per-employee Week Off picked on the Weekly/Monthly Roster (an
+      // employee_daily_shifts row with shift_id null) beats a company-wide
+      // Week-off date — check it the same way a day WITH punches already
+      // does below via resolveShiftForDate(), instead of only paidOffDates.
+      if (paidOffDates?.has(day) || isWeekOff(resolveShiftForDate(employee, shifts, day, dailyShiftByDate, paidOffDates))) {
         return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status: 'Week Off' as const, paidOff: true };
       }
       const status = day > today ? ('Upcoming' as const) : ('Absent' as const);

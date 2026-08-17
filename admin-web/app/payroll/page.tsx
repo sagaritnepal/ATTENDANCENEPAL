@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
+import Avatar from '@/components/Avatar';
 import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import {
   buildPeriodOptions,
@@ -18,6 +19,7 @@ import {
   applyOvernightShiftCorrection,
   computeDayStatusForResolvedShift,
   formatHoursMinutes,
+  isWeekOff,
   nepalTodayIso,
   resolveShiftForDate,
   type DailyShiftByDate,
@@ -258,11 +260,15 @@ export default function PayrollPage() {
         }
         const dayLogs = (logsByEmployeeDay.get(emp.id)?.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
         if (dayLogs.length === 0) {
-          // No punch, but still a paid day: company Week-off or approved
-          // Leave. Tracked separately from `hours`/`days` (which stay a pure
-          // worked-attendance count) and added as its own credit in
-          // calculatedSalary() below.
-          if (weekOffDateSet.has(day) || leaveByEmployee.get(emp.id)?.has(day)) {
+          // No punch, but still a paid day: company Week-off, a per-employee
+          // Week Off picked on the Weekly/Monthly Roster (checked via the
+          // same resolveShiftForDate() a day WITH punches already uses
+          // below — its own doc comment explains why a roster row wins over
+          // the company-wide date), or approved Leave. Tracked separately
+          // from `hours`/`days` (which stay a pure worked-attendance count)
+          // and added as its own credit in calculatedSalary() below.
+          const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, weekOffDateSet);
+          if (isWeekOff(resolved) || leaveByEmployee.get(emp.id)?.has(day)) {
             row.paidOffDays += 1;
           }
           continue;
@@ -776,34 +782,6 @@ export default function PayrollPage() {
         </div>
       </div>
     </AppShell>
-  );
-}
-
-const AVATAR_TONES = [
-  'bg-accent/15 text-accent',
-  'bg-info-bg text-info-text',
-  'bg-warning-bg text-warning-text',
-  'bg-purple-50 text-purple-700',
-  'bg-critical-bg text-critical-text',
-];
-
-function avatarTone(name: string) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_TONES[hash % AVATAR_TONES.length];
-}
-
-function Avatar({ name }: { name: string }) {
-  const initials = name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(part => part[0]!.toUpperCase())
-    .join('');
-  return (
-    <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${avatarTone(name)}`}>
-      {initials || '?'}
-    </span>
   );
 }
 

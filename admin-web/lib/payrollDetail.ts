@@ -2,6 +2,7 @@ import type { AttendanceLog, Employee, PayrollSummary, Shift } from './types';
 import {
   applyOvernightShiftCorrection,
   computeDayStatusForResolvedShift,
+  isWeekOff,
   nepalTodayIso,
   resolveShiftForDate,
   type DailyShiftByDate,
@@ -92,7 +93,12 @@ export function buildEmployeeDayRows(
       if (leaveDates?.has(day)) {
         return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status: 'Leave', paidOff: true };
       }
-      if (weekOffDates?.has(day)) {
+      // A per-employee Week Off picked on the Weekly/Monthly Roster (a
+      // employee_daily_shifts row with shift_id null) is a deliberate
+      // override that beats a company-wide Week-off — see resolveShiftForDate
+      // — so check it the same way a day WITH punches already does below,
+      // instead of only weekOffDates (company-wide only).
+      if (weekOffDates?.has(day) || isWeekOff(resolveShiftForDate(employee, shifts, day, dailyShiftByDate, weekOffDates))) {
         return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status: 'Week Off', paidOff: true };
       }
       // A day that hasn't happened yet isn't "Absent" — it just hasn't
