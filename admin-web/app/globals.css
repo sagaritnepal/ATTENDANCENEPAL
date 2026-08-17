@@ -6,3 +6,21 @@ html, body {
   overflow-x: hidden;
   background-color: #f8fafc;
 }
+
+@media print {
+  /* Browsers skip background colors/badges in print by default unless the
+     user manually enables "background graphics" — force it so exported
+     PDFs actually show the same status colors as the screen. */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  /* Every exported table gets visible gridlines — much easier to read as a
+     printed/PDF report than the screen's whitespace-only row separation. */
+  table {
+    border-collapse: collapse !important;
+  }
+  th, td {
+    border: 1px solid #cbd5e1 !important;
+  }
+}

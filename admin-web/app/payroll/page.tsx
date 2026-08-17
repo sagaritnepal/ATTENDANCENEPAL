@@ -689,7 +689,7 @@ export default function PayrollPage() {
               <th className="whitespace-nowrap px-3 py-2 font-medium">Salary</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Calculated Salary</th>
               <th className="whitespace-nowrap pl-2 pr-3 py-2 font-medium">Overtime Salary</th>
-              <th className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-3 py-2 font-medium shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)]">
+              <th className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-3 py-2 font-medium shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] print:static print:shadow-none">
                 Total Salary
               </th>
             </tr>
@@ -724,7 +724,7 @@ export default function PayrollPage() {
                   </td>
                   <td className="whitespace-nowrap pl-2 pr-3 py-2 text-slate-600">{overtimeCellContent(row)}</td>
                   <td
-                    className={`sticky right-0 z-[1] whitespace-nowrap px-3 py-2 font-bold text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] ${rowBg}`}
+                    className={`sticky right-0 z-[1] whitespace-nowrap px-3 py-2 font-bold text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] print:static print:shadow-none ${rowBg}`}
                   >
                     {totalSalary(row) != null ? totalSalary(row)!.toLocaleString() : '—'}
                   </td>
@@ -766,7 +766,7 @@ export default function PayrollPage() {
                 <td className="whitespace-nowrap pl-2 pr-3 py-2">
                   {totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </td>
-                <td className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-3 py-2 text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)]">
+                <td className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-3 py-2 text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] print:static print:shadow-none">
                   {(totals.totalSalaryPayable + totals.totalOvertimeSalary).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </td>
               </tr>
