@@ -1,15 +1,27 @@
-/** CSV is what "Export Excel" produces here — Excel opens it natively, and
- * it needs no extra dependency the way a real .xlsx writer would. */
-export function downloadCsv(filename: string, headers: string[], rows: (string | number)[][]) {
-  const lines = rows.map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
-  const csv = [headers.join(','), ...lines].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+import * as XLSX from 'xlsx';
+
+/** A real .xlsx, not CSV — CSV-in-Excel on Windows mangled the en-dash in
+ * shift labels (Excel guesses ANSI encoding without a UTF-8 BOM) and left
+ * every date column showing "####" (too narrow for Excel's auto-applied
+ * date format, and CSV carries no column-width metadata to fix that).
+ * .xlsx has neither problem, and skips the "possible data loss" banner.
+ *
+ * Security note: `xlsx` (SheetJS) has open advisories, but they're all in
+ * the *parsing* path (XLSX.read/readFile on an untrusted file). This module
+ * only ever builds and writes a workbook from our own data — it never
+ * parses one — so that code path is never reached here. */
+export function downloadExcel(filename: string, headers: string[], rows: (string | number)[][]) {
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  // Size each column to its widest cell (header or data) so nothing renders
+  // as Excel's "####" too-narrow-for-a-date placeholder. Capped so one long
+  // outlier (e.g. a reason/note field) doesn't blow out the whole sheet.
+  ws['!cols'] = headers.map((h, i) => {
+    const maxLen = Math.max(h.length, ...rows.map(r => String(r[i] ?? '').length));
+    return { wch: Math.min(Math.max(maxLen + 2, 8), 40) };
+  });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+  XLSX.writeFile(wb, filename.replace(/\.csv$/i, '') + '.xlsx');
 }
 
 /** Print button doubles as "Save as PDF" — every browser's print dialog

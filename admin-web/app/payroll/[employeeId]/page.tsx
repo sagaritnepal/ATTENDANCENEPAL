@@ -6,7 +6,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
-import TableExportBar, { downloadCsv } from '@/components/TableExportBar';
+import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import StatusText from '@/components/StatusText';
 import { buildMonth, formatAdDate, formatDdMmYyyy, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
@@ -204,7 +204,7 @@ function PayrollEmployeeDetailView() {
         earning ? Math.round(earning.total) : '',
       ];
     });
-    downloadCsv(`payroll_${employee.name.replace(/\s+/g, '_')}_${start}_to_${end}.csv`, header, lines);
+    downloadExcel(`payroll_${employee.name.replace(/\s+/g, '_')}_${start}_to_${end}.csv`, header, lines);
   }
 
   return (

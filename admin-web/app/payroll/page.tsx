@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
-import TableExportBar, { downloadCsv } from '@/components/TableExportBar';
+import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import {
   buildPeriodOptions,
   currentSystemYearMonth,
@@ -359,7 +359,7 @@ export default function PayrollPage() {
       overtimeSalary(row) ?? '',
       totalSalary(row) ?? '',
     ]);
-    downloadCsv(`payroll_${start}_to_${end}.csv`, header, lines);
+    downloadExcel(`payroll_${start}_to_${end}.csv`, header, lines);
   }
 
   async function applySalaryChange(employeeId: string, salary: string) {

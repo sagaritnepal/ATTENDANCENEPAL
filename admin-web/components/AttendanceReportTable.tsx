@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Badge from '@/components/Badge';
 import DateRangePicker from '@/components/DateRangePicker';
-import TableExportBar, { downloadCsv } from '@/components/TableExportBar';
+import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import {
@@ -294,7 +294,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
       r.status,
       r.device,
     ]);
-    downloadCsv(`attendance_${from}_to_${to}.csv`, header, lines);
+    downloadExcel(`attendance_${from}_to_${to}.csv`, header, lines);
   }
 
   return (
