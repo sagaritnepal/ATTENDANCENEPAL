@@ -15,25 +15,37 @@ html, body {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
-  /* Landscape + tight margins: these tables run wide (8-13 columns) —
-     portrait forced most of them onto a second page no matter how small
-     the text got. */
+  /* Landscape is the default suggestion in the print dialog (these tables
+     run 8-13 columns wide) but not forced — the rest of this block shrinks
+     text/padding small enough that Portrait fits one page too, since some
+     printers/filing setups need that instead. */
   @page {
     size: landscape;
-    margin: 10mm;
+    margin: 8mm;
   }
   /* Every exported table gets visible gridlines, and shrinks down to
-     something that actually fits a page — much easier to read as a
-     printed/PDF report than the screen's whitespace-only row separation. */
+     something that actually fits a page even in Portrait — much easier to
+     read as a printed/PDF report than the screen's whitespace-only row
+     separation. */
   table {
     border-collapse: collapse !important;
-    font-size: 9px !important;
+    font-size: 7px !important;
     width: 100% !important;
+    table-layout: auto !important;
   }
   th, td {
     border: 1px solid #cbd5e1 !important;
-    padding: 2px 4px !important;
+    padding: 1px 3px !important;
     white-space: nowrap !important;
+  }
+  /* Column headers are the widest text relative to their data (e.g. "Late
+     By (min)", "Calculated Salary") — letting them wrap to two lines saves
+     far more horizontal room than the data cells below them would if they
+     wrapped instead. */
+  th {
+    white-space: normal !important;
+    word-break: break-word;
+    line-height: 1.15;
   }
   /* Row striping/hover states rely on screen-only inline JS state or take
      up visual space meant for scanning on a monitor, not a printed page. */
