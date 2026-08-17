@@ -114,6 +114,17 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
     return map;
   }, [dailyShiftRows, employeeId]);
 
+  // Company-wide Week-off (recurring day + ad-hoc holidays) — distinct from
+  // the per-employee roster `weekOffDates` below, but treated identically
+  // everywhere in this view: never Absent, never counted toward Hours, and
+  // (via dayStatus below) never Late/Early either if the employee does show
+  // up on one — same as a roster Week Off already was.
+  const companyWeekOffDates = useMemo(() => {
+    const windowStart = new Date(Date.now() - WINDOW_DAYS * 86400000).toISOString().slice(0, 10);
+    const today = new Date().toISOString().slice(0, 10);
+    return weekOffDatesInRange(windowStart, today, weeklyOffDay, holidays);
+  }, [weeklyOffDay, holidays]);
+
   const dayStatus = useMemo(() => {
     const byDate = new Map<string, AttendanceLog[]>();
     for (const log of logs) {
@@ -124,13 +135,13 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
     }
     const map = new Map<string, ReturnType<typeof computeDayStatusForResolvedShift>>();
     if (!employee) return map;
-    applyOvernightShiftCorrection(byDate, logs, employee, shifts, dailyShiftByDate);
+    applyOvernightShiftCorrection(byDate, logs, employee, shifts, dailyShiftByDate, companyWeekOffDates);
     for (const [date, dayLogs] of byDate) {
-      const resolved = resolveShiftForDate(employee, shifts, date, dailyShiftByDate);
+      const resolved = resolveShiftForDate(employee, shifts, date, dailyShiftByDate, companyWeekOffDates);
       map.set(date, computeDayStatusForResolvedShift(dayLogs, resolved));
     }
     return map;
-  }, [logs, employee, shifts, dailyShiftByDate]);
+  }, [logs, employee, shifts, dailyShiftByDate, companyWeekOffDates]);
 
   const leaveByDate = useMemo(() => {
     const map = new Map<string, LeaveRequest>();
@@ -141,15 +152,6 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
   }, [leaveRequests]);
 
   const leaveDates = useMemo(() => new Set(leaveByDate.keys()), [leaveByDate]);
-
-  // Company-wide Week-off (recurring day + ad-hoc holidays) — distinct from
-  // the per-employee roster `weekOffDates` below, but treated identically
-  // everywhere in this view: never Absent, never counted toward Hours.
-  const companyWeekOffDates = useMemo(() => {
-    const windowStart = new Date(Date.now() - WINDOW_DAYS * 86400000).toISOString().slice(0, 10);
-    const today = new Date().toISOString().slice(0, 10);
-    return weekOffDatesInRange(windowStart, today, weeklyOffDay, holidays);
-  }, [weeklyOffDay, holidays]);
 
   // Dates this employee has an explicit Week Off roster entry for (a row
   // exists in employee_daily_shifts with shift_id null) — treated the same
@@ -319,9 +321,9 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
 
   const selectedDaySummary = useMemo(() => {
     if (dayLogs.length === 0 || !employee || !selectedDate) return null;
-    const resolved = resolveShiftForDate(employee, shifts, selectedDate, dailyShiftByDate);
+    const resolved = resolveShiftForDate(employee, shifts, selectedDate, dailyShiftByDate, companyWeekOffDates);
     return computeDayStatusForResolvedShift(dayLogs, resolved);
-  }, [dayLogs, employee, shifts, selectedDate, dailyShiftByDate]);
+  }, [dayLogs, employee, shifts, selectedDate, dailyShiftByDate, companyWeekOffDates]);
 
   useEffect(() => {
     if (!selectedDate) {

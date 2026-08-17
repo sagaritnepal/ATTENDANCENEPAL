@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
-import type { AttendanceLog, Branch, Device, DeviceSyncEvent, Employee } from '@/lib/types';
+import type { AttendanceLog, Branch, Device, Employee } from '@/lib/types';
 
 const EMPTY_FORM = { name: '', branch_id: '', ip_address: '192.168.1.201', port: 4370, serial_number: '' };
 
@@ -13,35 +13,104 @@ function deviceErrorMessage(error: { code?: string; message: string }): string {
   return error.message;
 }
 
+type BridgeCredential = { id: string; email: string; createdAt: string };
+type BridgeResult = { email: string; password: string; envFile: string };
+
+function downloadEnvFile(envFile: string) {
+  const blob = new Blob([envFile], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '.env';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function DevicesPage() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
-  const [syncEvents, setSyncEvents] = useState<DeviceSyncEvent[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [queuing, setQueuing] = useState<string | null>(null);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [editError, setEditError] = useState<string | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+
+  const [bridgeCredentials, setBridgeCredentials] = useState<BridgeCredential[]>([]);
+  const [generatingBridge, setGeneratingBridge] = useState(false);
+  const [bridgeError, setBridgeError] = useState<string | null>(null);
+  const [bridgeResult, setBridgeResult] = useState<BridgeResult | null>(null);
+  const [revokingBridgeId, setRevokingBridgeId] = useState<string | null>(null);
 
   function reload() {
     supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
     supabase.from('branches').select('*').then(({ data }) => setBranches(data ?? []));
     supabase.from('employees').select('*').then(({ data }) => setEmployees(data ?? []));
     supabase.from('attendance_logs').select('*').eq('method', 'zkteco').then(({ data }) => setLogs(data ?? []));
-    supabase
-      .from('device_sync_events')
-      .select('*')
-      .order('requested_at', { ascending: false })
-      .limit(50)
-      .then(({ data }) => setSyncEvents(data ?? []));
+    loadBridgeCredentials();
   }
   useEffect(reload, []);
+
+  async function loadBridgeCredentials() {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) return;
+    const res = await fetch('/api/bridge-credentials', { headers: { Authorization: `Bearer ${token}` } });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) setBridgeCredentials(body.credentials ?? []);
+  }
+
+  async function handleGenerateBridge() {
+    setGeneratingBridge(true);
+    setBridgeError(null);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setGeneratingBridge(false);
+      setBridgeError('Your session expired — please sign in again.');
+      return;
+    }
+    const res = await fetch('/api/bridge-credentials', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = await res.json().catch(() => ({}));
+    setGeneratingBridge(false);
+    if (!res.ok) {
+      setBridgeError(body.error ?? 'Could not generate the credential.');
+      return;
+    }
+    setBridgeResult({ email: body.email, password: body.password, envFile: body.envFile });
+    loadBridgeCredentials();
+  }
+
+  async function handleRevokeBridge(id: string) {
+    if (!confirm('Revoke this bridge credential? Any machine still using it will stop being able to sync immediately.')) return;
+    setRevokingBridgeId(id);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setRevokingBridgeId(null);
+      alert('Your session expired — please sign in again.');
+      return;
+    }
+    const res = await fetch('/api/bridge-credentials', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ id }),
+    });
+    const body = await res.json().catch(() => ({}));
+    setRevokingBridgeId(null);
+    if (!res.ok) {
+      alert(body.error ?? 'Could not revoke the credential.');
+      return;
+    }
+    loadBridgeCredentials();
+  }
 
   // Reflects zkteco-bridge's status/last_sync writes the moment they land, instead of
   // requiring a manual "Refresh" click.
@@ -65,39 +134,6 @@ export default function DevicesPage() {
       supabase.removeChannel(channel);
     };
   }, []);
-
-  // While anything is still queued/running, poll every 3s so a click on
-  // "Sync Users"/"Sync Log" reflects zkteco-bridge picking it up and
-  // finishing without the admin having to hit Refresh themselves.
-  useEffect(() => {
-    if (!syncEvents.some(e => e.status === 'pending' || e.status === 'running')) return;
-    const id = setInterval(reload, 3000);
-    return () => clearInterval(id);
-  }, [syncEvents]);
-
-  async function queueSync(deviceId: string, syncType: 'users' | 'logs') {
-    setQueuing(`${deviceId}-${syncType}`);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    const { error } = await supabase.from('device_sync_events').insert({
-      device_id: deviceId,
-      sync_type: syncType,
-      requested_by: user?.id ?? null,
-    });
-    setQueuing(null);
-    if (error) alert(`Could not queue sync: ${error.message}`);
-    reload();
-  }
-
-  async function cancelSync(eventId: string) {
-    const { error } = await supabase
-      .from('device_sync_events')
-      .update({ status: 'cancelled', completed_at: new Date().toISOString() })
-      .eq('id', eventId);
-    if (error) alert(`Could not cancel: ${error.message}`);
-    reload();
-  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -167,9 +203,9 @@ export default function DevicesPage() {
     <AppShell title="Biometric Sync Devices">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-2xl text-sm text-slate-500">
-          Biometric terminal integrations — <code className="rounded bg-slate-100 px-1.5 py-0.5">zkteco-bridge</code> polls every device
-          every 15 seconds and writes here. "Sync Users"/"Sync Log" queue an on-demand request that the bridge — running on a
-          machine on the same network as the device — picks up right away.
+          Biometric terminal integrations, synced automatically both ways over the internet — no manual sync needed. A punch from a
+          fingerprint the app doesn&apos;t recognize yet creates a placeholder employee right away; renaming an employee here pushes
+          that name back down to every device.
         </p>
         <div className="flex gap-2">
           <button onClick={reload} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
@@ -186,14 +222,6 @@ export default function DevicesPage() {
           const branch = branches.find(b => b.id === d.branch_id);
           const registered = employees.filter(e => e.branch_id === d.branch_id && e.fingerprint_id).length;
           const fetched = logs.filter(l => l.device_id === d.id).length;
-          const deviceEvents = syncEvents.filter(e => e.device_id === d.id);
-          const busy = (type: 'users' | 'logs') =>
-            queuing === `${d.id}-${type}` ||
-            deviceEvents.some(e => e.sync_type === type && (e.status === 'pending' || e.status === 'running'));
-          // Only a still-pending request can be cancelled — once the bridge
-          // flips it to 'running' it's already claimed and can't be stopped
-          // from here.
-          const pendingEvent = (type: 'users' | 'logs') => deviceEvents.find(e => e.sync_type === type && e.status === 'pending');
           return (
             <div key={d.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-2 flex items-center justify-between">
@@ -218,143 +246,90 @@ export default function DevicesPage() {
                   </button>
                 </div>
               </div>
-
-              <div className="mt-3 flex gap-2">
-                <div className="flex flex-1 items-center gap-1">
-                  <button
-                    onClick={() => queueSync(d.id, 'users')}
-                    disabled={busy('users')}
-                    className="flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                  >
-                    {busy('users') ? 'Syncing users…' : '👥 Sync Users'}
-                  </button>
-                  {pendingEvent('users') && (
-                    <button
-                      onClick={() => cancelSync(pendingEvent('users')!.id)}
-                      title="Cancel pending sync"
-                      className="text-xs font-medium text-critical hover:underline"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-1 items-center gap-1">
-                  <button
-                    onClick={() => queueSync(d.id, 'logs')}
-                    disabled={busy('logs')}
-                    className="flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                  >
-                    {busy('logs') ? 'Syncing log…' : '🕐 Sync Log'}
-                  </button>
-                  {pendingEvent('logs') && (
-                    <button
-                      onClick={() => cancelSync(pendingEvent('logs')!.id)}
-                      title="Cancel pending sync"
-                      className="text-xs font-medium text-critical hover:underline"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              </div>
             </div>
           );
         })}
         {devices.length === 0 && <p className="text-sm text-slate-400">No devices registered yet.</p>}
       </div>
 
-      <div className="mt-8 rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-100 px-5 py-3">
-          <h2 className="text-sm font-semibold text-ink">Sync History</h2>
+      <div className="mt-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-ink">Device Bridge Credentials</h2>
+            <p className="mt-1 max-w-2xl text-xs text-slate-500">
+              For a device that only reaches you over a local network, not the internet: generate a credential scoped to
+              just this company, and hand its <code className="rounded bg-slate-100 px-1 py-0.5">.env</code> file to
+              whoever runs the bridge on-site — no GitHub access or shared master key involved.
+            </p>
+          </div>
+          <button
+            onClick={handleGenerateBridge}
+            disabled={generatingBridge}
+            className="shrink-0 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+          >
+            {generatingBridge ? 'Generating…' : '+ Generate Bridge Credentials'}
+          </button>
         </div>
-        <div className="divide-y divide-slate-100 md:hidden">
-          {syncEvents.map(e => {
-            const device = devices.find(d => d.id === e.device_id);
-            return (
-              <div key={e.id} className="p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="truncate font-medium text-ink">{device?.name ?? 'Unknown device'}</div>
-                    <div className="text-xs text-slate-500">{e.sync_type === 'users' ? '👥 Users' : '🕐 Log'}</div>
-                  </div>
-                  <Badge tone={e.status === 'success' ? 'good' : e.status === 'failed' ? 'critical' : e.status === 'running' ? 'info' : 'neutral'}>
-                    {e.status}
-                  </Badge>
+        {bridgeError && <p className="mb-3 text-sm text-critical">{bridgeError}</p>}
+        {bridgeCredentials.length === 0 ? (
+          <p className="text-sm text-slate-400">No bridge credentials issued yet.</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {bridgeCredentials.map(c => (
+              <div key={c.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                <div className="min-w-0">
+                  <div className="truncate font-mono text-xs text-ink">{c.email}</div>
+                  <div className="text-xs text-slate-400">Issued {new Date(c.createdAt).toLocaleString()}</div>
                 </div>
-                <div className="mt-2 text-xs text-slate-500">
-                  Requested {new Date(e.requested_at).toLocaleString()}
-                  {e.completed_at && <> · Completed {new Date(e.completed_at).toLocaleString()}</>}
-                </div>
-                {e.summary && <div className="mt-1 text-sm text-slate-600">{e.summary}</div>}
-                {e.error && <div className="mt-1 text-sm text-critical">{e.error}</div>}
-                {e.status === 'pending' && (
-                  <button onClick={() => cancelSync(e.id)} className="mt-2 text-xs font-medium text-critical hover:underline">
-                    Cancel
-                  </button>
-                )}
+                <button
+                  onClick={() => handleRevokeBridge(c.id)}
+                  disabled={revokingBridgeId === c.id}
+                  className="shrink-0 text-xs font-medium text-critical hover:underline disabled:opacity-60"
+                >
+                  {revokingBridgeId === c.id ? 'Revoking…' : 'Revoke'}
+                </button>
               </div>
-            );
-          })}
-          {syncEvents.length === 0 && <p className="p-8 text-center text-sm text-slate-400">No sync requests yet.</p>}
-        </div>
-
-        <div className="hidden overflow-x-auto md:block">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-                <th className="px-5 py-3 font-medium">Device</th>
-                <th className="px-5 py-3 font-medium">Type</th>
-                <th className="px-5 py-3 font-medium">Status</th>
-                <th className="px-5 py-3 font-medium">Requested</th>
-                <th className="px-5 py-3 font-medium">Completed</th>
-                <th className="px-5 py-3 font-medium">Result</th>
-                <th className="px-5 py-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {syncEvents.map(e => {
-                const device = devices.find(d => d.id === e.device_id);
-                return (
-                  <tr key={e.id} className="border-b border-slate-100 last:border-0">
-                    <td className="px-5 py-3 font-medium text-ink">{device?.name ?? 'Unknown device'}</td>
-                    <td className="px-5 py-3 text-slate-600">{e.sync_type === 'users' ? '👥 Users' : '🕐 Log'}</td>
-                    <td className="px-5 py-3">
-                      <Badge
-                        tone={
-                          e.status === 'success' ? 'good' : e.status === 'failed' ? 'critical' : e.status === 'running' ? 'info' : 'neutral'
-                        }
-                      >
-                        {e.status}
-                      </Badge>
-                    </td>
-                    <td className="px-5 py-3 text-slate-600">{new Date(e.requested_at).toLocaleString()}</td>
-                    <td className="px-5 py-3 text-slate-600">{e.completed_at ? new Date(e.completed_at).toLocaleString() : '—'}</td>
-                    <td className="px-5 py-3 max-w-xs">
-                      {e.summary && <span className="text-slate-600">{e.summary}</span>}
-                      {e.error && <span className="text-critical">{e.error}</span>}
-                      {!e.summary && !e.error && <span className="text-slate-400">—</span>}
-                    </td>
-                    <td className="px-5 py-3">
-                      {e.status === 'pending' && (
-                        <button onClick={() => cancelSync(e.id)} className="text-xs font-medium text-critical hover:underline">
-                          Cancel
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-              {syncEvents.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-5 py-8 text-center text-slate-400">
-                    No sync requests yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {bridgeResult && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+            <h3 className="mb-1 text-lg font-semibold text-ink">Bridge credential created</h3>
+            <p className="mb-4 text-xs text-slate-500">
+              This password won&apos;t be shown again. Download the <code className="rounded bg-slate-100 px-1 py-0.5">.env</code>{' '}
+              below and place it alongside <code className="rounded bg-slate-100 px-1 py-0.5">index.js</code> on the
+              on-site machine.
+            </p>
+            <div className="mb-4 space-y-2 rounded-lg bg-slate-50 p-3 text-sm">
+              <div>
+                <span className="text-xs uppercase text-slate-400">Email</span>
+                <div className="break-all font-mono text-xs font-medium text-ink">{bridgeResult.email}</div>
+              </div>
+              <div>
+                <span className="text-xs uppercase text-slate-400">Password</span>
+                <div className="break-all font-mono text-xs font-medium text-ink">{bridgeResult.password}</div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => downloadEnvFile(bridgeResult.envFile)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                ⬇ Download .env
+              </button>
+              <button
+                onClick={() => setBridgeResult(null)}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">

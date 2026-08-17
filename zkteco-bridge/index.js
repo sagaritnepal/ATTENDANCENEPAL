@@ -4,6 +4,16 @@
 // Deploy this on-prem or on a small VM with LAN access to the devices — it needs a raw
 // socket connection that a hosted Supabase Edge Function cannot provide. The mobile app and
 // admin console never talk to devices directly; everything flows through attendance_logs.
+//
+// This is the version meant to be handed to an outside customer's own machine, so unlike
+// push-server.js (which runs on infrastructure we control and can safely hold the
+// service-role master key) it never sees that key at all — it signs in as a normal
+// Supabase Auth user instead (a "device bridge" account, generated from the dashboard's
+// Devices page, scoped to exactly one company). Every query below then goes through the
+// SAME RLS policies (is_admin() and company_id = my_company_id()) a human admin's own
+// dashboard session already goes through, enforced by Postgres itself — a stolen/leaked
+// .env from one customer's machine can only ever touch that one customer's data, never
+// another company's, which a shared master key could not promise.
 require('dotenv').config();
 const ZKLib = require('node-zklib');
 const WebSocket = require('ws');
@@ -13,8 +23,24 @@ const SYNC_INTERVAL_MS = Number(process.env.SYNC_INTERVAL_MS || 15 * 1000);
 const SYNC_REQUEST_POLL_MS = Number(process.env.SYNC_REQUEST_POLL_MS || 15000);
 const MAX_BACKOFF_MS = 10 * 60 * 1000;
 
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const BRIDGE_EMAIL = process.env.BRIDGE_EMAIL;
+const BRIDGE_PASSWORD = process.env.BRIDGE_PASSWORD;
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !BRIDGE_EMAIL || !BRIDGE_PASSWORD) {
+  throw new Error(
+    'SUPABASE_URL, SUPABASE_ANON_KEY, BRIDGE_EMAIL, and BRIDGE_PASSWORD are all required in .env — ' +
+      'generate a ready-made .env for this from the dashboard\'s Devices page ("Generate Bridge Credentials") ' +
+      'rather than typing these by hand.'
+  );
+}
+
 // Same Node<22 WebSocket workaround as push-server.js — see its comment.
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+// autoRefreshToken keeps the sign-in above alive indefinitely as long as this
+// process keeps running; persistSession is off since there's no browser
+// storage to persist to here.
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { autoRefreshToken: true, persistSession: false },
   realtime: { transport: WebSocket },
 });
 
@@ -28,15 +54,32 @@ const failureCounts = new Map();
 // records that were never going to map to an employee.
 const warnedUnmappedFingerprints = new Set();
 
-// One bridge deployment = one company's LAN = one company_id. Every table
-// is now multi-tenant scoped (fingerprint_id in particular is only unique
-// per-company, since device fingerprint IDs are small sequential integers
-// very likely to collide across two companies' devices), so every query
-// here must filter by it explicitly — this runs on the service-role key,
-// which bypasses RLS entirely.
-const COMPANY_ID = process.env.COMPANY_ID;
-if (!COMPANY_ID) {
-  throw new Error('COMPANY_ID is required — set it in .env to the companies.id this bridge belongs to.');
+// One bridge deployment = one company's LAN = one company_id, but unlike the
+// old service-role version, that's no longer trusted from a hand-typed env
+// var — it's read back from the signed-in bridge account's OWN profile
+// (set once when the dashboard generated this credential), so a .env with a
+// mistyped/mismatched company id simply can't happen. Every query below
+// still filters by it explicitly (defense in depth on top of RLS, not a
+// replacement for it) and is set by signIn() before main()'s loops start.
+let COMPANY_ID;
+
+async function signIn() {
+  const { error: authError } = await supabase.auth.signInWithPassword({ email: BRIDGE_EMAIL, password: BRIDGE_PASSWORD });
+  if (authError) {
+    throw new Error(
+      `Could not sign in with the configured bridge credentials: ${authError.message}. If this credential was ` +
+        'revoked or regenerated, generate a fresh .env from the dashboard\'s Devices page.'
+    );
+  }
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data: profile, error: profileError } = await supabase.from('profiles').select('company_id').eq('id', user.id).single();
+  if (profileError || !profile?.company_id) {
+    throw new Error('Signed in, but this account has no company_id set on its profile — it may not be a valid device bridge credential.');
+  }
+  COMPANY_ID = profile.company_id;
+  console.log(`Signed in as device bridge account for company ${COMPANY_ID}.`);
 }
 
 async function fetchActiveDevices() {
@@ -217,6 +260,7 @@ async function pollSyncRequests() {
 
 async function main() {
   console.log(`ZKTeco bridge starting, polling every ${SYNC_INTERVAL_MS / 1000}s (sync requests every ${SYNC_REQUEST_POLL_MS / 1000}s)`);
+  await signIn();
   await syncAllDevices();
   setInterval(() => syncAllDevices().catch(err => console.error('Device sync poll failed:', err.message)), SYNC_INTERVAL_MS);
   setInterval(() => pollSyncRequests().catch(err => console.error('Sync request poll failed:', err.message)), SYNC_REQUEST_POLL_MS);

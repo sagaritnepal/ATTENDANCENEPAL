@@ -28,7 +28,7 @@ type Row = {
   checkIn: string | null;
   checkOut: string | null;
   hours: number;
-  status: 'Present' | 'Late' | 'Absent' | 'Upcoming' | 'Week Off';
+  status: 'Present' | 'Late' | 'Absent' | 'Upcoming' | 'Week Off' | 'Leave' | 'Exempt';
   lateMinutes: number;
   earlyMinutes: number;
   overtime: number;
@@ -53,7 +53,9 @@ function isoDaysAgo(n: number) {
 function statusBadge(r: Row) {
   if (r.checkIn) return <Badge tone="good">Present</Badge>;
   if (r.status === 'Week Off') return <Badge tone="neutral">Week Off</Badge>;
+  if (r.status === 'Leave') return <Badge tone="info">Leave</Badge>;
   if (r.status === 'Upcoming') return <Badge tone="neutral">Upcoming</Badge>;
+  if (r.status === 'Exempt') return <Badge tone="neutral">Excused</Badge>;
   return <Badge tone="critical">Absent</Badge>;
 }
 
@@ -61,7 +63,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
   const { system } = useCalendarSystem();
   const [from, setFrom] = useState(isoDaysAgo(0));
   const [to, setTo] = useState(isoDaysAgo(0));
-  const [status, setStatus] = useState<'All' | 'Present' | 'Late' | 'Early' | 'Absent' | 'Week Off'>('All');
+  const [status, setStatus] = useState<'All' | 'Present' | 'Late' | 'Early' | 'Absent' | 'Week Off' | 'Leave' | 'Exempt'>('All');
   const [employeeId, setEmployeeId] = useState<string>(initialEmployeeId ?? 'all');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -144,7 +146,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
         const dayLogs = empLogs.filter(l => l.punch_time.slice(0, 10) === day);
         if (dayLogs.length > 0) byDate.set(day, dayLogs);
       }
-      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate);
+      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, weekOffDateSet);
       logsByEmployeeDay.set(emp.id, byDate);
     }
 
@@ -159,7 +161,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
         // past days' summaries are final and safe to trust.
         const summary = day === today ? undefined : summaries.find(s => s.employee_id === emp.id && s.work_date === day);
         const dayLogs = (logsByEmployeeDay.get(emp.id)?.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
-        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate);
+        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, weekOffDateSet);
         const shiftLabel = isWeekOff(resolved)
           ? 'Week Off'
           : `${resolved.name} (${resolved.start_time.slice(0, 5)}–${resolved.end_time.slice(0, 5)})`;
@@ -175,9 +177,9 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             checkIn: summary.check_in,
             checkOut: summary.check_out,
             hours: summary.total_hours,
-            status: summary.is_late ? 'Late' : 'Present',
-            lateMinutes: summary.is_late ? summary.late_minutes : 0,
-            earlyMinutes: summary.is_early_departure ? summary.early_departure_minutes : 0,
+            status: summary.is_late && !emp.attendance_exempt ? 'Late' : 'Present',
+            lateMinutes: summary.is_late && !emp.attendance_exempt ? summary.late_minutes : 0,
+            earlyMinutes: summary.is_early_departure && !emp.attendance_exempt ? summary.early_departure_minutes : 0,
             overtime: summary.overtime_hours,
           });
         } else if (dayLogs.length > 0) {
@@ -197,17 +199,20 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             checkIn: live.checkIn.punch_time,
             checkOut: live.checkOut?.punch_time ?? null,
             hours: live.totalMinutes / 60,
-            status: live.isLate ? 'Late' : 'Present',
-            lateMinutes: live.lateMinutes,
-            earlyMinutes: live.earlyMinutes,
+            status: live.isLate && !emp.attendance_exempt ? 'Late' : 'Present',
+            lateMinutes: emp.attendance_exempt ? 0 : live.lateMinutes,
+            earlyMinutes: emp.attendance_exempt ? 0 : live.earlyMinutes,
             overtime: live.overtimeMinutes / 60,
             pending: true,
           });
         } else {
           // A company Week-off or approved Leave day is a known, paid day
           // off — takes priority over the Upcoming/Absent distinction below,
-          // whether it's already passed or not.
-          const isPaidOff = weekOffDateSet.has(day) || leaveByEmployee.get(emp.id)?.has(day);
+          // whether it's already passed or not. A requested (and approved)
+          // Leave keeps its own label even on a day that's also a company
+          // Week-off — it's still paid the same either way.
+          const isOnLeave = leaveByEmployee.get(emp.id)?.has(day);
+          const isWeekOff = weekOffDateSet.has(day);
           out.push({
             key: `${emp.id}-${day}`,
             date: day,
@@ -221,7 +226,15 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             // A day that hasn't happened yet isn't "Absent" — it just
             // hasn't occurred (only relevant if the picked range runs past
             // today).
-            status: isPaidOff ? 'Week Off' : day > today ? 'Upcoming' : 'Absent',
+            status: isOnLeave
+              ? 'Leave'
+              : isWeekOff
+                ? 'Week Off'
+                : day > today
+                  ? 'Upcoming'
+                  : emp.attendance_exempt
+                    ? 'Exempt'
+                    : 'Absent',
             lateMinutes: 0,
             earlyMinutes: 0,
             overtime: 0,
@@ -247,7 +260,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
     const lateMinutes = rows.reduce((sum, r) => sum + r.lateMinutes, 0);
     const earlyMinutes = rows.reduce((sum, r) => sum + r.earlyMinutes, 0);
     const presentDays = rows.filter(r => r.checkIn).length;
-    const absentDays = rows.filter(r => !r.checkIn && r.status !== 'Upcoming').length;
+    const absentDays = rows.filter(r => !r.checkIn && r.status !== 'Upcoming' && r.status !== 'Exempt').length;
     return { workHours, overtimeHours, lateMinutes, earlyMinutes, presentDays, absentDays };
   }, [rows]);
 
@@ -339,6 +352,8 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                 <option value="Late">Late</option>
                 <option value="Early">Early</option>
                 <option value="Week Off">Week Off</option>
+                <option value="Leave">Leave</option>
+                <option value="Exempt">Excused</option>
               </select>
             </div>
           </div>

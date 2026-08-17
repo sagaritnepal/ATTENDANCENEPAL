@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
+import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
 import PhotoCropModal from '@/components/PhotoCropModal';
 import { formatAdDate } from '@/lib/calendar';
@@ -197,6 +198,23 @@ export default function EmployeeCvPage() {
       return;
     }
     setEditingCore(false);
+    reload();
+  }
+
+  // A standing per-person exemption (e.g. for someone "in charge") — never
+  // flagged Late or Absent regardless of whether/when they punch. Toggled
+  // immediately, like Mark Resigned/Reactivate, rather than folded into the
+  // core edit form, since it's a single independent switch.
+  async function handleToggleExempt() {
+    if (!employee) return;
+    const { error } = await supabase
+      .from('employees')
+      .update({ attendance_exempt: !employee.attendance_exempt })
+      .eq('id', employee.id);
+    if (error) {
+      alert(`Could not save: ${error.message}`);
+      return;
+    }
     reload();
   }
 
@@ -489,6 +507,17 @@ export default function EmployeeCvPage() {
           >
             {generatingPdf ? 'Generating…' : '⬇ Download PDF'}
           </button>
+          <button
+            onClick={handleToggleExempt}
+            title="Never flag this employee Late or Absent, even without a punch — for staff who are in charge and aren't required to clock in/out"
+            className={`rounded-lg border px-4 py-2 text-sm font-medium ${
+              employee.attendance_exempt
+                ? 'border-accent bg-accent/10 text-accent'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            {employee.attendance_exempt ? '✓ Excused from Attendance' : 'Excuse from Attendance'}
+          </button>
           {!editingCore && (
             <button
               onClick={() => setEditingCore(true)}
@@ -520,7 +549,10 @@ export default function EmployeeCvPage() {
               )}
             </button>
             <div>
-              <h1 className="text-lg font-semibold text-ink">{employee.name}</h1>
+              <h1 className="flex items-center gap-2 text-lg font-semibold text-ink">
+                {employee.name}
+                {employee.attendance_exempt && <Badge tone="neutral">Excused</Badge>}
+              </h1>
               <p className="text-sm text-slate-500">
                 {employee.designation ?? '—'} {employee.department && `· ${employee.department}`}
               </p>

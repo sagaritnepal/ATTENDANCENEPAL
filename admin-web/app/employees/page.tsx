@@ -287,10 +287,10 @@ function EmployeesView() {
           .some(v => (v as string).toLowerCase().includes(term));
       });
     }
-    // Newest first, so a just-added or just-synced employee is easy to spot
-    // at the top instead of buried wherever their fingerprint ID happens to
-    // fall.
-    return [...list].sort((a, b) => b.created_at.localeCompare(a.created_at));
+    // By employee code, so the list stays in a stable, predictable sequence
+    // instead of a just-added (often not-yet-enrolled) employee jumping to
+    // the top and reshuffling everyone else.
+    return [...list].sort((a, b) => a.employee_code.localeCompare(b.employee_code, undefined, { numeric: true }));
   }, [employees, shifts, filter, search]);
 
   const searchSuggestions = useMemo(() => {
@@ -739,6 +739,7 @@ function EmployeesView() {
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     <Badge tone={emp.fingerprint_id ? 'good' : 'neutral'}>{emp.fingerprint_id ? 'Bio Enrolled' : 'Not Enrolled'}</Badge>
                     {linkedEmployeeIds.has(emp.id) && <Badge tone="good">Login Active</Badge>}
+                    {emp.attendance_exempt && <Badge tone="neutral">Excused</Badge>}
                   </div>
                 </div>
 
@@ -914,9 +915,12 @@ function EmployeesView() {
                           )}
                         </button>
                         <div className="min-w-0">
-                          <Link href={`/employees/${emp.id}`} className="block truncate font-medium text-ink hover:text-accent hover:underline">
-                            {emp.name}
-                          </Link>
+                          <div className="flex items-center gap-1.5">
+                            <Link href={`/employees/${emp.id}`} className="block truncate font-medium text-ink hover:text-accent hover:underline">
+                              {emp.name}
+                            </Link>
+                            {emp.attendance_exempt && <Badge tone="neutral">Excused</Badge>}
+                          </div>
                           <div className="truncate text-xs text-slate-400">{emp.phone ?? '—'}</div>
                           {emp.email && <div className="truncate text-xs text-slate-400">{emp.email}</div>}
                           <div className="truncate text-xs text-slate-400">

@@ -33,6 +33,7 @@ export type Employee = {
   emergency_contact_relationship: string | null;
   emergency_contact_phone: string | null;
   skills: string[];
+  attendance_exempt: boolean;
 };
 
 export type Branch = {

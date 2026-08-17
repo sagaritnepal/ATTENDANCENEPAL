@@ -234,7 +234,7 @@ export default function PayrollPage() {
         const dayLogs = empLogs.filter(l => l.punch_time.slice(0, 10) === day);
         if (dayLogs.length > 0) byDate.set(day, dayLogs);
       }
-      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate);
+      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, weekOffDateSet);
       logsByEmployeeDay.set(emp.id, byDate);
     }
 
@@ -268,7 +268,7 @@ export default function PayrollPage() {
         }
         // Not yet processed by compute_payroll_summaries() — compute live
         // from the raw punches, same as the Attendance Report page does.
-        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate);
+        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, weekOffDateSet);
         const live = computeDayStatusForResolvedShift(dayLogs, resolved);
         row.days += 1;
         row.hours += live.totalMinutes / 60;

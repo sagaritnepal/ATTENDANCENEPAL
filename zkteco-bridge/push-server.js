@@ -82,6 +82,65 @@ async function refreshEmployees() {
   employeesByCompany = next;
 }
 
+function cacheEmployeeId(companyId, fingerprintId, employeeId) {
+  let byFingerprint = employeesByCompany.get(companyId);
+  if (!byFingerprint) {
+    byFingerprint = new Map();
+    employeesByCompany.set(companyId, byFingerprint);
+  }
+  byFingerprint.set(fingerprintId, employeeId);
+}
+
+// A fingerprint enrolled directly on the device (never entered in the admin
+// UI first) has no employees row yet — rather than dropping its punches
+// forever, auto-create a placeholder ("Device User <id>") the first time one
+// shows up, same naming scheme index.js's old upsertUsers() used for its
+// LAN-pull "Sync Users" flow. The admin renames it later via the normal Edit
+// flow; that rename automatically pushes the corrected name back down to
+// every device (see queue_device_userinfo_sync in the device_command_queue
+// migration) — so a device-enrolled person just needs one punch to appear,
+// then a rename, and both the cloud record and the device's own display end
+// up correct.
+async function getOrCreateEmployeeId(companyId, deviceId, fingerprintId) {
+  const existing = employeesByCompany.get(companyId)?.get(fingerprintId);
+  if (existing) return existing;
+
+  const { data, error } = await supabase
+    .from('employees')
+    .insert({
+      employee_code: `ZK-${deviceId.slice(0, 8)}-${fingerprintId}`,
+      name: `Device User ${fingerprintId}`,
+      fingerprint_id: fingerprintId,
+      status: 'active',
+      company_id: companyId,
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    // Unique violation on (company_id, fingerprint_id) means a request
+    // processed a moment ago already created this exact employee (e.g. two
+    // lines for the same brand-new fingerprint in one ATTLOG batch) — look
+    // it up instead of dropping this punch. Anything else is a real failure.
+    const { data: found } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('fingerprint_id', fingerprintId)
+      .maybeSingle();
+    if (found) {
+      cacheEmployeeId(companyId, fingerprintId, found.id);
+      return found.id;
+    }
+    console.error(`[push] auto-creating employee for fingerprint ${fingerprintId} failed:`, error.message);
+    return null;
+  }
+
+  cacheEmployeeId(companyId, fingerprintId, data.id);
+  console.log(`[push] auto-created "Device User ${fingerprintId}" (company ${companyId}) for a previously unknown fingerprint — rename it on the Employee Directory`);
+  return data.id;
+}
+
 async function sweepOfflineDevices() {
   const cutoff = new Date(Date.now() - OFFLINE_AFTER_MS).toISOString();
   const { error } = await supabase.from('devices').update({ status: 'offline' }).eq('status', 'online').lt('last_sync', cutoff);
@@ -110,10 +169,8 @@ setInterval(refreshEmployees, REFRESH_INTERVAL_MS);
 setInterval(sweepOfflineDevices, 60 * 1000);
 setInterval(reassertOnlineForRecentDevices, REASSERT_INTERVAL_MS);
 
-// Warn once per (company, fingerprint) or per unknown serial instead of
-// spamming the log every single push from the same misconfigured/unenrolled
-// source.
-const warnedUnmapped = new Set();
+// Warn once per unknown device serial instead of spamming the log every
+// single push from the same unregistered device.
 const warnedUnknownSerial = new Set();
 
 function readBody(req) {
@@ -125,10 +182,75 @@ function readBody(req) {
   });
 }
 
+// This specific K40 unit (serial A6F5211860719) runs its internal clock
+// exactly 2h15m ahead of real time — confirmed by comparing server receipt
+// time against its reported punch time across multiple punches, consistent
+// to the second (matches China Standard Time, UTC+8, vs Nepal, UTC+5:45 —
+// very likely a factory-hardcoded home-region default in the firmware that
+// only manifests once the device gets real internet access). No exposed
+// setting on the device corrects this, so we compensate for this one
+// device's known-bad clock here instead of at the device itself. A
+// different device with correct time reporting would NOT get this
+// adjustment — keyed by serial number, not applied globally.
+const CLOCK_OFFSET_MINUTES_BY_SERIAL = {
+  A6F5211860719: -135,
+};
+
+// How far a raw timestamp's apparent skew is allowed to drift from the
+// expected ~135 minutes before we stop trusting "yes, this one needs the
+// correction" — real network/processing delay between a punch and this
+// server receiving it is seconds, not minutes, so this tolerance exists
+// only to absorb minor clock jitter, not to paper over genuine uncertainty.
+const CLOCK_SKEW_TOLERANCE_MINUTES = 15;
+
+// The blanket "always subtract 135 minutes" version of this function
+// (this device's fix from earlier) turned out to be unsafe once the
+// separate Date-header display fix started intermittently correcting the
+// device's own internal clock too, not just its on-screen display — some
+// punches now arrive with an ALREADY-correct raw timestamp, and blindly
+// subtracting 135 minutes from one of those shoves it 2h15m into the wrong
+// past, which is exactly what made a later punch sort before an earlier
+// one in the report. Confirmed via a direct data check: one live punch had
+// created_at (real receipt time) 135 minutes AFTER its stored punch_time,
+// the opposite direction from every other correctly-adjusted row.
+//
+// Fix: only apply the known offset when the raw timestamp actually looks
+// skewed the way this device is known to sometimes be — i.e. close to 135
+// minutes ahead of the server's own current clock (which is real, since
+// this server's own time isn't in question). A raw timestamp that's
+// already close to "now" is trusted as-is instead.
+function correctDeviceTimestamp(serialNumber, rawTimestamp) {
+  const raw = new Date(rawTimestamp.replace(' ', 'T'));
+  const offsetMinutes = CLOCK_OFFSET_MINUTES_BY_SERIAL[serialNumber];
+  if (offsetMinutes === undefined) return raw;
+
+  const expectedSkewMinutes = -offsetMinutes; // e.g. 135, for a -135 correction
+  const actualSkewMinutes = (raw.getTime() - Date.now()) / 60000;
+  const looksSkewed = Math.abs(actualSkewMinutes - expectedSkewMinutes) <= CLOCK_SKEW_TOLERANCE_MINUTES;
+  return looksSkewed ? new Date(raw.getTime() + offsetMinutes * 60000) : raw;
+}
+
+// This device reads the HTTP `Date` response header off its cloud-server
+// requests and sets its own on-screen clock from it (applying its own
+// fixed/unchangeable +8h-ish internal offset on top) — which is exactly why
+// its display runs 2h15m ahead of real time once it starts talking to a
+// cloud server at all. We can't change the device's internal offset, but we
+// CAN pre-cancel it: send a `Date` header that is already offsetMinutes
+// early, so after the device applies its own bad offset the displayed time
+// lands on the real one. This only works when reached directly on this port —
+// nginx's proxy in front of port 80 unconditionally regenerates a fresh,
+// genuine `Date` header on every response and can't be made to pass a
+// custom one through, which is why this device's Cloud Server port must
+// point at this server directly (8088), not through the nginx proxy.
+function spoofedDateHeader(serialNumber) {
+  const offsetMinutes = CLOCK_OFFSET_MINUTES_BY_SERIAL[serialNumber];
+  if (offsetMinutes === undefined) return null;
+  return new Date(Date.now() + offsetMinutes * 60000).toUTCString();
+}
+
 // ATTLOG line format (from the device vendor's own protocol doc):
 // UserID <tab> Timestamp <tab> State <tab> VerifyType <tab> ...
-async function handleAttlog(companyId, deviceId, body) {
-  const byFingerprint = employeesByCompany.get(companyId) ?? new Map();
+async function handleAttlog(companyId, deviceId, serialNumber, body) {
   const lines = body.split(/\r\n|\n/).map(l => l.trim()).filter(Boolean);
   const rows = [];
   for (const line of lines) {
@@ -136,20 +258,13 @@ async function handleAttlog(companyId, deviceId, body) {
     const [userId, timestamp, state, verifyType] = fields;
     if (!userId || !timestamp) continue;
 
-    const employeeId = byFingerprint.get(String(userId));
-    if (!employeeId) {
-      const key = `${companyId}:${userId}`;
-      if (!warnedUnmapped.has(key)) {
-        warnedUnmapped.add(key);
-        console.warn(`[push] no employee mapped to fingerprint_id ${userId} for company ${companyId}, skipping (will not repeat this warning)`);
-      }
-      continue;
-    }
+    const employeeId = await getOrCreateEmployeeId(companyId, deviceId, String(userId));
+    if (!employeeId) continue;
 
     rows.push({
       employee_id: employeeId,
       device_id: deviceId,
-      punch_time: new Date(timestamp.replace(' ', 'T')).toISOString(),
+      punch_time: correctDeviceTimestamp(serialNumber, timestamp).toISOString(),
       punch_type: state === '1' ? '1' : '0',
       method: 'zkteco',
       verification_mode: verifyType ?? '1',
@@ -178,6 +293,68 @@ async function markOnline(deviceId) {
   if (error) console.error('[push] marking device online failed:', error.message);
 }
 
+// A device's periodic GET /iclock/getrequest poll is the ONLY way to reach
+// it — there's no way to push a command outside that window. Queued rows
+// come from queue_device_userinfo_sync() (a trigger on employees, see the
+// device_command_queue migration): a name/fingerprint_id change there queues
+// one row per device for that employee's company. Serves up to 10 at once,
+// each as its own `C:<cmd_seq>:<command>` line (the format this protocol's
+// command channel uses), and marks them 'sent' immediately — a device that
+// never ACKs (see ackPendingCommands) just leaves that row stuck at 'sent'
+// forever rather than retried, since we have no reliable way to tell "device
+// ignored it" apart from "device hasn't polled again yet".
+async function deliverPendingCommands(deviceId, res) {
+  const { data: pending, error } = await supabase
+    .from('device_command_queue')
+    .select('id, cmd_seq, command')
+    .eq('device_id', deviceId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+    .limit(10);
+  if (error) {
+    console.error('[push] fetching pending commands failed:', error.message);
+    return 0;
+  }
+  if (!pending || pending.length === 0) return 0;
+
+  const { error: updateError } = await supabase
+    .from('device_command_queue')
+    .update({ status: 'sent', sent_at: new Date().toISOString() })
+    .in(
+      'id',
+      pending.map(p => p.id)
+    );
+  if (updateError) console.error('[push] marking commands sent failed:', updateError.message);
+
+  const body = pending.map(p => `C:${p.cmd_seq}:${p.command}`).join('\r\n') + '\r\n';
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end(body);
+  return pending.length;
+}
+
+// The device ACKs each command it received on its next POST /iclock/devicecmd,
+// one `ID=<cmd_seq>&Return=<code>&CMD=<name>` line per command — Return=0
+// means it applied the command, anything else means it rejected it (bad
+// field, unsupported command, etc). cmd_seq is the same short sequential
+// token deliverPendingCommands() embedded, not the device_command_queue uuid.
+async function ackPendingCommands(body) {
+  const lines = body.split(/\r\n|\n/).map(l => l.trim()).filter(Boolean);
+  for (const line of lines) {
+    const params = new URLSearchParams(line);
+    const cmdSeq = params.get('ID');
+    if (!cmdSeq) continue;
+    const { error } = await supabase
+      .from('device_command_queue')
+      .update({
+        status: params.get('Return') === '0' ? 'success' : 'failed',
+        acked_at: new Date().toISOString(),
+        response: line,
+      })
+      .eq('cmd_seq', cmdSeq);
+    if (error) console.error('[push] recording command ack failed:', error.message);
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   let url;
   try {
@@ -189,6 +366,12 @@ const server = http.createServer(async (req, res) => {
   }
   const sn = url.searchParams.get('SN');
   const device = sn ? deviceBySerial.get(sn) : undefined;
+
+  const dateOverride = sn ? spoofedDateHeader(sn) : null;
+  if (dateOverride) {
+    res.sendDate = false;
+    res.setHeader('Date', dateOverride);
+  }
 
   // Always answer 200/OK even for an unrecognized device — returning an
   // error here just makes the device retry-storm the exact same rejected
@@ -231,7 +414,7 @@ const server = http.createServer(async (req, res) => {
       const table = url.searchParams.get('table') ?? '';
       const body = await readBody(req);
       if (table === 'ATTLOG') {
-        const count = await handleAttlog(device.companyId, device.deviceId, body);
+        const count = await handleAttlog(device.companyId, device.deviceId, sn, body);
         console.log(`[push] ${device.name}: ${count} punch(es) upserted`);
       } else {
         logRawPayload(table, sn, body);
@@ -243,15 +426,18 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && url.pathname === '/iclock/getrequest') {
-      // No pending commands to hand back right now.
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('OK');
+      const count = await deliverPendingCommands(device.deviceId, res);
+      if (count === 0) {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('OK');
+      }
       return;
     }
 
     if (req.method === 'POST' && url.pathname === '/iclock/devicecmd') {
       const body = await readBody(req);
       console.log(`[push] ${device.name} command ack:`, body);
+      await ackPendingCommands(body);
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end('OK');
       return;

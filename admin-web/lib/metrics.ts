@@ -26,11 +26,13 @@ export function isLate(
   shifts: Shift[],
   logsForDay: AttendanceLog[],
   date: string,
-  dailyShiftByDate?: DailyShiftByDate
+  dailyShiftByDate?: DailyShiftByDate,
+  companyWeekOffDates?: Set<string>
 ) {
+  if (employee.attendance_exempt) return false;
   const checkIn = firstCheckIn(logsForDay);
   if (!checkIn) return false;
-  const shift = resolveShiftForDate(employee, shifts, date, dailyShiftByDate);
+  const shift = resolveShiftForDate(employee, shifts, date, dailyShiftByDate, companyWeekOffDates);
   // Week Off: nothing scheduled, so there's no start time to be late against.
   if (isWeekOff(shift)) return false;
   const startMin = toMinutes(shift.start_time);
