@@ -145,7 +145,7 @@ export default function MonthlyRosterGrid() {
                     <tr key={emp.id} className="border-b border-slate-100 last:border-0">
                       <td className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 ${rowBg}`}>
                         <div className="flex items-center gap-2">
-                          <Avatar name={emp.name} className="h-6 w-6 text-[10px]" />
+                          <Avatar name={emp.name} photoUrl={emp.profile_photo_url} className="h-12 w-12 text-sm" />
                           <span className="truncate font-medium text-ink">{emp.name}</span>
                         </div>
                       </td>
@@ -169,7 +169,7 @@ export default function MonthlyRosterGrid() {
                               <option value={WEEK_OFF_VALUE}>Off</option>
                               {templateShifts.map(s => (
                                 <option key={s.id} value={s.id}>
-                                  {s.name}
+                                  {s.name} ({s.start_time.slice(0, 5)}–{s.end_time.slice(0, 5)})
                                 </option>
                               ))}
                             </select>

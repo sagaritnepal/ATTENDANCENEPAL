@@ -172,7 +172,7 @@ export default function WeeklyRosterGrid() {
                     <tr key={emp.id} className="border-b border-slate-100 last:border-0">
                       <td className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 ${rowBg}`}>
                         <div className="flex items-center gap-2">
-                          <Avatar name={emp.name} />
+                          <Avatar name={emp.name} photoUrl={emp.profile_photo_url} className="h-14 w-14 text-base" />
                           <span className="truncate font-medium text-ink">{emp.name}</span>
                         </div>
                       </td>

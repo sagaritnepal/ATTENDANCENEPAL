@@ -13,14 +13,27 @@ function avatarTone(name: string) {
 }
 
 /** A consistent color per name (hashed, not random) so the same person's
- * initials circle looks the same everywhere it appears. */
-export default function Avatar({ name, className = 'h-7 w-7 text-[11px]' }: { name: string; className?: string }) {
+ * initials circle looks the same everywhere it appears — used as the
+ * fallback whenever there's no profile photo to show instead. */
+export default function Avatar({
+  name,
+  photoUrl,
+  className = 'h-7 w-7 text-[11px]',
+}: {
+  name: string;
+  photoUrl?: string | null;
+  className?: string;
+}) {
   const initials = name
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map(part => part[0]!.toUpperCase())
     .join('');
+  if (photoUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={photoUrl} alt={name} className={`shrink-0 rounded-full object-cover ${className}`} />;
+  }
   return (
     <span className={`flex shrink-0 items-center justify-center rounded-full font-bold ${avatarTone(name)} ${className}`}>
       {initials || '?'}
