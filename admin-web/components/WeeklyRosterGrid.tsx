@@ -50,8 +50,8 @@ export default function WeeklyRosterGrid() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [rosterRows, setRosterRows] = useState<RosterRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [savingKey, setSavingKey] = useState<string | null>(null);
-  const [flashKey, setFlashKey] = useState<string | null>(null);
+  const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
+  const [flashKeys, setFlashKeys] = useState<Set<string>>(new Set());
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const week = useMemo(() => weekRange(anchor), [anchor]);
@@ -85,9 +85,28 @@ export default function WeeklyRosterGrid() {
     return row.shift_id === null ? WEEK_OFF_VALUE : row.shift_id;
   }
 
+  function markSaving(keys: string[], on: boolean) {
+    setSavingKeys(s => {
+      const next = new Set(s);
+      for (const k of keys) (on ? next.add(k) : next.delete(k));
+      return next;
+    });
+  }
+
+  function flash(keys: string[]) {
+    setFlashKeys(s => new Set([...s, ...keys]));
+    setTimeout(() => {
+      setFlashKeys(s => {
+        const next = new Set(s);
+        for (const k of keys) next.delete(k);
+        return next;
+      });
+    }, 900);
+  }
+
   async function handleCellChange(employeeId: string, date: string, value: string) {
     const key = `${employeeId}|${date}`;
-    setSavingKey(key);
+    markSaving([key], true);
     setSaveError(null);
     const { error } =
       value === UNSET
@@ -95,7 +114,7 @@ export default function WeeklyRosterGrid() {
         : await supabase
             .from('employee_daily_shifts')
             .upsert({ employee_id: employeeId, work_date: date, shift_id: value === WEEK_OFF_VALUE ? null : value }, { onConflict: 'employee_id,work_date' });
-    setSavingKey(null);
+    markSaving([key], false);
     if (error) {
       setSaveError(error.message);
       return;
@@ -104,8 +123,37 @@ export default function WeeklyRosterGrid() {
       const rest = rows.filter(r => !(r.employee_id === employeeId && r.work_date === date));
       return value === UNSET ? rest : [...rest, { employee_id: employeeId, work_date: date, shift_id: value === WEEK_OFF_VALUE ? null : value }];
     });
-    setFlashKey(key);
-    setTimeout(() => setFlashKey(k => (k === key ? null : k)), 900);
+    flash([key]);
+  }
+
+  // Picks up whatever is set on the week's first day and fills every other
+  // day in that row with it — one round trip instead of clicking through
+  // each remaining day by hand.
+  async function copyRowToAll(employeeId: string) {
+    const sourceValue = currentValue(employeeId, week.dates[0]);
+    if (sourceValue === UNSET) return;
+    const targets = week.dates.slice(1);
+    if (targets.length === 0) return;
+    const keys = targets.map(date => `${employeeId}|${date}`);
+    markSaving(keys, true);
+    setSaveError(null);
+    const shiftId = sourceValue === WEEK_OFF_VALUE ? null : sourceValue;
+    const { error } = await supabase
+      .from('employee_daily_shifts')
+      .upsert(
+        targets.map(date => ({ employee_id: employeeId, work_date: date, shift_id: shiftId })),
+        { onConflict: 'employee_id,work_date' }
+      );
+    markSaving(keys, false);
+    if (error) {
+      setSaveError(error.message);
+      return;
+    }
+    setRosterRows(rows => {
+      const rest = rows.filter(r => !(r.employee_id === employeeId && targets.includes(r.work_date)));
+      return [...rest, ...targets.map(date => ({ employee_id: employeeId, work_date: date, shift_id: shiftId }))];
+    });
+    flash(keys);
   }
 
   function cellTone(value: string) {
@@ -174,13 +222,22 @@ export default function WeeklyRosterGrid() {
                         <div className="flex items-center gap-2">
                           <Avatar name={emp.name} photoUrl={emp.profile_photo_url} className="h-14 w-14 text-base" />
                           <span className="truncate font-medium text-ink">{emp.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => copyRowToAll(emp.id)}
+                            disabled={currentValue(emp.id, week.dates[0]) === UNSET}
+                            title="Copy the first day's pick to every day this week"
+                            className="ml-1 shrink-0 rounded-md border border-slate-200 px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-30"
+                          >
+                            ⧉ Copy all
+                          </button>
                         </div>
                       </td>
                       {week.dates.map(date => {
                         const value = currentValue(emp.id, date);
                         const key = `${emp.id}|${date}`;
-                        const isSaving = savingKey === key;
-                        const justSaved = flashKey === key;
+                        const isSaving = savingKeys.has(key);
+                        const justSaved = flashKeys.has(key);
                         return (
                           <td key={date} className={`px-1 py-1.5 text-center ${date === today ? 'bg-accent/5' : rowBg}`}>
                             <select
