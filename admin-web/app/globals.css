@@ -15,12 +15,13 @@ html, body {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
-  /* Landscape is the default suggestion in the print dialog (these tables
-     run 8-13 columns wide) but not forced — the rest of this block shrinks
-     text/padding small enough that Portrait fits one page too, since some
-     printers/filing setups need that instead. */
+  /* No fixed `size` here on purpose — setting one (e.g. landscape) makes
+     Chrome's print dialog hide its own Portrait/Landscape toggle entirely,
+     since it assumes the page has no reason to offer a choice it would
+     just override. Leaving size unset keeps that dropdown available; the
+     rest of this block shrinks text/padding small enough that either
+     orientation the user picks still fits one page. */
   @page {
-    size: landscape;
     margin: 8mm;
   }
   /* Every exported table gets visible gridlines, and shrinks down to
