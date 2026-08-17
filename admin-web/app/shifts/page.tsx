@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import WeeklyRosterGrid from '@/components/WeeklyRosterGrid';
+import MonthlyRosterGrid from '@/components/MonthlyRosterGrid';
 import type { Employee, Shift } from '@/lib/types';
 import { resolveShift, formatShiftHours } from '@/lib/shift';
 
@@ -57,7 +58,8 @@ export default function ShiftsPage() {
 
 function ShiftsView() {
   const searchParams = useSearchParams();
-  const initialTab = searchParams.get('tab') === 'roster' ? 'roster' : 'templates';
+  const initialTabParam = searchParams.get('tab');
+  const initialTab = initialTabParam === 'roster' ? 'roster' : initialTabParam === 'monthly' ? 'monthly' : 'templates';
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [rosterEmployeeIds, setRosterEmployeeIds] = useState<Set<string>>(new Set());
@@ -65,7 +67,7 @@ function ShiftsView() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-  const [tab, setTab] = useState<'templates' | 'roster'>(initialTab);
+  const [tab, setTab] = useState<'templates' | 'roster' | 'monthly'>(initialTab);
 
   function reload() {
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
@@ -182,6 +184,14 @@ function ShiftsView() {
           >
             Weekly Roster
           </button>
+          <button
+            onClick={() => setTab('monthly')}
+            className={`rounded-md px-3 py-1.5 transition-colors ${
+              tab === 'monthly' ? 'bg-accent text-white' : 'text-slate-500 hover:bg-slate-50'
+            }`}
+          >
+            Monthly Roster
+          </button>
         </div>
         {tab === 'templates' && (
           <button
@@ -199,6 +209,8 @@ function ShiftsView() {
 
       {tab === 'roster' ? (
         <WeeklyRosterGrid />
+      ) : tab === 'monthly' ? (
+        <MonthlyRosterGrid />
       ) : (
         <>
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
