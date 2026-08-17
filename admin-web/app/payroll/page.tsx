@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
+import TableExportBar, { downloadCsv } from '@/components/TableExportBar';
 import {
   buildPeriodOptions,
   currentSystemYearMonth,
@@ -343,6 +344,24 @@ export default function PayrollPage() {
     return calculated + (overtimeSalary(row) ?? 0);
   }
 
+  function exportCsv() {
+    const header = ['ID', 'Employee', 'Worked Days', 'Total Hours', 'Overtime', 'Late Days', 'Early Days', 'Salary', 'Calculated Salary', 'Overtime Salary', 'Total Salary'];
+    const lines = byEmployee.map(row => [
+      row.enrollId,
+      row.name,
+      row.days,
+      fmtHrs(row.hours),
+      fmtHrs(row.overtime),
+      row.lateDays,
+      row.earlyDays,
+      row.salary ?? '',
+      calculatedSalary(row) ?? '',
+      overtimeSalary(row) ?? '',
+      totalSalary(row) ?? '',
+    ]);
+    downloadCsv(`payroll_${start}_to_${end}.csv`, header, lines);
+  }
+
   async function applySalaryChange(employeeId: string, salary: string) {
     const { error } = await supabase.from('employees').update({ salary: salary ? Number(salary) : null }).eq('id', employeeId);
     return error;
@@ -539,8 +558,8 @@ export default function PayrollPage() {
         </div>
       </div>
 
-      <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white pb-2 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-accent/10 via-accent/5 to-transparent px-4 py-4 sm:px-6">
+      <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white pb-2 shadow-sm print:border-0 print:shadow-none">
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-accent/10 via-accent/5 to-transparent px-4 py-4 sm:px-6 print:hidden">
           <div className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-white">
               <ReportIcon className="h-5 w-5" />
@@ -585,11 +604,16 @@ export default function PayrollPage() {
               <span className="text-slate-400">({daysInRange}d)</span>
             </div>
           </div>
+
+          <TableExportBar onExportCsv={exportCsv} />
         </div>
+        <h1 className="hidden px-4 pt-4 text-lg font-bold text-ink print:block sm:px-6">
+          {period.label} Salary Report — {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
+        </h1>
 
         {/* Phones get one card per employee — the 10-column table below
             would otherwise need horizontal scrolling to read anything. */}
-        <div className="mt-3 divide-y divide-slate-100 md:hidden">
+        <div className="mt-3 divide-y divide-slate-100 md:hidden print:hidden">
           {byEmployee.map(row => (
             <div key={row.id} className="p-4">
               <div className="flex items-start justify-between gap-3">
@@ -652,7 +676,7 @@ export default function PayrollPage() {
           )}
         </div>
 
-        <div className="mt-4 hidden max-h-[65vh] overflow-auto md:block">
+        <div className="mt-4 hidden max-h-[65vh] overflow-auto md:block print:!block print:max-h-none print:overflow-visible">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="sticky top-0 z-10 border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">

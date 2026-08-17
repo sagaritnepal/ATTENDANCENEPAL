@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Badge from '@/components/Badge';
 import DateRangePicker from '@/components/DateRangePicker';
+import TableExportBar, { downloadCsv } from '@/components/TableExportBar';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import {
@@ -279,37 +280,29 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
       'Status',
       'Device',
     ];
-    const lines = rows.map(r =>
-      [
-        r.date,
-        r.enrollId,
-        r.employeeName,
-        r.shiftLabel,
-        r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour12: false }) : '',
-        r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour12: false }) : '',
-        r.lateMinutes || '',
-        r.earlyMinutes || '',
-        r.hours.toFixed(1),
-        r.overtime.toFixed(1),
-        r.status,
-        r.device,
-      ]
-        .map(v => `"${String(v).replace(/"/g, '""')}"`)
-        .join(',')
-    );
-    const csv = [header.join(','), ...lines].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `attendance_${from}_to_${to}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const lines = rows.map(r => [
+      r.date,
+      r.enrollId,
+      r.employeeName,
+      r.shiftLabel,
+      r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour12: false }) : '',
+      r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour12: false }) : '',
+      r.lateMinutes || '',
+      r.earlyMinutes || '',
+      r.hours.toFixed(1),
+      r.overtime.toFixed(1),
+      r.status,
+      r.device,
+    ]);
+    downloadCsv(`attendance_${from}_to_${to}.csv`, header, lines);
   }
 
   return (
     <>
-      <div className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+      <h1 className="mb-2 hidden text-lg font-bold text-ink print:block">
+        Attendance Report — {from} to {to}
+      </h1>
+      <div className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm print:hidden">
         <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
           <div>
             <label className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Employee</label>
@@ -370,20 +363,16 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             </div>
           </div>
 
-          <button
-            onClick={exportCsv}
-            className="ml-auto flex items-center gap-1 rounded-md border border-accent bg-accent/5 px-3 py-1.5 text-xs font-semibold text-accent shadow-sm transition-colors hover:bg-accent hover:text-white"
-          >
-            ⭳ Export CSV
-          </button>
+          <TableExportBar onExportCsv={exportCsv} />
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="rounded-lg border border-slate-200 bg-white shadow-sm print:border-0 print:shadow-none">
         {/* Same left-to-right table on every screen size, including phones —
             horizontal scroll instead of a condensed/truncated mobile layout,
-            so it always matches the desktop web view exactly. */}
-        <div className="max-h-[65vh] overflow-auto rounded-lg">
+            so it always matches the desktop web view exactly. Print gets the
+            full table instead of just the scrolled-into-view slice. */}
+        <div className="max-h-[65vh] overflow-auto rounded-lg print:max-h-none print:overflow-visible">
         <table className="w-full text-left text-xs">
           <thead>
             <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">

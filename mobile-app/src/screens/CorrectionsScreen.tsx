@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, Linking, Alert } from 'react-native';
 import { supabase } from '../lib/supabase';
-import { formatHoursMinutes } from '../lib/shift';
-import type { AttendanceGpsRequest, CorrectionRequest, Employee, PayrollSummary } from '../types';
+import type { AttendanceGpsRequest, CorrectionRequest, Employee } from '../types';
 import { colors } from '../theme';
 import Badge from '../components/Badge';
 import { formatAdDate } from '../lib/calendar';
@@ -10,9 +9,6 @@ import { useCalendarSystem } from '../lib/CalendarSystemContext';
 
 const FILTERS = ['pending', 'approved', 'rejected', 'All'] as const;
 
-function fmtHrs(hours: number) {
-  return formatHoursMinutes(Math.round(hours * 60));
-}
 function formatTime(value: string | null) {
   if (!value) return '—';
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -27,7 +23,6 @@ export default function CorrectionsScreen() {
   const [requests, setRequests] = useState<CorrectionRequest[]>([]);
   const [gpsRequests, setGpsRequests] = useState<AttendanceGpsRequest[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>('pending');
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -35,22 +30,10 @@ export default function CorrectionsScreen() {
     supabase.from('attendance_correction_requests').select('*').order('created_at', { ascending: false }).then(({ data }) => setRequests((data as CorrectionRequest[]) ?? []));
     supabase.from('attendance_gps_requests').select('*').order('created_at', { ascending: false }).then(({ data }) => setGpsRequests((data as AttendanceGpsRequest[]) ?? []));
     supabase.from('employees').select('*').then(({ data }) => setEmployees((data as Employee[]) ?? []));
-    supabase
-      .from('payroll_summaries')
-      .select('*')
-      .gt('overtime_hours', 0)
-      .eq('overtime_approved', false)
-      .order('work_date', { ascending: false })
-      .then(({ data }) => setSummaries((data as PayrollSummary[]) ?? []));
   }
   useEffect(reload, []);
 
   const employeeName = (id: string) => employees.find(e => e.id === id)?.name ?? 'Unknown';
-
-  async function approveOvertime(id: string) {
-    await supabase.from('payroll_summaries').update({ overtime_approved: true }).eq('id', id);
-    reload();
-  }
 
   const unified: UnifiedRequest[] = useMemo(() => {
     const corrections: UnifiedRequest[] = requests.map(r => ({ kind: 'correction', id: r.id, employee_id: r.employee_id, status: r.status, created_at: r.created_at, data: r }));
@@ -92,24 +75,6 @@ export default function CorrectionsScreen() {
               Requests from employees — a missed punch, or a live check-in/out submitted from their phone. Approving a missed punch
               recalculates that day's hours and locks it against the nightly recompute.
             </Text>
-            {summaries.length > 0 && (
-              <View style={styles.otCard}>
-                <Text style={styles.otTitle}>Overtime awaiting approval</Text>
-                {summaries.map(s => (
-                  <View key={s.id} style={styles.otRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.otName}>{employeeName(s.employee_id)}</Text>
-                      <Text style={styles.otMeta}>
-                        {formatAdDate(s.work_date, system)} · {fmtHrs(Number(s.overtime_hours))}
-                      </Text>
-                    </View>
-                    <TouchableOpacity style={styles.approveBtn} onPress={() => approveOvertime(s.id)}>
-                      <Text style={styles.approveText}>Approve</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            )}
             <View style={styles.filterBar}>
               {FILTERS.map(f => (
                 <TouchableOpacity key={f} style={[styles.chip, filter === f && styles.chipActive]} onPress={() => setFilter(f)}>
@@ -165,11 +130,6 @@ export default function CorrectionsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.slate50 },
   intro: { fontSize: 12, color: colors.slate500, lineHeight: 18, marginBottom: 12 },
-  otCard: { backgroundColor: colors.white, borderRadius: 12, borderWidth: 1, borderColor: colors.slate200, padding: 12, marginBottom: 12 },
-  otTitle: { fontSize: 13, fontWeight: '700', color: colors.ink, marginBottom: 8 },
-  otRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, borderTopWidth: 1, borderTopColor: colors.slate100 },
-  otName: { fontSize: 13, fontWeight: '600', color: colors.ink },
-  otMeta: { fontSize: 11, color: colors.slate500, marginTop: 1 },
   filterBar: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.slate200 },
   chipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
