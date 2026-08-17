@@ -31,8 +31,10 @@ export default function MonthlyRosterGrid() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [rosterRows, setRosterRows] = useState<RosterRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [savingKeys, setSavingKeys] = useState<Set<string>>(new Set());
-  const [flashKeys, setFlashKeys] = useState<Set<string>>(new Set());
+  // "employeeId|date" -> a real shift_id, WEEK_OFF_VALUE, or UNSET — staged
+  // here until Save is clicked, not written on every pick.
+  const [pending, setPending] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const month = useMemo(() => buildMonth(system, anchor), [system, anchor]);
@@ -61,84 +63,77 @@ export default function MonthlyRosterGrid() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(reload, [dates.join(',')]);
 
+  useEffect(() => {
+    setPending({});
+    setSaveError(null);
+  }, [dates.join(',')]);
+
   function currentValue(employeeId: string, date: string): string {
+    const key = `${employeeId}|${date}`;
+    if (key in pending) return pending[key];
     const row = rosterRows.find(r => r.employee_id === employeeId && r.work_date === date);
     if (!row) return UNSET;
     return row.shift_id === null ? WEEK_OFF_VALUE : row.shift_id;
   }
 
-  function markSaving(keys: string[], on: boolean) {
-    setSavingKeys(s => {
-      const next = new Set(s);
-      for (const k of keys) (on ? next.add(k) : next.delete(k));
+  function setCell(employeeId: string, date: string, value: string) {
+    setPending(p => ({ ...p, [`${employeeId}|${date}`]: value }));
+  }
+
+  // Stages the month's first day's pick onto every other day in that row —
+  // still just pending until Save, same as a manual pick on each day.
+  function copyRowToAll(employeeId: string) {
+    const sourceValue = currentValue(employeeId, dates[0]);
+    if (sourceValue === UNSET) return;
+    setPending(p => {
+      const next = { ...p };
+      for (const date of dates.slice(1)) next[`${employeeId}|${date}`] = sourceValue;
       return next;
     });
   }
 
-  function flash(keys: string[]) {
-    setFlashKeys(s => new Set([...s, ...keys]));
-    setTimeout(() => {
-      setFlashKeys(s => {
-        const next = new Set(s);
-        for (const k of keys) next.delete(k);
-        return next;
-      });
-    }, 900);
-  }
+  const pendingCount = Object.keys(pending).length;
 
-  async function handleCellChange(employeeId: string, date: string, value: string) {
-    const key = `${employeeId}|${date}`;
-    markSaving([key], true);
+  async function handleSave() {
+    setSaving(true);
     setSaveError(null);
-    const { error } =
-      value === UNSET
-        ? await supabase.from('employee_daily_shifts').delete().eq('employee_id', employeeId).eq('work_date', date)
-        : await supabase
-            .from('employee_daily_shifts')
-            .upsert({ employee_id: employeeId, work_date: date, shift_id: value === WEEK_OFF_VALUE ? null : value }, { onConflict: 'employee_id,work_date' });
-    markSaving([key], false);
-    if (error) {
-      setSaveError(error.message);
-      return;
+
+    const toUpsert: { employee_id: string; work_date: string; shift_id: string | null }[] = [];
+    const toDelete: { employee_id: string; work_date: string }[] = [];
+    for (const [key, value] of Object.entries(pending)) {
+      const [employeeId, date] = key.split('|');
+      if (value === UNSET) toDelete.push({ employee_id: employeeId, work_date: date });
+      else toUpsert.push({ employee_id: employeeId, work_date: date, shift_id: value === WEEK_OFF_VALUE ? null : value });
     }
-    setRosterRows(rows => {
-      const rest = rows.filter(r => !(r.employee_id === employeeId && r.work_date === date));
-      return value === UNSET ? rest : [...rest, { employee_id: employeeId, work_date: date, shift_id: value === WEEK_OFF_VALUE ? null : value }];
-    });
-    flash([key]);
+
+    if (toUpsert.length > 0) {
+      const { error } = await supabase.from('employee_daily_shifts').upsert(toUpsert, { onConflict: 'employee_id,work_date' });
+      if (error) {
+        setSaving(false);
+        setSaveError(error.message);
+        return;
+      }
+    }
+    for (const d of toDelete) {
+      const { error } = await supabase
+        .from('employee_daily_shifts')
+        .delete()
+        .eq('employee_id', d.employee_id)
+        .eq('work_date', d.work_date);
+      if (error) {
+        setSaving(false);
+        setSaveError(error.message);
+        return;
+      }
+    }
+
+    setSaving(false);
+    setPending({});
+    reload();
   }
 
-  // Picks up whatever is set on the month's first day and fills every other
-  // day in that row with it — one round trip instead of clicking through
-  // each remaining day by hand.
-  async function copyRowToAll(employeeId: string) {
-    const sourceValue = currentValue(employeeId, dates[0]);
-    if (sourceValue === UNSET) return;
-    const targets = dates.slice(1);
-    if (targets.length === 0) return;
-    const keys = targets.map(date => `${employeeId}|${date}`);
-    markSaving(keys, true);
-    setSaveError(null);
-    const shiftId = sourceValue === WEEK_OFF_VALUE ? null : sourceValue;
-    const { error } = await supabase
-      .from('employee_daily_shifts')
-      .upsert(
-        targets.map(date => ({ employee_id: employeeId, work_date: date, shift_id: shiftId })),
-        { onConflict: 'employee_id,work_date' }
-      );
-    markSaving(keys, false);
-    if (error) {
-      setSaveError(error.message);
-      return;
-    }
-    setRosterRows(rows => {
-      const rest = rows.filter(r => !(r.employee_id === employeeId && targets.includes(r.work_date)));
-      return [...rest, ...targets.map(date => ({ employee_id: employeeId, work_date: date, shift_id: shiftId }))];
-    });
-    flash(keys);
-  }
-
-  function cellTone(value: string) {
+  function cellTone(value: string, dirty: boolean) {
+    if (dirty) return 'border-accent bg-accent/10 text-ink font-medium';
     if (value === WEEK_OFF_VALUE) return 'border-warning/30 bg-warning-bg text-warning-text font-semibold';
     if (value === UNSET) return 'border-slate-200 text-slate-400';
     return 'border-accent/30 bg-accent/5 text-ink font-medium';
@@ -159,7 +154,6 @@ export default function MonthlyRosterGrid() {
             Today
           </button>
         </div>
-        <span className="text-xs text-slate-400">Autosaves as you pick — no separate save step</span>
       </div>
 
       <div className="p-4 sm:p-6">
@@ -208,15 +202,12 @@ export default function MonthlyRosterGrid() {
                       </td>
                       {dates.map(date => {
                         const value = currentValue(emp.id, date);
-                        const key = `${emp.id}|${date}`;
-                        const isSaving = savingKeys.has(key);
-                        const justSaved = flashKeys.has(key);
+                        const dirty = `${emp.id}|${date}` in pending;
                         return (
                           <td key={date} className={`px-0.5 py-1.5 text-center ${date === today ? 'bg-accent/5' : rowBg}`}>
                             <select
                               value={value}
-                              disabled={isSaving}
-                              onChange={e => handleCellChange(emp.id, date, e.target.value)}
+                              onChange={e => setCell(emp.id, date, e.target.value)}
                               title={
                                 shiftById.get(value)
                                   ? `${shiftById.get(value)!.name} (${shiftById.get(value)!.start_time.slice(0, 5)}–${shiftById
@@ -224,9 +215,10 @@ export default function MonthlyRosterGrid() {
                                       .end_time.slice(0, 5)})`
                                   : undefined
                               }
-                              className={`w-24 rounded-md border px-1 py-1 text-[11px] shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50 ${cellTone(
-                                value
-                              )} ${justSaved ? 'ring-2 ring-good' : ''}`}
+                              className={`w-24 rounded-md border px-1 py-1 text-[11px] shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-accent/30 ${cellTone(
+                                value,
+                                dirty
+                              )}`}
                             >
                               <option value={UNSET}>—</option>
                               <option value={WEEK_OFF_VALUE}>Week Off</option>
@@ -248,6 +240,26 @@ export default function MonthlyRosterGrid() {
         )}
 
         {saveError && <p className="mt-3 text-sm text-critical">Could not save: {saveError}</p>}
+
+        {pendingCount > 0 && (
+          <div className="mt-4 flex items-center justify-between rounded-lg border border-accent/30 bg-accent/5 px-4 py-3">
+            <span className="text-sm font-medium text-ink">
+              {pendingCount} unsaved change{pendingCount === 1 ? '' : 's'}
+            </span>
+            <div className="flex gap-2">
+              <button onClick={() => setPending({})} className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100">
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+              >
+                {saving ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
