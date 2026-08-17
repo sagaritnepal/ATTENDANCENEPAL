@@ -59,7 +59,12 @@ export default function WeekOffPage() {
     e.preventDefault();
     if (!form.holiday_date || !form.name.trim()) return;
     setSaving(true);
-    const { error } = await supabase.from('company_holidays').insert({ holiday_date: form.holiday_date, name: form.name.trim() });
+    // Clicking an already-marked day in the calendar pre-fills its date —
+    // upsert instead of insert so re-submitting that day renames it instead
+    // of hitting the (company_id, holiday_date) unique constraint.
+    const { error } = await supabase
+      .from('company_holidays')
+      .upsert({ holiday_date: form.holiday_date, name: form.name.trim() }, { onConflict: 'company_id,holiday_date' });
     setSaving(false);
     if (error) {
       alert(`Could not save: ${error.message}`);
@@ -113,21 +118,27 @@ export default function WeekOffPage() {
             {month.weeks.flat().map((cell, i) => {
               const holiday = holidaysByDate.get(cell.adKey);
               return (
-                <div
+                <button
                   key={`${cell.adKey}-${i}`}
+                  type="button"
+                  disabled={!cell.inMonth}
                   title={holiday?.name}
-                  className={`flex h-9 w-9 flex-col items-center justify-center rounded-lg text-xs ${
+                  onClick={() => {
+                    setForm({ holiday_date: cell.adKey, name: holiday?.name ?? '' });
+                    setShowForm(true);
+                  }}
+                  className={`flex h-9 w-9 flex-col items-center justify-center rounded-lg text-xs transition-colors ${
                     !cell.inMonth
-                      ? 'text-slate-300'
+                      ? 'cursor-default text-slate-300'
                       : holiday
-                        ? 'bg-accent font-semibold text-white'
+                        ? 'bg-accent font-semibold text-white hover:bg-accent/90'
                         : cell.isToday
-                          ? 'bg-accent/10 font-semibold text-accent'
-                          : 'text-slate-600'
+                          ? 'bg-accent/10 font-semibold text-accent hover:bg-accent/20'
+                          : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
                   {cell.displayDay}
-                </div>
+                </button>
               );
             })}
           </div>
@@ -181,41 +192,45 @@ export default function WeekOffPage() {
         </div>
       </div>
 
-      {showForm && (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
-          <form onSubmit={handleAddHoliday} className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
-            <h3 className="mb-4 text-lg font-semibold text-ink">New Holiday</h3>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Date</label>
-            <div className="mb-3">
-              <DatePicker value={form.holiday_date} onChange={v => setForm(f => ({ ...f, holiday_date: v }))} />
-            </div>
-            <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
-            <input
-              required
-              placeholder="e.g. Dashain"
-              value={form.name}
-              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-            />
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={saving || !form.holiday_date}
-                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
-              >
-                {saving ? 'Saving…' : 'Add holiday'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      {showForm && (() => {
+        const editingExisting = holidaysByDate.has(form.holiday_date);
+        return (
+          <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
+            <form onSubmit={handleAddHoliday} className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+              <h3 className="mb-4 text-lg font-semibold text-ink">{editingExisting ? 'Edit Holiday' : 'New Holiday'}</h3>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Date</label>
+              <div className="mb-3">
+                <DatePicker value={form.holiday_date} onChange={v => setForm(f => ({ ...f, holiday_date: v }))} />
+              </div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
+              <input
+                required
+                placeholder="e.g. Dashain"
+                value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+              {editingExisting && <p className="mb-3 text-xs text-slate-400">This date already has a holiday — saving will rename it.</p>}
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving || !form.holiday_date}
+                  className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+                >
+                  {saving ? 'Saving…' : editingExisting ? 'Save changes' : 'Add holiday'}
+                </button>
+              </div>
+            </form>
+          </div>
+        );
+      })()}
     </AppShell>
   );
 }
