@@ -5,6 +5,7 @@ import NepaliDate from 'nepali-date-converter';
 import { supabase } from '@/lib/supabase';
 import Avatar from '@/components/Avatar';
 import RosterModeSwitch from '@/components/RosterModeSwitch';
+import RosterCellPicker, { type RosterCellOption } from '@/components/RosterCellPicker';
 import { buildMonth, monthDateRange, stepWeek, weekRange, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { Employee, Shift } from '@/lib/types';
@@ -89,7 +90,14 @@ export default function WeeklyRosterGrid({
 
   const week = useMemo(() => weekRange(anchor), [anchor]);
   const templateShifts = useMemo(() => shifts.filter(s => s.employee_id === null), [shifts]);
-  const shiftById = useMemo(() => new Map(templateShifts.map(s => [s.id, s])), [templateShifts]);
+  const cellOptions: RosterCellOption[] = useMemo(
+    () => [
+      { id: UNSET, label: '—' },
+      { id: WEEK_OFF_VALUE, label: 'Week Off' },
+      ...templateShifts.map(s => ({ id: s.id, label: s.name, sub: `${s.start_time.slice(0, 5)}–${s.end_time.slice(0, 5)}` })),
+    ],
+    [templateShifts]
+  );
   const today = todayIso();
 
   // "The month" this bulk-copy fills the rest of — anchored to the middle
@@ -402,23 +410,12 @@ export default function WeeklyRosterGrid({
                         const dirty = `${emp.id}|${date}` in pending;
                         return (
                           <td key={date} className={`px-1 py-1.5 text-center ${date === today ? 'bg-accent/5' : rowBg}`}>
-                            <select
+                            <RosterCellPicker
                               value={value}
-                              onChange={e => setCell(emp.id, date, e.target.value)}
-                              title={shiftById.get(value)?.name}
-                              className={`w-full rounded-md border px-1 py-1 text-xs shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-accent/30 ${cellTone(
-                                value,
-                                dirty
-                              )}`}
-                            >
-                              <option value={UNSET}>—</option>
-                              <option value={WEEK_OFF_VALUE}>Week Off</option>
-                              {templateShifts.map(s => (
-                                <option key={s.id} value={s.id}>
-                                  {s.name} ({s.start_time.slice(0, 5)}–{s.end_time.slice(0, 5)})
-                                </option>
-                              ))}
-                            </select>
+                              onChange={v => setCell(emp.id, date, v)}
+                              options={cellOptions}
+                              buttonClassName={`rounded-md border shadow-sm ${cellTone(value, dirty)}`}
+                            />
                           </td>
                         );
                       })}
