@@ -53,6 +53,14 @@ export default function MonthlyRosterGrid({
   const [copyError, setCopyError] = useState<string | null>(null);
   const [copyDone, setCopyDone] = useState(false);
   const [copyingRowId, setCopyingRowId] = useState<string | null>(null);
+  // Clipboard-style copy/paste between employees: Copy marks a source
+  // employee, then Paste on any other employee's row writes that source's
+  // whole month onto them immediately — no modal, no separate Save step.
+  // Stays set across multiple pastes so one Copy can go out to several
+  // employees one click at a time.
+  const [copiedEmployeeId, setCopiedEmployeeId] = useState<string | null>(null);
+  const [pastingEmployeeId, setPastingEmployeeId] = useState<string | null>(null);
+  const [pasteError, setPasteError] = useState<string | null>(null);
 
   const month = useMemo(() => buildMonth(system, anchor), [system, anchor]);
   const monthCells = useMemo(() => month.weeks.flat().filter(c => c.inMonth), [month]);
@@ -137,6 +145,40 @@ export default function MonthlyRosterGrid({
       setSaveError(error.message);
       return;
     }
+    reload();
+  }
+
+  // Writes the copied employee's whole month onto `targetId` straight to
+  // Supabase, immediately — no modal, no separate Save step. Only a source
+  // day that actually has a pick (not —) writes anything, leaving
+  // whatever's already on that target day alone. Also drops any of the
+  // target's own still-unsaved manual picks on the days just written, so
+  // the grid doesn't keep showing a stale pending value that no longer
+  // matches what Paste just saved underneath it.
+  async function pasteToEmployee(targetId: string) {
+    if (!copiedEmployeeId || copiedEmployeeId === targetId) return;
+    setPastingEmployeeId(targetId);
+    setPasteError(null);
+    const upserts: { employee_id: string; work_date: string; shift_id: string | null }[] = [];
+    for (const date of dates) {
+      const value = currentValue(copiedEmployeeId, date);
+      if (value !== UNSET) upserts.push({ employee_id: targetId, work_date: date, shift_id: value === WEEK_OFF_VALUE ? null : value });
+    }
+    if (upserts.length === 0) {
+      setPastingEmployeeId(null);
+      return;
+    }
+    const { error } = await supabase.from('employee_daily_shifts').upsert(upserts, { onConflict: 'employee_id,work_date' });
+    setPastingEmployeeId(null);
+    if (error) {
+      setPasteError(error.message);
+      return;
+    }
+    setPending(p => {
+      const next = { ...p };
+      for (const u of upserts) delete next[`${targetId}|${u.work_date}`];
+      return next;
+    });
     reload();
   }
 
@@ -296,6 +338,21 @@ export default function MonthlyRosterGrid({
         </div>
       )}
 
+      {!isInactive && copiedEmployeeId && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-good/20 bg-good-bg px-4 py-2.5 text-sm sm:px-6">
+          <span className="font-medium text-good-text">
+            📋 Copied {employees.find(e => e.id === copiedEmployeeId)?.name ?? 'an employee'}&apos;s month — click{' '}
+            <strong>📋 Paste</strong> on any other employee below to apply it. Saves immediately, as many times as you like.
+          </span>
+          <button onClick={() => setCopiedEmployeeId(null)} className="shrink-0 text-xs font-medium text-slate-600 hover:underline">
+            ✕ Clear
+          </button>
+        </div>
+      )}
+      {pasteError && (
+        <div className="border-b border-critical/20 bg-critical-bg px-4 py-2.5 text-sm text-critical-text sm:px-6">Could not paste: {pasteError}</div>
+      )}
+
       <div className="p-4 sm:p-6">
         {loading ? (
           <p className="text-center text-sm text-slate-400">Loading…</p>
@@ -338,6 +395,36 @@ export default function MonthlyRosterGrid({
                           >
                             {copyingRowId === emp.id ? 'Copying…' : '⧉ Copy all'}
                           </button>
+                          {copiedEmployeeId === emp.id ? (
+                            <button
+                              type="button"
+                              onClick={() => setCopiedEmployeeId(null)}
+                              title="This employee's month is copied — click to clear"
+                              className="shrink-0 rounded-md border border-good/30 bg-good-bg px-1.5 py-1 text-[10px] font-semibold text-good-text"
+                            >
+                              📋 Copied ✓
+                            </button>
+                          ) : copiedEmployeeId ? (
+                            <button
+                              type="button"
+                              onClick={() => pasteToEmployee(emp.id)}
+                              disabled={isInactive || pastingEmployeeId === emp.id}
+                              title={`Paste ${employees.find(e => e.id === copiedEmployeeId)?.name ?? "the copied employee"}'s month onto ${emp.name} — saves immediately`}
+                              className="shrink-0 rounded-md border border-accent/40 bg-accent/5 px-1.5 py-1 text-[10px] font-semibold text-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {pastingEmployeeId === emp.id ? 'Pasting…' : '📋 Paste'}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setCopiedEmployeeId(emp.id)}
+                              disabled={isInactive || !dates.some(date => currentValue(emp.id, date) !== UNSET)}
+                              title="Copy this employee's whole month — then click Paste on another employee"
+                              className="shrink-0 rounded-md border border-slate-200 px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-30"
+                            >
+                              📋 Copy
+                            </button>
+                          )}
                         </div>
                       </td>
                       {dates.map(date => {
