@@ -7,22 +7,34 @@ import type { CompanyHoliday } from '../types';
  * (employee_daily_shifts.shift_id = null, see lib/shift.ts's WEEK_OFF).
  * Mirrors admin-web/lib/weekOff.ts — this app has no shared package with
  * admin-web, so keep both in sync by hand. */
+export type RosterMode = 'weekly' | 'monthly';
+
 export type CompanyWeekOffConfig = {
   companyId: string | null;
   weeklyOffDay: number | null;
+  /** Which roster drives real employee shifts — 'monthly' (the default) is
+   * today's exact-date employee_daily_shifts model; 'weekly' means
+   * employee_weekly_pattern is consulted instead (see resolveShiftForDate in
+   * lib/shift.ts). Defaults to 'monthly' when there's no company yet. */
+  rosterMode: RosterMode;
 };
 
-/** The current user's own company_id + weekly_off_day. `companies` has no
- * RLS of its own, so this goes through `profiles` (RLS-scoped to the
- * caller's own row) first rather than trusting an unfiltered select. */
+/** The current user's own company_id + weekly_off_day + roster_mode.
+ * `companies` has no RLS of its own, so this goes through `profiles`
+ * (RLS-scoped to the caller's own row) first rather than trusting an
+ * unfiltered select. */
 export async function fetchMyCompanyWeekOffConfig(): Promise<CompanyWeekOffConfig> {
   const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return { companyId: null, weeklyOffDay: null };
+  if (!auth.user) return { companyId: null, weeklyOffDay: null, rosterMode: 'monthly' };
   const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', auth.user.id).single();
   const companyId = profile?.company_id ?? null;
-  if (!companyId) return { companyId: null, weeklyOffDay: null };
-  const { data: company } = await supabase.from('companies').select('weekly_off_day').eq('id', companyId).single();
-  return { companyId, weeklyOffDay: company?.weekly_off_day ?? null };
+  if (!companyId) return { companyId: null, weeklyOffDay: null, rosterMode: 'monthly' };
+  const { data: company } = await supabase.from('companies').select('weekly_off_day, roster_mode').eq('id', companyId).single();
+  return {
+    companyId,
+    weeklyOffDay: company?.weekly_off_day ?? null,
+    rosterMode: (company?.roster_mode as RosterMode) ?? 'monthly',
+  };
 }
 
 /** Dates within [start, end] (inclusive, 'YYYY-MM-DD') that are a company-wide

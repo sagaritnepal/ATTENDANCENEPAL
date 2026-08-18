@@ -92,7 +92,7 @@ export type Profile = {
 export type Device = {
   id: string;
   name: string;
-  branch_id: string;
+  branch_id: string | null;
   ip_address: string;
   port: number;
   serial_number: string | null;

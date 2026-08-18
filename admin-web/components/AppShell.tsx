@@ -54,11 +54,15 @@ export default function AppShell({ title, children }: { title: string; children:
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar role={role} drawerOpen={drawerOpen} onCloseDrawer={() => setDrawerOpen(false)} />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <TopBar title={title} onOpenMenu={() => setDrawerOpen(true)} adminName={adminName} role={role} />
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">{children}</main>
+    <div className="flex h-screen overflow-hidden print:h-auto print:overflow-visible">
+      <div className="print:hidden">
+        <Sidebar role={role} drawerOpen={drawerOpen} onCloseDrawer={() => setDrawerOpen(false)} />
+      </div>
+      <div className="flex flex-1 flex-col overflow-hidden print:overflow-visible">
+        <div className="print:hidden">
+          <TopBar title={title} onOpenMenu={() => setDrawerOpen(true)} adminName={adminName} role={role} />
+        </div>
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 print:overflow-visible print:p-0">{children}</main>
       </div>
     </div>
   );

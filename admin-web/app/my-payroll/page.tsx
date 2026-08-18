@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import EmployeeShell from '@/components/EmployeeShell';
 import { buildPeriodOptions, currentSystemYearMonth, formatDdMmYyyy, systemPeriod, type CalendarPeriod } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { formatHoursMinutes, nepalTodayIso, type DailyShiftByDate } from '@/lib/shift';
+import { formatHoursMinutes, nepalTodayIso, type DailyShiftByDate, type WeeklyPatternByEmployee } from '@/lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '@/lib/payrollDetail';
 import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '@/lib/weekOff';
 
@@ -42,12 +42,25 @@ export default function MyPayrollPage() {
   const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ weekday: number; shift_id: string | null }[]>([]);
 
   const { start, end } = period;
 
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
-  }, []);
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+      setWeeklyOffDay(weeklyOffDay);
+      // Not date-scoped (a pattern applies to every week), and only ever
+      // relevant in 'weekly' roster_mode — see resolveShiftForDate().
+      if (rosterMode === 'weekly' && employeeId) {
+        supabase
+          .from('employee_weekly_pattern')
+          .select('weekday, shift_id')
+          .eq('employee_id', employeeId)
+          .then(({ data }) => setWeeklyPatternRows(data ?? []));
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId]);
 
   // Toggling AD/BS resets to "this month" in the newly active system — the
   // previously selected month rarely has an equivalent boundary in the
@@ -190,12 +203,22 @@ export default function MyPayrollPage() {
     return map;
   }, [dailyShiftRows, employeeId]);
 
+  const weeklyPattern: WeeklyPatternByEmployee = useMemo(() => {
+    const map: WeeklyPatternByEmployee = new Map();
+    if (!employeeId) return map;
+    const perWeekday = new Map<number, string | null>();
+    for (const r of weeklyPatternRows) perWeekday.set(r.weekday, r.shift_id);
+    map.set(employeeId, perWeekday);
+    return map;
+  }, [weeklyPatternRows, employeeId]);
+
   // Same shared day-by-day builder the admin Payroll employee detail page
   // uses, so this page's figures are never a second, independently-computed
   // version of the same numbers — both read through lib/payrollDetail.ts.
   const dayRows: DayDetail[] = useMemo(
-    () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate, paidOffDates) : []),
-    [employee, shifts, summaries, logs, start, end, dailyShiftByDate, paidOffDates]
+    () =>
+      employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate, paidOffDates, undefined, weeklyPattern) : [],
+    [employee, shifts, summaries, logs, start, end, dailyShiftByDate, paidOffDates, weeklyPattern]
   );
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
 
@@ -210,10 +233,12 @@ export default function MyPayrollPage() {
             employee.date_of_joining,
             nepalTodayIso(),
             dailyShiftByDate,
-            paidOffDates
+            paidOffDates,
+            undefined,
+            weeklyPattern
           )
         : [],
-    [employee, shifts, lifetimeSummaries, lifetimeLogs, dailyShiftByDate, paidOffDates]
+    [employee, shifts, lifetimeSummaries, lifetimeLogs, dailyShiftByDate, paidOffDates, weeklyPattern]
   );
 
   // Prorates each day against the actual number of days in ITS OWN calendar

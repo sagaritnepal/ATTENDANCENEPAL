@@ -11,6 +11,7 @@ import { dateKey, firstCheckIn, isLate, last7Days, presentEmployeeIds, WEEKDAY_L
 import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '@/lib/weekOff';
 import {
   applyOvernightShiftCorrection,
+  buildWeeklyPatternByEmployee,
   computeDayStatusForResolvedShift,
   nepalTodayIso,
   resolveShiftForDate,
@@ -41,6 +42,7 @@ export default function DashboardPage() {
   const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
   const [todayHoliday, setTodayHoliday] = useState<CompanyHoliday | null>(null);
   const [detailKey, setDetailKey] = useState<DetailKey | null>(null);
+  const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ employee_id: string; weekday: number; shift_id: string | null }[]>([]);
 
   useEffect(() => {
     const since = new Date();
@@ -62,7 +64,17 @@ export default function DashboardPage() {
       .select('employee_id, shift_id')
       .eq('work_date', today)
       .then(({ data }) => setTodayRoster(data ?? []));
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+      setWeeklyOffDay(weeklyOffDay);
+      // Not date-scoped (a pattern applies to every week), and only ever
+      // relevant in 'weekly' roster_mode — see resolveShiftForDate().
+      if (rosterMode === 'weekly') {
+        supabase
+          .from('employee_weekly_pattern')
+          .select('employee_id, weekday, shift_id')
+          .then(({ data }) => setWeeklyPatternRows(data ?? []));
+      }
+    });
     supabase.from('company_holidays').select('*').eq('holiday_date', today).maybeSingle().then(({ data }) => setTodayHoliday(data ?? null));
     supabase
       .from('attendance_logs')
@@ -126,12 +138,13 @@ export default function DashboardPage() {
     [today, weeklyOffDay, todayHoliday]
   );
   const todayIsWeekOff = companyWeekOffDates.has(today);
+  const weeklyPattern = useMemo(() => buildWeeklyPatternByEmployee(weeklyPatternRows), [weeklyPatternRows]);
 
   const lateEmployees = useMemo(() => {
     const rows: DetailRow[] = [];
     for (const emp of activeEmployees) {
       const empLogs = todayLogs.filter(l => l.employee_id === emp.id);
-      if (!empLogs.length || !isLate(emp, shifts, empLogs, today, dailyShiftByDate, companyWeekOffDates)) continue;
+      if (!empLogs.length || !isLate(emp, shifts, empLogs, today, dailyShiftByDate, companyWeekOffDates, weeklyPattern)) continue;
       const checkIn = firstCheckIn(empLogs);
       rows.push({
         id: emp.id,
@@ -140,7 +153,7 @@ export default function DashboardPage() {
       });
     }
     return rows;
-  }, [activeEmployees, todayLogs, shifts, today, dailyShiftByDate, companyWeekOffDates]);
+  }, [activeEmployees, todayLogs, shifts, today, dailyShiftByDate, companyWeekOffDates, weeklyPattern]);
   const lateCount = lateEmployees.length;
 
   const onLeaveIds = useMemo(() => new Set(onLeave.map(l => l.employee_id)), [onLeave]);
@@ -202,14 +215,14 @@ export default function DashboardPage() {
         if (list) list.push(log);
         else byDate.set(key, [log]);
       }
-      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, companyWeekOffDates);
+      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, companyWeekOffDates, weeklyPattern);
       const dayLogs = byDate.get(today);
       if (!dayLogs || dayLogs.length === 0) continue;
-      const resolved = resolveShiftForDate(emp, shifts, today, dailyShiftByDate, companyWeekOffDates);
+      const resolved = resolveShiftForDate(emp, shifts, today, dailyShiftByDate, companyWeekOffDates, weeklyPattern);
       map.set(emp.id, computeDayStatusForResolvedShift(dayLogs, resolved));
     }
     return map;
-  }, [activeEmployees, logs, shifts, dailyShiftByDate, today, companyWeekOffDates]);
+  }, [activeEmployees, logs, shifts, dailyShiftByDate, today, companyWeekOffDates, weeklyPattern]);
 
   const workHoursRows = useMemo<DetailRow[]>(() => {
     const entries: { id: string; name: string; hours: number }[] = [];

@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Badge from '@/components/Badge';
 import DateRangePicker from '@/components/DateRangePicker';
+import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import {
   applyOvernightShiftCorrection,
+  buildWeeklyPatternByEmployee,
   computeDayStatusForResolvedShift,
   formatHoursMinutes,
   isWeekOff,
@@ -74,13 +76,24 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
   const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ employee_id: string; weekday: number; shift_id: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     supabase.from('employees').select('*').eq('status', 'active').order('name').then(({ data }) => setEmployees(data ?? []));
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
     supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+      setWeeklyOffDay(weeklyOffDay);
+      // Not date-scoped (a pattern applies to every week), and only ever
+      // relevant in 'weekly' roster_mode — see resolveShiftForDate().
+      if (rosterMode === 'weekly') {
+        supabase
+          .from('employee_weekly_pattern')
+          .select('employee_id, weekday, shift_id')
+          .then(({ data }) => setWeeklyPatternRows(data ?? []));
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -121,6 +134,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
 
   const weekOffDateSet = useMemo(() => weekOffDatesInRange(from, to, weeklyOffDay, holidays), [from, to, weeklyOffDay, holidays]);
   const leaveByEmployee = useMemo(() => leaveDatesByEmployee(leaveRequests), [leaveRequests]);
+  const weeklyPattern = useMemo(() => buildWeeklyPatternByEmployee(weeklyPatternRows), [weeklyPatternRows]);
 
   const rows: Row[] = useMemo(() => {
     const deviceName = (id: string | null) => devices.find(d => d.id === id)?.name ?? 'Mobile / QR / Selfie';
@@ -146,7 +160,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
         const dayLogs = empLogs.filter(l => l.punch_time.slice(0, 10) === day);
         if (dayLogs.length > 0) byDate.set(day, dayLogs);
       }
-      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, weekOffDateSet);
+      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, weekOffDateSet, weeklyPattern);
       logsByEmployeeDay.set(emp.id, byDate);
     }
 
@@ -161,7 +175,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
         // past days' summaries are final and safe to trust.
         const summary = day === today ? undefined : summaries.find(s => s.employee_id === emp.id && s.work_date === day);
         const dayLogs = (logsByEmployeeDay.get(emp.id)?.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
-        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, weekOffDateSet);
+        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, weekOffDateSet, weeklyPattern);
         const shiftLabel = isWeekOff(resolved)
           ? 'Week Off'
           : `${resolved.name} (${resolved.start_time.slice(0, 5)}–${resolved.end_time.slice(0, 5)})`;
@@ -252,7 +266,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
         if (!bId) return -1;
         return aId.localeCompare(bId, undefined, { numeric: true, sensitivity: 'base' });
       });
-  }, [scopedEmployees, summaries, logs, devices, shifts, from, to, status, dailyShiftByDate, weekOffDateSet, leaveByEmployee]);
+  }, [scopedEmployees, summaries, logs, devices, shifts, from, to, status, dailyShiftByDate, weekOffDateSet, leaveByEmployee, weeklyPattern]);
 
   const totals = useMemo(() => {
     const workHours = rows.reduce((sum, r) => sum + r.hours, 0);
@@ -279,37 +293,29 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
       'Status',
       'Device',
     ];
-    const lines = rows.map(r =>
-      [
-        r.date,
-        r.enrollId,
-        r.employeeName,
-        r.shiftLabel,
-        r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour12: false }) : '',
-        r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour12: false }) : '',
-        r.lateMinutes || '',
-        r.earlyMinutes || '',
-        r.hours.toFixed(1),
-        r.overtime.toFixed(1),
-        r.status,
-        r.device,
-      ]
-        .map(v => `"${String(v).replace(/"/g, '""')}"`)
-        .join(',')
-    );
-    const csv = [header.join(','), ...lines].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `attendance_${from}_to_${to}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const lines = rows.map(r => [
+      r.date,
+      r.enrollId,
+      r.employeeName,
+      r.shiftLabel,
+      r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour12: false }) : '',
+      r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour12: false }) : '',
+      r.lateMinutes || '',
+      r.earlyMinutes || '',
+      r.hours.toFixed(1),
+      r.overtime.toFixed(1),
+      r.status,
+      r.device,
+    ]);
+    downloadExcel(`attendance_${from}_to_${to}.csv`, header, lines);
   }
 
   return (
     <>
-      <div className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+      <h1 className="mb-2 hidden text-lg font-bold text-ink print:block">
+        Attendance Report — {from} to {to}
+      </h1>
+      <div className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm print:hidden">
         <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
           <div>
             <label className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Employee</label>
@@ -370,20 +376,16 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             </div>
           </div>
 
-          <button
-            onClick={exportCsv}
-            className="ml-auto flex items-center gap-1 rounded-md border border-accent bg-accent/5 px-3 py-1.5 text-xs font-semibold text-accent shadow-sm transition-colors hover:bg-accent hover:text-white"
-          >
-            ⭳ Export CSV
-          </button>
+          <TableExportBar onExportCsv={exportCsv} />
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="rounded-lg border border-slate-200 bg-white shadow-sm print:border-0 print:shadow-none">
         {/* Same left-to-right table on every screen size, including phones —
             horizontal scroll instead of a condensed/truncated mobile layout,
-            so it always matches the desktop web view exactly. */}
-        <div className="max-h-[65vh] overflow-auto rounded-lg">
+            so it always matches the desktop web view exactly. Print gets the
+            full table instead of just the scrolled-into-view slice. */}
+        <div className="max-h-[65vh] overflow-auto rounded-lg print:max-h-none print:overflow-visible">
         <table className="w-full text-left text-xs">
           <thead>
             <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">

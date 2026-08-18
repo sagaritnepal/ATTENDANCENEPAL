@@ -1,5 +1,13 @@
 import type { AttendanceLog, Employee, PayrollSummary, Shift } from '../types';
-import { applyOvernightShiftCorrection, computeDayStatusForResolvedShift, nepalTodayIso, resolveShiftForDate, type DailyShiftByDate } from './shift';
+import {
+  applyOvernightShiftCorrection,
+  computeDayStatusForResolvedShift,
+  isWeekOff,
+  nepalTodayIso,
+  resolveShiftForDate,
+  type DailyShiftByDate,
+  type WeeklyPatternByEmployee,
+} from './shift';
 
 export type DayDetail = {
   date: string;
@@ -27,7 +35,10 @@ export function buildEmployeeDayRows(
   dailyShiftByDate?: DailyShiftByDate,
   /** Company-wide Week-off dates and this employee's own approved-Leave
    * dates — a punchless day matching either is 'Week Off' (paid). */
-  paidOffDates?: Set<string>
+  paidOffDates?: Set<string>,
+  /** Only populated (by the caller) when the company's roster_mode is
+   * 'weekly' — see resolveShiftForDate() in lib/shift.ts. */
+  weeklyPattern?: WeeklyPatternByEmployee
 ): DayDetail[] {
   const days: string[] = [];
   const cur = new Date(start + 'T00:00:00Z');
@@ -43,7 +54,7 @@ export function buildEmployeeDayRows(
     const dayLogs = employeeLogs.filter(l => l.punch_time.slice(0, 10) === day);
     if (dayLogs.length > 0) byDate.set(day, dayLogs);
   }
-  applyOvernightShiftCorrection(byDate, employeeLogs, employee, shifts, dailyShiftByDate, paidOffDates);
+  applyOvernightShiftCorrection(byDate, employeeLogs, employee, shifts, dailyShiftByDate, paidOffDates, weeklyPattern);
 
   const today = nepalTodayIso();
   return days.map(day => {
@@ -62,13 +73,17 @@ export function buildEmployeeDayRows(
     }
     const dayLogs = (byDate.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
     if (dayLogs.length === 0) {
-      if (paidOffDates?.has(day)) {
+      // A per-employee Week Off picked on the Weekly/Monthly Roster (an
+      // employee_daily_shifts row with shift_id null) beats a company-wide
+      // Week-off date — check it the same way a day WITH punches already
+      // does below via resolveShiftForDate(), instead of only paidOffDates.
+      if (paidOffDates?.has(day) || isWeekOff(resolveShiftForDate(employee, shifts, day, dailyShiftByDate, paidOffDates, weeklyPattern))) {
         return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status: 'Week Off' as const, paidOff: true };
       }
       const status = day > today ? ('Upcoming' as const) : ('Absent' as const);
       return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status };
     }
-    const resolved = resolveShiftForDate(employee, shifts, day, dailyShiftByDate, paidOffDates);
+    const resolved = resolveShiftForDate(employee, shifts, day, dailyShiftByDate, paidOffDates, weeklyPattern);
     const live = computeDayStatusForResolvedShift(dayLogs, resolved);
     return {
       date: day,

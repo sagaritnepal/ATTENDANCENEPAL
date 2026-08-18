@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
+import Avatar from '@/components/Avatar';
+import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import {
   buildPeriodOptions,
   currentSystemYearMonth,
@@ -15,8 +17,10 @@ import {
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import {
   applyOvernightShiftCorrection,
+  buildWeeklyPatternByEmployee,
   computeDayStatusForResolvedShift,
   formatHoursMinutes,
+  isWeekOff,
   nepalTodayIso,
   resolveShiftForDate,
   type DailyShiftByDate,
@@ -43,6 +47,7 @@ export default function PayrollPage() {
   const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ employee_id: string; weekday: number; shift_id: string | null }[]>([]);
   const [pendingSalary, setPendingSalary] = useState<Record<string, string>>({});
   const [savingRowId, setSavingRowId] = useState<string | null>(null);
   const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
@@ -78,7 +83,17 @@ export default function PayrollPage() {
   // The oldest/newest punch on record — bounds the period dropdown to
   // months that actually have data instead of listing years of empty ones.
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+      setWeeklyOffDay(weeklyOffDay);
+      // Not date-scoped (a pattern applies to every week), and only ever
+      // relevant in 'weekly' roster_mode — see resolveShiftForDate().
+      if (rosterMode === 'weekly') {
+        supabase
+          .from('employee_weekly_pattern')
+          .select('employee_id, weekday, shift_id')
+          .then(({ data }) => setWeeklyPatternRows(data ?? []));
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -164,6 +179,7 @@ export default function PayrollPage() {
   // late/early classification but was never actually paid (see calc below).
   const weekOffDateSet = useMemo(() => weekOffDatesInRange(start, end, weeklyOffDay, holidays), [start, end, weeklyOffDay, holidays]);
   const leaveByEmployee = useMemo(() => leaveDatesByEmployee(leaveRequests), [leaveRequests]);
+  const weeklyPattern = useMemo(() => buildWeeklyPatternByEmployee(weeklyPatternRows), [weeklyPatternRows]);
 
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
   // For attendance counting only (possibleDays/absentDays below) — a period
@@ -234,7 +250,7 @@ export default function PayrollPage() {
         const dayLogs = empLogs.filter(l => l.punch_time.slice(0, 10) === day);
         if (dayLogs.length > 0) byDate.set(day, dayLogs);
       }
-      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, weekOffDateSet);
+      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, weekOffDateSet, weeklyPattern);
       logsByEmployeeDay.set(emp.id, byDate);
     }
 
@@ -257,18 +273,22 @@ export default function PayrollPage() {
         }
         const dayLogs = (logsByEmployeeDay.get(emp.id)?.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
         if (dayLogs.length === 0) {
-          // No punch, but still a paid day: company Week-off or approved
-          // Leave. Tracked separately from `hours`/`days` (which stay a pure
-          // worked-attendance count) and added as its own credit in
-          // calculatedSalary() below.
-          if (weekOffDateSet.has(day) || leaveByEmployee.get(emp.id)?.has(day)) {
+          // No punch, but still a paid day: company Week-off, a per-employee
+          // Week Off picked on the Weekly/Monthly Roster (checked via the
+          // same resolveShiftForDate() a day WITH punches already uses
+          // below — its own doc comment explains why a roster row wins over
+          // the company-wide date), or approved Leave. Tracked separately
+          // from `hours`/`days` (which stay a pure worked-attendance count)
+          // and added as its own credit in calculatedSalary() below.
+          const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, weekOffDateSet, weeklyPattern);
+          if (isWeekOff(resolved) || leaveByEmployee.get(emp.id)?.has(day)) {
             row.paidOffDays += 1;
           }
           continue;
         }
         // Not yet processed by compute_payroll_summaries() — compute live
         // from the raw punches, same as the Attendance Report page does.
-        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, weekOffDateSet);
+        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, weekOffDateSet, weeklyPattern);
         const live = computeDayStatusForResolvedShift(dayLogs, resolved);
         row.days += 1;
         row.hours += live.totalMinutes / 60;
@@ -278,7 +298,7 @@ export default function PayrollPage() {
       }
     }
     return Array.from(map.values()).sort((a, b) => a.enrollId.localeCompare(b.enrollId, undefined, { numeric: true, sensitivity: 'base' }));
-  }, [summaries, logs, shifts, scopedEmployees, start, end, dailyShiftByDate, weekOffDateSet, leaveByEmployee]);
+  }, [summaries, logs, shifts, scopedEmployees, start, end, dailyShiftByDate, weekOffDateSet, leaveByEmployee, weeklyPattern]);
 
   const totals = useMemo(() => {
     const totalHours = byEmployee.reduce((s, r) => s + r.hours, 0);
@@ -341,6 +361,24 @@ export default function PayrollPage() {
     const calculated = calculatedSalary(row);
     if (calculated == null) return null;
     return calculated + (overtimeSalary(row) ?? 0);
+  }
+
+  function exportCsv() {
+    const header = ['ID', 'Employee', 'Worked Days', 'Total Hours', 'Overtime', 'Late Days', 'Early Days', 'Salary', 'Calculated Salary', 'Overtime Salary', 'Total Salary'];
+    const lines = byEmployee.map(row => [
+      row.enrollId,
+      row.name,
+      row.days,
+      fmtHrs(row.hours),
+      fmtHrs(row.overtime),
+      row.lateDays,
+      row.earlyDays,
+      row.salary ?? '',
+      calculatedSalary(row) ?? '',
+      overtimeSalary(row) ?? '',
+      totalSalary(row) ?? '',
+    ]);
+    downloadExcel(`payroll_${start}_to_${end}.csv`, header, lines);
   }
 
   async function applySalaryChange(employeeId: string, salary: string) {
@@ -457,7 +495,7 @@ export default function PayrollPage() {
 
   return (
     <AppShell title="Attendance-based Payroll Controller">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 print:hidden">
         <div className="rounded-xl bg-warning-bg p-3 shadow-sm ring-1 ring-inset ring-warning/10">
           <span className="text-xs font-medium text-warning-text/80">Overtime Salary</span>
           <div className="mt-1 text-base font-bold text-warning-text">
@@ -539,8 +577,8 @@ export default function PayrollPage() {
         </div>
       </div>
 
-      <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white pb-2 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-accent/10 via-accent/5 to-transparent px-4 py-4 sm:px-6">
+      <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white pb-2 shadow-sm print:border-0 print:shadow-none">
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-accent/10 via-accent/5 to-transparent px-4 py-4 sm:px-6 print:hidden">
           <div className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-white">
               <ReportIcon className="h-5 w-5" />
@@ -585,11 +623,16 @@ export default function PayrollPage() {
               <span className="text-slate-400">({daysInRange}d)</span>
             </div>
           </div>
+
+          <TableExportBar onExportCsv={exportCsv} />
         </div>
+        <h1 className="hidden px-4 pt-4 text-lg font-bold text-ink print:block sm:px-6">
+          {period.label} Salary Report — {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
+        </h1>
 
         {/* Phones get one card per employee — the 10-column table below
             would otherwise need horizontal scrolling to read anything. */}
-        <div className="mt-3 divide-y divide-slate-100 md:hidden">
+        <div className="mt-3 divide-y divide-slate-100 md:hidden print:hidden">
           {byEmployee.map(row => (
             <div key={row.id} className="p-4">
               <div className="flex items-start justify-between gap-3">
@@ -652,7 +695,7 @@ export default function PayrollPage() {
           )}
         </div>
 
-        <div className="mt-4 hidden max-h-[65vh] overflow-auto md:block">
+        <div className="mt-4 hidden max-h-[65vh] overflow-auto md:block print:!block print:max-h-none print:overflow-visible">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="sticky top-0 z-10 border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
@@ -665,7 +708,7 @@ export default function PayrollPage() {
               <th className="whitespace-nowrap px-3 py-2 font-medium">Salary</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Calculated Salary</th>
               <th className="whitespace-nowrap pl-2 pr-3 py-2 font-medium">Overtime Salary</th>
-              <th className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-3 py-2 font-medium shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)]">
+              <th className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-3 py-2 font-medium shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] print:static print:shadow-none">
                 Total Salary
               </th>
             </tr>
@@ -700,7 +743,7 @@ export default function PayrollPage() {
                   </td>
                   <td className="whitespace-nowrap pl-2 pr-3 py-2 text-slate-600">{overtimeCellContent(row)}</td>
                   <td
-                    className={`sticky right-0 z-[1] whitespace-nowrap px-3 py-2 font-bold text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] ${rowBg}`}
+                    className={`sticky right-0 z-[1] whitespace-nowrap px-3 py-2 font-bold text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] print:static print:shadow-none ${rowBg}`}
                   >
                     {totalSalary(row) != null ? totalSalary(row)!.toLocaleString() : '—'}
                   </td>
@@ -742,7 +785,7 @@ export default function PayrollPage() {
                 <td className="whitespace-nowrap pl-2 pr-3 py-2">
                   {totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </td>
-                <td className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-3 py-2 text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)]">
+                <td className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-3 py-2 text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] print:static print:shadow-none">
                   {(totals.totalSalaryPayable + totals.totalOvertimeSalary).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </td>
               </tr>
@@ -752,34 +795,6 @@ export default function PayrollPage() {
         </div>
       </div>
     </AppShell>
-  );
-}
-
-const AVATAR_TONES = [
-  'bg-accent/15 text-accent',
-  'bg-info-bg text-info-text',
-  'bg-warning-bg text-warning-text',
-  'bg-purple-50 text-purple-700',
-  'bg-critical-bg text-critical-text',
-];
-
-function avatarTone(name: string) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_TONES[hash % AVATAR_TONES.length];
-}
-
-function Avatar({ name }: { name: string }) {
-  const initials = name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map(part => part[0]!.toUpperCase())
-    .join('');
-  return (
-    <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${avatarTone(name)}`}>
-      {initials || '?'}
-    </span>
   );
 }
 

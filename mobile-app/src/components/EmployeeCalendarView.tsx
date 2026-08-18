@@ -5,11 +5,13 @@ import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSumm
 import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '../lib/weekOff';
 import {
   applyOvernightShiftCorrection,
+  buildWeeklyPatternByEmployee,
   computeDayStatusForResolvedShift,
   formatHoursMinutes,
   resolveShiftForDate,
   type DailyShiftByDate,
   type DayStatus,
+  type WeeklyPatternByEmployee,
 } from '../lib/shift';
 import { colors } from '../theme';
 import Badge from './Badge';
@@ -74,10 +76,20 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
   const [expandedCard, setExpandedCard] = useState<CardKey | null>(null);
   const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
+  const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ weekday: number; shift_id: string | null }[]>([]);
 
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
-  }, []);
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+      setWeeklyOffDay(weeklyOffDay);
+      if (rosterMode === 'weekly') {
+        supabase
+          .from('employee_weekly_pattern')
+          .select('weekday, shift_id')
+          .eq('employee_id', employeeId)
+          .then(({ data }) => setWeeklyPatternRows((data as any) ?? []));
+      }
+    });
+  }, [employeeId]);
 
   useEffect(() => {
     setSelectedDate(null);
@@ -137,6 +149,11 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
     return weekOffDatesInRange(since, today, weeklyOffDay, holidays);
   }, [weeklyOffDay, holidays]);
 
+  const weeklyPattern: WeeklyPatternByEmployee = useMemo(() => {
+    const rows = weeklyPatternRows.map(r => ({ employee_id: employeeId, weekday: r.weekday, shift_id: r.shift_id }));
+    return buildWeeklyPatternByEmployee(rows);
+  }, [weeklyPatternRows, employeeId]);
+
   const dayStatus = useMemo(() => {
     const byDate = new Map<string, AttendanceLog[]>();
     for (const log of logs) {
@@ -147,13 +164,13 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
     }
     const map = new Map<string, DayStatus>();
     if (!employee) return map;
-    applyOvernightShiftCorrection(byDate, logs, employee, shifts, dailyShiftByDate, companyWeekOffDates);
+    applyOvernightShiftCorrection(byDate, logs, employee, shifts, dailyShiftByDate, companyWeekOffDates, weeklyPattern);
     for (const [date, dLogs] of byDate) {
-      const resolved = resolveShiftForDate(employee, shifts, date, dailyShiftByDate, companyWeekOffDates);
+      const resolved = resolveShiftForDate(employee, shifts, date, dailyShiftByDate, companyWeekOffDates, weeklyPattern);
       map.set(date, computeDayStatusForResolvedShift(dLogs, resolved));
     }
     return map;
-  }, [logs, employee, shifts, dailyShiftByDate, companyWeekOffDates]);
+  }, [logs, employee, shifts, dailyShiftByDate, companyWeekOffDates, weeklyPattern]);
 
   const leaveByDate = useMemo(() => {
     const map = new Map<string, LeaveRequest>();
@@ -165,10 +182,21 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
   const weekOffDates = useMemo(() => {
     const set = new Set<string>();
     const perDate = dailyShiftByDate.get(employeeId);
-    if (!perDate) return set;
-    for (const [date, shiftId] of perDate) if (shiftId === null) set.add(date);
+    if (perDate) {
+      for (const [date, shiftId] of perDate) if (shiftId === null) set.add(date);
+    }
+    const perWeekday = weeklyPattern.get(employeeId);
+    if (perWeekday?.size) {
+      const windowStart = new Date(Date.now() - WINDOW_DAYS * 86400000).toISOString().slice(0, 10);
+      const today = new Date().toISOString().slice(0, 10);
+      for (const date of datesBetween(windowStart, today)) {
+        if (perDate?.has(date)) continue;
+        const weekday = new Date(date + 'T00:00:00Z').getUTCDay();
+        if (perWeekday.get(weekday) === null) set.add(date);
+      }
+    }
     return set;
-  }, [dailyShiftByDate, employeeId]);
+  }, [dailyShiftByDate, employeeId, weeklyPattern]);
 
   const todayKey = useMemo(() => localDateKey(new Date().toISOString()), []);
 
@@ -280,9 +308,9 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
   const selectedLeave = selectedDate ? leaveByDate.get(selectedDate) ?? null : null;
   const selectedDaySummary = useMemo(() => {
     if (dayLogs.length === 0 || !employee || !selectedDate) return null;
-    const resolved = resolveShiftForDate(employee, shifts, selectedDate, dailyShiftByDate, companyWeekOffDates);
+    const resolved = resolveShiftForDate(employee, shifts, selectedDate, dailyShiftByDate, companyWeekOffDates, weeklyPattern);
     return computeDayStatusForResolvedShift(dayLogs, resolved);
-  }, [dayLogs, employee, shifts, selectedDate, dailyShiftByDate, companyWeekOffDates]);
+  }, [dayLogs, employee, shifts, selectedDate, dailyShiftByDate, companyWeekOffDates, weeklyPattern]);
 
   useEffect(() => {
     if (!selectedDate) {

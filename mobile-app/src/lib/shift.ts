@@ -20,6 +20,28 @@ export function resolveShift(employee: Employee, shifts: Shift[]) {
 
 export type DailyShiftByDate = Map<string, Map<string, string | null>>;
 
+/** employeeId -> weekday (0=Sunday..6=Saturday) -> shift_id, from
+ * employee_weekly_pattern — only meaningful when the company's roster_mode
+ * is 'weekly'; callers in 'monthly' mode (the default) pass undefined and
+ * resolution behaves exactly as it always has. Same null-means-Week-Off
+ * convention as DailyShiftByDate. */
+export type WeeklyPatternByEmployee = Map<string, Map<number, string | null>>;
+
+export function buildWeeklyPatternByEmployee(
+  rows: { employee_id: string; weekday: number; shift_id: string | null }[]
+): WeeklyPatternByEmployee {
+  const map: WeeklyPatternByEmployee = new Map();
+  for (const r of rows) {
+    let perWeekday = map.get(r.employee_id);
+    if (!perWeekday) {
+      perWeekday = new Map();
+      map.set(r.employee_id, perWeekday);
+    }
+    perWeekday.set(r.weekday, r.shift_id);
+  }
+  return map;
+}
+
 export const WEEK_OFF = { id: 'week-off', name: 'Week Off' } as const;
 export type ResolvedShift = Shift | typeof DEFAULT_SHIFT | typeof WEEK_OFF;
 
@@ -32,7 +54,8 @@ export function resolveShiftForDate(
   shifts: Shift[],
   date: string,
   dailyShiftByDate?: DailyShiftByDate,
-  companyWeekOffDates?: Set<string>
+  companyWeekOffDates?: Set<string>,
+  weeklyPattern?: WeeklyPatternByEmployee
 ): ResolvedShift {
   const perDate = dailyShiftByDate?.get(employee.id);
   if (perDate?.has(date)) {
@@ -40,6 +63,16 @@ export function resolveShiftForDate(
     if (shiftId === null) return WEEK_OFF;
     const shift = shifts.find(s => s.id === shiftId);
     if (shift) return shift;
+  }
+  const perWeekday = weeklyPattern?.get(employee.id);
+  if (perWeekday?.size) {
+    const weekday = new Date(date + 'T00:00:00Z').getUTCDay();
+    if (perWeekday.has(weekday)) {
+      const shiftId = perWeekday.get(weekday);
+      if (shiftId === null) return WEEK_OFF;
+      const shift = shifts.find(s => s.id === shiftId);
+      if (shift) return shift;
+    }
   }
   if (companyWeekOffDates?.has(date)) return WEEK_OFF;
   return resolveShift(employee, shifts);
@@ -178,14 +211,15 @@ export function applyOvernightShiftCorrection(
   employee: Employee,
   shifts: Shift[],
   dailyShiftByDate?: DailyShiftByDate,
-  companyWeekOffDates?: Set<string>
+  companyWeekOffDates?: Set<string>,
+  weeklyPattern?: WeeklyPatternByEmployee
 ): Map<string, AttendanceLog[]> {
   const dates = [...byDate.keys()];
   const claimed = new Set<string>();
   const overnightDates = new Set<string>();
 
   for (const date of dates) {
-    const resolved = resolveShiftForDate(employee, shifts, date, dailyShiftByDate, companyWeekOffDates);
+    const resolved = resolveShiftForDate(employee, shifts, date, dailyShiftByDate, companyWeekOffDates, weeklyPattern);
     if (isWeekOff(resolved) || !isOvernightShift(resolved)) continue;
     overnightDates.add(date);
 

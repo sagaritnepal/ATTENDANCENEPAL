@@ -3,12 +3,14 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
+import Avatar from '@/components/Avatar';
 import EmployeeCalendarView from '@/components/EmployeeCalendarView';
 import type { Employee } from '@/lib/types';
 
 export default function CalendarPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [employeeId, setEmployeeId] = useState<string>('');
+  const selectedEmployee = employees.find(e => e.id === employeeId);
 
   useEffect(() => {
     supabase
@@ -25,9 +27,13 @@ export default function CalendarPage() {
   return (
     <AppShell title="Attendance Calendar">
       <div className="mb-4 flex w-fit items-center gap-2.5 rounded-xl border border-slate-200 bg-white py-1.5 pl-1.5 pr-3 shadow-sm">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
-          <UserIcon className="h-4 w-4" />
-        </span>
+        {selectedEmployee ? (
+          <Avatar name={selectedEmployee.name} photoUrl={selectedEmployee.profile_photo_url} className="h-10 w-10 text-sm" />
+        ) : (
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent">
+            <UserIcon className="h-4 w-4" />
+          </span>
+        )}
         <div className="flex flex-col">
           <label className="text-[10px] font-semibold uppercase leading-none tracking-wide text-slate-400">Employee</label>
           <select

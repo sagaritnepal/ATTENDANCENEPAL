@@ -4,13 +4,25 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
-import type { AttendanceLog, Branch, Device, Employee } from '@/lib/types';
+import type { AttendanceLog, Branch, Device, DeviceSyncEvent, Employee } from '@/lib/types';
 
 const EMPTY_FORM = { name: '', branch_id: '', ip_address: '192.168.1.201', port: 4370, serial_number: '' };
 
 function deviceErrorMessage(error: { code?: string; message: string }): string {
   if (error.code === '23505') return 'That serial number is already registered to another device.';
   return error.message;
+}
+
+// Both bridges poll every 15s and only write status: 'online'/'offline' when
+// a poll actually runs — if the bridge process itself isn't running (window
+// closed, pm2 stopped, machine off), no code runs at all and the row just
+// keeps whatever status the last successful poll wrote, usually 'online',
+// forever. Trusting last_sync recency instead of the raw column catches
+// that case; 4x the poll interval leaves room for jitter/backoff.
+const STALE_AFTER_MS = 60_000;
+
+function isDeviceOnline(d: Device, now: number): boolean {
+  return d.status === 'online' && !!d.last_sync && now - new Date(d.last_sync).getTime() < STALE_AFTER_MS;
 }
 
 type BridgeCredential = { id: string; email: string; createdAt: string };
@@ -31,10 +43,12 @@ export default function DevicesPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
+  const [syncEvents, setSyncEvents] = useState<DeviceSyncEvent[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [queuing, setQueuing] = useState<string | null>(null);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [editError, setEditError] = useState<string | null>(null);
@@ -46,14 +60,61 @@ export default function DevicesPage() {
   const [bridgeResult, setBridgeResult] = useState<BridgeResult | null>(null);
   const [revokingBridgeId, setRevokingBridgeId] = useState<string | null>(null);
 
+  // Ticks so a device's badge flips from online to offline as soon as
+  // last_sync goes stale, even with no new row update arriving to trigger it.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(timer);
+  }, []);
+
   function reload() {
     supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
     supabase.from('branches').select('*').then(({ data }) => setBranches(data ?? []));
     supabase.from('employees').select('*').then(({ data }) => setEmployees(data ?? []));
     supabase.from('attendance_logs').select('*').eq('method', 'zkteco').then(({ data }) => setLogs(data ?? []));
+    supabase
+      .from('device_sync_events')
+      .select('*')
+      .order('requested_at', { ascending: false })
+      .limit(50)
+      .then(({ data }) => setSyncEvents(data ?? []));
     loadBridgeCredentials();
   }
   useEffect(reload, []);
+
+  // While anything is still queued/running, poll every 3s so a click on
+  // "Sync Now" reflects the bridge (desktop app or standalone worker)
+  // picking it up and finishing without the admin having to hit Refresh.
+  useEffect(() => {
+    if (!syncEvents.some(e => e.status === 'pending' || e.status === 'running')) return;
+    const id = setInterval(reload, 3000);
+    return () => clearInterval(id);
+  }, [syncEvents]);
+
+  async function queueSync(deviceId: string, syncType: 'users' | 'logs') {
+    setQueuing(`${deviceId}-${syncType}`);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { error } = await supabase.from('device_sync_events').insert({
+      device_id: deviceId,
+      sync_type: syncType,
+      requested_by: user?.id ?? null,
+    });
+    setQueuing(null);
+    if (error) alert(`Could not queue sync: ${error.message}`);
+    reload();
+  }
+
+  async function cancelSync(eventId: string) {
+    const { error } = await supabase
+      .from('device_sync_events')
+      .update({ status: 'cancelled', completed_at: new Date().toISOString() })
+      .eq('id', eventId);
+    if (error) alert(`Could not cancel: ${error.message}`);
+    reload();
+  }
 
   async function loadBridgeCredentials() {
     const { data: sessionData } = await supabase.auth.getSession();
@@ -141,10 +202,11 @@ export default function DevicesPage() {
     setFormError(null);
     const { error } = await supabase.from('devices').insert({
       name: form.name,
-      branch_id: form.branch_id,
+      branch_id: form.branch_id || null,
       ip_address: form.ip_address,
       port: form.port,
       serial_number: form.serial_number,
+      status: 'offline',
     });
     setSaving(false);
     if (error) {
@@ -167,7 +229,7 @@ export default function DevicesPage() {
     setEditingDevice(d);
     setEditForm({
       name: d.name,
-      branch_id: d.branch_id,
+      branch_id: d.branch_id ?? '',
       ip_address: d.ip_address,
       port: d.port,
       serial_number: d.serial_number ?? '',
@@ -184,7 +246,7 @@ export default function DevicesPage() {
       .from('devices')
       .update({
         name: editForm.name,
-        branch_id: editForm.branch_id,
+        branch_id: editForm.branch_id || null,
         ip_address: editForm.ip_address,
         port: editForm.port,
         serial_number: editForm.serial_number || null,
@@ -203,9 +265,12 @@ export default function DevicesPage() {
     <AppShell title="Biometric Sync Devices">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-2xl text-sm text-slate-500">
-          Biometric terminal integrations, synced automatically both ways over the internet — no manual sync needed. A punch from a
-          fingerprint the app doesn&apos;t recognize yet creates a placeholder employee right away; renaming an employee here pushes
-          that name back down to every device.
+          Biometric terminal integrations, synced automatically both ways — but if a device hasn&apos;t polled on its own (bridge
+          just started, missed a cycle), use <strong>Sync Now</strong> to fetch immediately instead of waiting up to 15s for the
+          next automatic poll. Renaming an employee here pushes that name back down to every device. For a cloud-connected device,
+          a punch from a fingerprint the app doesn&apos;t recognize yet creates a placeholder employee right away; for a LAN-bridge
+          device, register the employee first and set their Biometric/Registration ID to match, or its punches are skipped rather
+          than recorded — use <strong>Sync Users</strong> to pull the device&apos;s enrolled users in as new employees instead.
         </p>
         <div className="flex gap-2">
           <button onClick={reload} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
@@ -222,11 +287,21 @@ export default function DevicesPage() {
           const branch = branches.find(b => b.id === d.branch_id);
           const registered = employees.filter(e => e.branch_id === d.branch_id && e.fingerprint_id).length;
           const fetched = logs.filter(l => l.device_id === d.id).length;
+          const online = isDeviceOnline(d, now);
+          const deviceEvents = syncEvents.filter(e => e.device_id === d.id);
+          const busy = (type: 'users' | 'logs') =>
+            queuing === `${d.id}-${type}` ||
+            deviceEvents.some(e => e.sync_type === type && (e.status === 'pending' || e.status === 'running'));
+          // Only a still-pending request can be cancelled — once the bridge
+          // flips it to 'running' it's already claimed and can't be stopped
+          // from here.
+          const pendingEvent = (type: 'users' | 'logs') => deviceEvents.find(e => e.sync_type === type && e.status === 'pending');
+          const lastLogEvent = deviceEvents.find(e => e.sync_type === 'logs' && (e.status === 'success' || e.status === 'failed'));
           return (
             <div key={d.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="font-semibold text-ink">{d.name}</h3>
-                <Badge tone={d.status === 'online' ? 'good' : 'critical'}>{d.status}</Badge>
+                <Badge tone={online ? 'good' : 'critical'}>{online ? 'online' : 'offline'}</Badge>
               </div>
               <p className="mb-3 text-sm text-slate-500">{d.ip_address}:{d.port}</p>
               <p className="text-sm text-slate-600">📍 {branch?.name ?? 'Unassigned branch'}</p>
@@ -235,6 +310,53 @@ export default function DevicesPage() {
                 🔄 Last sync: {d.last_sync ? new Date(d.last_sync).toLocaleString() : 'never'}
               </p>
               <p className="text-sm text-slate-600">👥 Registered: {registered} staff</p>
+
+              <div className="mt-3 flex gap-2">
+                <div className="flex flex-1 items-center gap-1">
+                  <button
+                    onClick={() => queueSync(d.id, 'logs')}
+                    disabled={busy('logs')}
+                    title="Fetch attendance from this device right now, instead of waiting for the next automatic poll"
+                    className="flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    {busy('logs') ? 'Syncing…' : '🔄 Sync Now'}
+                  </button>
+                  {pendingEvent('logs') && (
+                    <button
+                      onClick={() => cancelSync(pendingEvent('logs')!.id)}
+                      title="Cancel pending sync"
+                      className="text-xs font-medium text-critical hover:underline"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-1 items-center gap-1">
+                  <button
+                    onClick={() => queueSync(d.id, 'users')}
+                    disabled={busy('users')}
+                    title="Import any device-enrolled user with no matching employee yet"
+                    className="flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    {busy('users') ? 'Syncing…' : '👥 Sync Users'}
+                  </button>
+                  {pendingEvent('users') && (
+                    <button
+                      onClick={() => cancelSync(pendingEvent('users')!.id)}
+                      title="Cancel pending sync"
+                      className="text-xs font-medium text-critical hover:underline"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+              {lastLogEvent && (
+                <p className={`mt-1.5 text-xs ${lastLogEvent.status === 'failed' ? 'text-critical' : 'text-slate-400'}`}>
+                  Last manual sync: {lastLogEvent.status === 'failed' ? lastLogEvent.error : lastLogEvent.summary}
+                </p>
+              )}
+
               <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-sm">
                 <span className="font-medium text-accent">{fetched} punches fetched</span>
                 <div className="flex gap-3">
@@ -337,9 +459,9 @@ export default function DevicesPage() {
             <h3 className="mb-4 text-lg font-semibold text-ink">Add Device</h3>
             <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
             <input required value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-            <label className="mb-1 block text-xs font-medium text-slate-600">Branch</label>
-            <select required value={form.branch_id} onChange={e => setForm(f => ({ ...f, branch_id: e.target.value }))} className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
-              <option value="">Select a branch…</option>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Branch (optional)</label>
+            <select value={form.branch_id} onChange={e => setForm(f => ({ ...f, branch_id: e.target.value }))} className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+              <option value="">Unassigned</option>
               {branches.map(b => (
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}
@@ -386,14 +508,13 @@ export default function DevicesPage() {
               onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
               className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
             />
-            <label className="mb-1 block text-xs font-medium text-slate-600">Branch</label>
+            <label className="mb-1 block text-xs font-medium text-slate-600">Branch (optional)</label>
             <select
-              required
               value={editForm.branch_id}
               onChange={e => setEditForm(f => ({ ...f, branch_id: e.target.value }))}
               className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
             >
-              <option value="">Select a branch…</option>
+              <option value="">Unassigned</option>
               {branches.map(b => (
                 <option key={b.id} value={b.id}>{b.name}</option>
               ))}

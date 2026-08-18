@@ -6,10 +6,11 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
+import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import StatusText from '@/components/StatusText';
 import { buildMonth, formatAdDate, formatDdMmYyyy, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { formatHoursMinutes, type DailyShiftByDate } from '@/lib/shift';
+import { formatHoursMinutes, type DailyShiftByDate, type WeeklyPatternByEmployee } from '@/lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '@/lib/payrollDetail';
 import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '@/lib/weekOff';
 import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
@@ -78,11 +79,24 @@ function PayrollEmployeeDetailView() {
   const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ weekday: number; shift_id: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
-  }, []);
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+      setWeeklyOffDay(weeklyOffDay);
+      // Not date-scoped (a pattern applies to every week), and only ever
+      // relevant in 'weekly' roster_mode — see resolveShiftForDate().
+      if (rosterMode === 'weekly') {
+        supabase
+          .from('employee_weekly_pattern')
+          .select('weekday, shift_id')
+          .eq('employee_id', employeeId)
+          .then(({ data }) => setWeeklyPatternRows(data ?? []));
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId]);
 
   useEffect(() => {
     setLoading(true);
@@ -124,6 +138,14 @@ function PayrollEmployeeDetailView() {
     return map;
   }, [dailyShiftRows, employeeId]);
 
+  const weeklyPattern: WeeklyPatternByEmployee = useMemo(() => {
+    const map: WeeklyPatternByEmployee = new Map();
+    const perWeekday = new Map<number, string | null>();
+    for (const r of weeklyPatternRows) perWeekday.set(r.weekday, r.shift_id);
+    map.set(employeeId, perWeekday);
+    return map;
+  }, [weeklyPatternRows, employeeId]);
+
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
   const monthLabel = useMemo(() => buildMonth(system, parseAdKey(start) ?? todayAnchor()).label, [system, start]);
   // The flat "salary ÷ days in period" rate — same figure on every row,
@@ -147,8 +169,11 @@ function PayrollEmployeeDetailView() {
   }, [start, end, leaveRequests]);
 
   const dayRows = useMemo(
-    () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate, weekOffDates, leaveDates) : []),
-    [employee, shifts, summaries, logs, start, end, dailyShiftByDate, weekOffDates, leaveDates]
+    () =>
+      employee
+        ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate, weekOffDates, leaveDates, weeklyPattern)
+        : [],
+    [employee, shifts, summaries, logs, start, end, dailyShiftByDate, weekOffDates, leaveDates, weeklyPattern]
   );
 
   const dayTotals = useMemo(() => {
@@ -183,15 +208,41 @@ function PayrollEmployeeDetailView() {
 
   const periodQuery = `?start=${start}&end=${end}&otHoursPerDay=${otHoursPerDay}&otMultiplier=${otMultiplier}&otOn=${otOn}`;
 
+  function exportCsv() {
+    if (!employee) return;
+    const header = ['Date', 'In', 'Out', 'Total Hours', 'Overtime', 'Late (min)', 'Early (min)', 'Status', 'Salary/Day', 'My Salary', 'OT Salary', 'Total Salary'];
+    const lines = dayRows.map(d => {
+      const earning = dailySalaryEarning(d, employee.salary, daysInRange, otHoursPerDay, otMultiplier, otOn);
+      return [
+        d.date,
+        d.checkIn ? fmtTime(d.checkIn) : '',
+        d.checkOut ? fmtTime(d.checkOut) : '',
+        d.hours.toFixed(1),
+        d.overtime.toFixed(1),
+        d.lateMinutes || '',
+        d.earlyMinutes || '',
+        d.checkIn ? 'Present' : d.status,
+        salaryPerDay != null ? Math.round(salaryPerDay) : '',
+        earning ? Math.round(earning.base) : '',
+        earning ? Math.round(earning.overtime) : '',
+        earning ? Math.round(earning.total) : '',
+      ];
+    });
+    downloadExcel(`payroll_${employee.name.replace(/\s+/g, '_')}_${start}_to_${end}.csv`, header, lines);
+  }
+
   return (
     <AppShell title={employee ? employee.name : 'Payroll Detail'}>
-      <Link
-        href={`/payroll${periodQuery}`}
-        className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-accent"
-      >
-        <BackIcon className="h-4 w-4" />
-        Back to Payroll
-      </Link>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 print:hidden">
+        <Link
+          href={`/payroll${periodQuery}`}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-accent"
+        >
+          <BackIcon className="h-4 w-4" />
+          Back to Payroll
+        </Link>
+        {employee && <TableExportBar onExportCsv={exportCsv} />}
+      </div>
 
       {loading ? (
         <p className="text-center text-sm text-slate-400">Loading…</p>
@@ -199,9 +250,11 @@ function PayrollEmployeeDetailView() {
         <p className="text-center text-sm text-critical">Employee not found.</p>
       ) : (
         <>
-          <h2 className="mb-3 text-center text-lg font-bold text-ink">{monthLabel} Breakdown</h2>
+          <h2 className="mb-3 text-center text-lg font-bold text-ink">
+            {employee.name} — {monthLabel} Breakdown
+          </h2>
 
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-gradient-to-r from-accent/10 via-accent/5 to-transparent p-4 shadow-sm sm:p-6">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-gradient-to-r from-accent/10 via-accent/5 to-transparent p-4 shadow-sm sm:p-6 print:hidden">
             <div className="flex items-center gap-3">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-base font-bold text-white">
                 {employee.name
@@ -226,7 +279,7 @@ function PayrollEmployeeDetailView() {
             </div>
           </div>
 
-          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 print:hidden">
             <div className="rounded-xl bg-accent/10 p-3 shadow-sm ring-1 ring-inset ring-accent/10">
               <span className="text-xs font-medium text-accent/80">My Salary</span>
               <div className="mt-1 text-base font-bold text-accent">{Math.round(dayTotals.mySalary).toLocaleString()}</div>
@@ -293,12 +346,12 @@ function PayrollEmployeeDetailView() {
             })()}
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm print:border-0 print:shadow-none">
             {/* Phones get the same dense per-day table as My Calendar/My
                 Payroll instead of one card per day — the My/OT Salary
                 breakdown stays on the desktop table below, this shows just
                 the Total Salary headline to keep columns readable. */}
-            <div className="mt-3 md:hidden">
+            <div className="mt-3 md:hidden print:hidden">
               <table className="w-full table-fixed text-center text-[10px]">
                 <colgroup>
                   <col className="w-[12%]" />
@@ -382,7 +435,7 @@ function PayrollEmployeeDetailView() {
               </table>
             </div>
 
-            <div className="mt-4 hidden overflow-x-auto pb-2 md:block">
+            <div className="mt-4 hidden overflow-x-auto pb-2 md:block print:!block print:overflow-visible">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
@@ -395,7 +448,7 @@ function PayrollEmployeeDetailView() {
                     <th className="whitespace-nowrap px-3 py-2 font-medium">Salary/Day</th>
                     <th className="whitespace-nowrap px-3 py-2 font-medium">My Salary</th>
                     <th className="whitespace-nowrap px-3 py-2 font-medium">OT Salary</th>
-                    <th className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-3 py-2 font-medium shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)]">
+                    <th className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-3 py-2 font-medium shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] print:static print:shadow-none">
                       Total Salary
                     </th>
                   </tr>
@@ -427,7 +480,7 @@ function PayrollEmployeeDetailView() {
                         <td className="px-3 py-2 text-slate-600">{earning ? Math.round(earning.base).toLocaleString() : '—'}</td>
                         <td className="px-3 py-2 text-slate-600">{earning ? Math.round(earning.overtime).toLocaleString() : '—'}</td>
                         <td
-                          className={`sticky right-0 z-[1] whitespace-nowrap px-3 py-2 font-bold text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] ${rowBg}`}
+                          className={`sticky right-0 z-[1] whitespace-nowrap px-3 py-2 font-bold text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] print:static print:shadow-none ${rowBg}`}
                         >
                           {earning ? Math.round(earning.total).toLocaleString() : '—'}
                         </td>
@@ -464,7 +517,7 @@ function PayrollEmployeeDetailView() {
                       <td />
                       <td className="whitespace-nowrap px-3 py-2">{Math.round(dayTotals.mySalary).toLocaleString()}</td>
                       <td className="whitespace-nowrap px-3 py-2">{Math.round(dayTotals.otSalary).toLocaleString()}</td>
-                      <td className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-3 py-2 text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)]">
+                      <td className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-3 py-2 text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] print:static print:shadow-none">
                         {Math.round(dayTotals.totalSalary).toLocaleString()}
                       </td>
                     </tr>

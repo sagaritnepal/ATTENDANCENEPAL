@@ -7,13 +7,16 @@ import { useAuth } from '../lib/AuthContext';
 import type { AttendanceLog, Device, Employee, PayrollSummary, Shift } from '../types';
 import {
   applyOvernightShiftCorrection,
+  buildWeeklyPatternByEmployee,
   computeDayStatusForResolvedShift,
   formatHoursMinutes,
   isWeekOff,
   nepalTodayIso,
   resolveShiftForDate,
   type DailyShiftByDate,
+  type WeeklyPatternByEmployee,
 } from '../lib/shift';
+import { fetchMyCompanyWeekOffConfig } from '../lib/weekOff';
 import { colors } from '../theme';
 import { formatDdMmYyyy } from '../lib/calendar';
 import { useCalendarSystem } from '../lib/CalendarSystemContext';
@@ -81,6 +84,7 @@ export default function HistoryScreen() {
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [dailyShiftRows, setDailyShiftRows] = useState<{ employee_id: string; work_date: string; shift_id: string | null }[]>([]);
+  const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ employee_id: string; weekday: number; shift_id: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -89,6 +93,14 @@ export default function HistoryScreen() {
       supabase.from('devices').select('*').then(({ data }) => setDevices((data as Device[]) ?? []));
     }
     supabase.from('shifts').select('*').then(({ data }) => setShifts((data as Shift[]) ?? []));
+    fetchMyCompanyWeekOffConfig().then(({ rosterMode }) => {
+      if (rosterMode === 'weekly') {
+        supabase
+          .from('employee_weekly_pattern')
+          .select('employee_id, weekday, shift_id')
+          .then(({ data }) => setWeeklyPatternRows((data as any) ?? []));
+      }
+    });
   }, [isAdmin]);
 
   useEffect(() => {
@@ -137,6 +149,8 @@ export default function HistoryScreen() {
     return map;
   }, [dailyShiftRows]);
 
+  const weeklyPattern: WeeklyPatternByEmployee = useMemo(() => buildWeeklyPatternByEmployee(weeklyPatternRows), [weeklyPatternRows]);
+
   const deviceName = (id: string | null | undefined) => devices.find(d => d.id === id)?.name ?? 'Mobile / QR / Selfie';
 
   const rows: Row[] = useMemo(() => {
@@ -158,7 +172,7 @@ export default function HistoryScreen() {
         const dayLogs = empLogs.filter(l => l.punch_time.slice(0, 10) === day);
         if (dayLogs.length > 0) byDate.set(day, dayLogs);
       }
-      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate);
+      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, undefined, weeklyPattern);
       logsByEmployeeDay.set(emp.id, byDate);
     }
 
@@ -167,7 +181,7 @@ export default function HistoryScreen() {
       for (const emp of activeEmployees) {
         const summary = day === today ? undefined : summaries.find(s => s.employee_id === emp.id && s.work_date === day);
         const dayLogs = (logsByEmployeeDay.get(emp.id)?.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
-        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate);
+        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, undefined, weeklyPattern);
         const shiftLabel = isWeekOff(resolved) ? 'Week Off' : `${resolved.name} (${resolved.start_time.slice(0, 5)}–${resolved.end_time.slice(0, 5)})`;
 
         if (summary) {
@@ -226,7 +240,7 @@ export default function HistoryScreen() {
       .filter(r => status === 'All' || (status === 'Early' ? r.earlyMinutes > 0 : r.status === status))
       .sort((a, b) => b.date.localeCompare(a.date));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, scopedEmployees, selfEmployee, summaries, logs, shifts, from, to, status, dailyShiftByDate, devices]);
+  }, [isAdmin, scopedEmployees, selfEmployee, summaries, logs, shifts, from, to, status, dailyShiftByDate, devices, weeklyPattern]);
 
   const totals = useMemo(() => {
     const workHours = rows.reduce((sum, r) => sum + r.hours, 0);

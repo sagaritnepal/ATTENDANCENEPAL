@@ -9,10 +9,12 @@ import SimplePieChart from '../components/SimplePieChart';
 import { dateKey, firstCheckIn, isLate, presentEmployeeIds } from '../lib/metrics';
 import {
   applyOvernightShiftCorrection,
+  buildWeeklyPatternByEmployee,
   computeDayStatusForResolvedShift,
   nepalTodayIso,
   resolveShiftForDate,
   type DailyShiftByDate,
+  type WeeklyPatternByEmployee,
 } from '../lib/shift';
 import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '../lib/weekOff';
 
@@ -52,13 +54,22 @@ export default function DashboardScreen({ navigation }: any) {
   const [photoFailed, setPhotoFailed] = useState<Set<string>>(new Set());
   const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
+  const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ employee_id: string; weekday: number; shift_id: string | null }[]>([]);
 
   useEffect(() => {
     const since = new Date();
     since.setUTCDate(since.getUTCDate() - 7);
     const today = nepalTodayIso();
 
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+      setWeeklyOffDay(weeklyOffDay);
+      if (rosterMode === 'weekly') {
+        supabase
+          .from('employee_weekly_pattern')
+          .select('employee_id, weekday, shift_id')
+          .then(({ data }) => setWeeklyPatternRows((data as any) ?? []));
+      }
+    });
     supabase
       .from('company_holidays')
       .select('*')
@@ -147,11 +158,13 @@ export default function DashboardScreen({ navigation }: any) {
   );
   const todayIsWeekOff = companyWeekOffDates.has(today);
 
+  const weeklyPattern: WeeklyPatternByEmployee = useMemo(() => buildWeeklyPatternByEmployee(weeklyPatternRows), [weeklyPatternRows]);
+
   const lateEmployees = useMemo(() => {
     const rows: DetailRow[] = [];
     for (const emp of activeEmployees) {
       const empLogs = todayLogs.filter(l => l.employee_id === emp.id);
-      if (!empLogs.length || !isLate(emp, shifts, empLogs, today, dailyShiftByDate, companyWeekOffDates)) continue;
+      if (!empLogs.length || !isLate(emp, shifts, empLogs, today, dailyShiftByDate, companyWeekOffDates, weeklyPattern)) continue;
       const checkIn = firstCheckIn(empLogs);
       rows.push({
         id: emp.id,
@@ -160,7 +173,7 @@ export default function DashboardScreen({ navigation }: any) {
       });
     }
     return rows;
-  }, [activeEmployees, todayLogs, shifts, today, dailyShiftByDate, companyWeekOffDates]);
+  }, [activeEmployees, todayLogs, shifts, today, dailyShiftByDate, companyWeekOffDates, weeklyPattern]);
   const lateCount = lateEmployees.length;
 
   const absentRows = useMemo<DetailRow[]>(
@@ -214,14 +227,14 @@ export default function DashboardScreen({ navigation }: any) {
         if (list) list.push(log);
         else byDate.set(key, [log]);
       }
-      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, companyWeekOffDates);
+      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, companyWeekOffDates, weeklyPattern);
       const dayLogs = byDate.get(today);
       if (!dayLogs || dayLogs.length === 0) continue;
-      const resolved = resolveShiftForDate(emp, shifts, today, dailyShiftByDate, companyWeekOffDates);
+      const resolved = resolveShiftForDate(emp, shifts, today, dailyShiftByDate, companyWeekOffDates, weeklyPattern);
       map.set(emp.id, computeDayStatusForResolvedShift(dayLogs, resolved));
     }
     return map;
-  }, [activeEmployees, weekLogs, shifts, dailyShiftByDate, today, companyWeekOffDates]);
+  }, [activeEmployees, weekLogs, shifts, dailyShiftByDate, today, companyWeekOffDates, weeklyPattern]);
 
   const workHoursRows = useMemo<DetailRow[]>(() => {
     const entries: { id: string; name: string; hours: number }[] = [];
