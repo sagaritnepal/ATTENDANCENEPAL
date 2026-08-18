@@ -80,15 +80,20 @@ export default function WeeklyPatternGrid({
   }
 
   // Writes the copied employee's whole Sun-Sat pattern onto `targetId`
-  // straight to Supabase, immediately — no modal, no separate Save step.
-  // Only a source weekday that actually has a pick (not —) writes
-  // anything, leaving whatever's already on that target weekday alone.
-  // Also drops any of the target's own still-unsaved manual picks on the
-  // weekdays just written, so the grid doesn't keep showing a stale
-  // pending value that no longer matches what Paste just saved underneath
-  // it.
+  // straight to Supabase — but only after an explicit confirm, so nothing
+  // changes without the admin actually saying so. Only a source weekday
+  // that actually has a pick (not —) writes anything, leaving whatever's
+  // already on that target weekday alone. Also drops any of the target's
+  // own still-unsaved manual picks on the weekdays just written, so the
+  // grid doesn't keep showing a stale pending value that no longer matches
+  // what Paste just saved underneath it.
   async function pasteToEmployee(targetId: string) {
     if (!copiedEmployeeId || copiedEmployeeId === targetId) return;
+    const sourceName = employees.find(e => e.id === copiedEmployeeId)?.name ?? 'the copied employee';
+    const targetName = employees.find(e => e.id === targetId)?.name ?? 'this employee';
+    if (!confirm(`Paste ${sourceName}'s pattern onto ${targetName}? This overwrites their matching weekdays right away.`)) {
+      return;
+    }
     setPastingEmployeeId(targetId);
     setPasteError(null);
     const upserts: { employee_id: string; weekday: number; shift_id: string | null }[] = [];

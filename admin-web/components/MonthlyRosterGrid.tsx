@@ -149,14 +149,20 @@ export default function MonthlyRosterGrid({
   }
 
   // Writes the copied employee's whole month onto `targetId` straight to
-  // Supabase, immediately — no modal, no separate Save step. Only a source
-  // day that actually has a pick (not —) writes anything, leaving
-  // whatever's already on that target day alone. Also drops any of the
-  // target's own still-unsaved manual picks on the days just written, so
-  // the grid doesn't keep showing a stale pending value that no longer
-  // matches what Paste just saved underneath it.
+  // Supabase — but only after an explicit confirm, so nothing changes
+  // without the admin actually saying so. Only a source day that actually
+  // has a pick (not —) writes anything, leaving whatever's already on that
+  // target day alone. Also drops any of the target's own still-unsaved
+  // manual picks on the days just written, so the grid doesn't keep
+  // showing a stale pending value that no longer matches what Paste just
+  // saved underneath it.
   async function pasteToEmployee(targetId: string) {
     if (!copiedEmployeeId || copiedEmployeeId === targetId) return;
+    const sourceName = employees.find(e => e.id === copiedEmployeeId)?.name ?? 'the copied employee';
+    const targetName = employees.find(e => e.id === targetId)?.name ?? 'this employee';
+    if (!confirm(`Paste ${sourceName}'s month onto ${targetName}? This overwrites their matching days right away.`)) {
+      return;
+    }
     setPastingEmployeeId(targetId);
     setPasteError(null);
     const upserts: { employee_id: string; work_date: string; shift_id: string | null }[] = [];
