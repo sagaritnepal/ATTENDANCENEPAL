@@ -456,6 +456,24 @@ process.on('unhandledRejection', err => {
   console.error('[push] unhandled rejection (ignored, server keeps running):', err);
 });
 
+// Two instances of this process both handling the same devices (e.g. a
+// deploy that started a new one before the old one fully exited) would
+// independently run markOnline/sweepOfflineDevices/reassertOnlineForRecentDevices
+// against the same rows — a plausible source of the still-unexplained status
+// flapping documented above reassertOnlineForRecentDevices(). A second
+// instance can't actually bind the same PORT (Node throws EADDRINUSE), so
+// this can't happen silently, but without a listener that failure is an
+// opaque uncaught exception — this makes it a clear, loggable signal instead
+// of a confusing crash/restart loop under pm2.
+server.on('error', err => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`[push] port ${PORT} is already in use — is another copy of this server already running? Refusing to start a second instance.`);
+  } else {
+    console.error('[push] server error:', err.message);
+  }
+  process.exit(1);
+});
+
 server.listen(PORT, () => {
   console.log(`ZKTeco PUSH/ADMS receiver (multi-tenant) listening on 0.0.0.0:${PORT}`);
 });

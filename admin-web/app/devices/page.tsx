@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
@@ -28,8 +28,29 @@ function deviceErrorMessage(error: { code?: string; message: string }): string {
 // device (see ARCHITECTURE.md), so one shared value has to cover both.
 const STALE_AFTER_MS = 5 * 60 * 1000;
 
-function isDeviceOnline(d: Device, now: number): boolean {
+function computeRawOnline(d: Device, now: number): boolean {
   return d.status === 'online' && !!d.last_sync && now - new Date(d.last_sync).getTime() < STALE_AFTER_MS;
+}
+
+// zkteco-bridge/push-server.js documents an unresolved bug of its own: something
+// occasionally flips a cloud device's status back to 'offline' within seconds of it
+// going 'online', self-correcting a few seconds later (see its reassertOnlineForRecentDevices
+// comment) — a brief, real flap in the underlying column, not a display bug here. Rather than
+// showing that flicker to the admin (which reads exactly like "the site says offline when the
+// device is online"), only actually render "offline" once a device has stayed non-online for
+// this long continuously — a genuine outage still shows up, just a few seconds later, while a
+// sub-debounce blip never reaches the screen at all.
+const FLAP_DEBOUNCE_MS = 20_000;
+
+function isDeviceOnline(d: Device, now: number, notOnlineSince: Map<string, number>): boolean {
+  const raw = computeRawOnline(d, now);
+  if (raw) {
+    notOnlineSince.delete(d.id);
+    return true;
+  }
+  const since = notOnlineSince.get(d.id) ?? now;
+  if (!notOnlineSince.has(d.id)) notOnlineSince.set(d.id, since);
+  return now - since < FLAP_DEBOUNCE_MS;
 }
 
 type BridgeCredential = { id: string; email: string; createdAt: string };
@@ -74,6 +95,10 @@ export default function DevicesPage() {
     const timer = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(timer);
   }, []);
+  // deviceId -> when it first stopped looking online, for isDeviceOnline()'s
+  // flap debounce — a plain ref (not state) since it's read/written in
+  // render, not something that should itself trigger a re-render.
+  const notOnlineSinceRef = useRef<Map<string, number>>(new Map());
 
   function reload() {
     supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
@@ -294,7 +319,7 @@ export default function DevicesPage() {
           const branch = branches.find(b => b.id === d.branch_id);
           const registered = employees.filter(e => e.branch_id === d.branch_id && e.fingerprint_id).length;
           const fetched = logs.filter(l => l.device_id === d.id).length;
-          const online = isDeviceOnline(d, now);
+          const online = isDeviceOnline(d, now, notOnlineSinceRef.current);
           const deviceEvents = syncEvents.filter(e => e.device_id === d.id);
           const busy = (type: 'users' | 'logs') =>
             queuing === `${d.id}-${type}` ||
