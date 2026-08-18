@@ -13,13 +13,20 @@ function deviceErrorMessage(error: { code?: string; message: string }): string {
   return error.message;
 }
 
-// Both bridges poll every 15s and only write status: 'online'/'offline' when
-// a poll actually runs — if the bridge process itself isn't running (window
+// A LAN-bridge device (desktop-app/lan-bridge.js, zkteco-bridge/index.js)
+// polls every 15s and only writes status: 'online'/'offline' when a poll
+// actually runs — if the bridge process itself isn't running (window
 // closed, pm2 stopped, machine off), no code runs at all and the row just
 // keeps whatever status the last successful poll wrote, usually 'online',
-// forever. Trusting last_sync recency instead of the raw column catches
-// that case; 4x the poll interval leaves room for jitter/backoff.
-const STALE_AFTER_MS = 60_000;
+// forever. A cloud/ADMS device (zkteco-bridge/push-server.js) is different:
+// nothing polls it, the DEVICE pushes on its own schedule, and that
+// server's own offline sweep only flags one stale after OFFLINE_AFTER_MS
+// (5 minutes by default, push-server.js) — so this threshold has to be at
+// least that lenient, or a perfectly healthy cloud device flips to
+// "offline" here well before the server itself would ever call it stale.
+// There's no separate "connection type" column to pick a threshold per
+// device (see ARCHITECTURE.md), so one shared value has to cover both.
+const STALE_AFTER_MS = 5 * 60 * 1000;
 
 function isDeviceOnline(d: Device, now: number): boolean {
   return d.status === 'online' && !!d.last_sync && now - new Date(d.last_sync).getTime() < STALE_AFTER_MS;
