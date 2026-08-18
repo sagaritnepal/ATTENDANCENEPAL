@@ -5,11 +5,14 @@ import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSumm
 import { fetchMyCompanyWeekOffConfig, leaveDatesByEmployee, weekOffDatesInRange } from '../lib/weekOff';
 import {
   applyOvernightShiftCorrection,
+  buildWeeklyPatternByEmployee,
   computeDayStatusForResolvedShift,
   formatHoursMinutes,
+  isWeekOff,
   nepalTodayIso,
   resolveShiftForDate,
   type DailyShiftByDate,
+  type WeeklyPatternByEmployee,
 } from '../lib/shift';
 import { colors } from '../theme';
 import { ChevronIcon } from '../components/icons';
@@ -59,9 +62,20 @@ export default function PayrollScreen({ navigation }: any) {
   const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ employee_id: string; weekday: number; shift_id: string | null }[]>([]);
 
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+      setWeeklyOffDay(weeklyOffDay);
+      // Not date-scoped (a pattern applies to every week), and only ever
+      // relevant in 'weekly' roster_mode — see resolveShiftForDate().
+      if (rosterMode === 'weekly') {
+        supabase
+          .from('employee_weekly_pattern')
+          .select('employee_id, weekday, shift_id')
+          .then(({ data }) => setWeeklyPatternRows((data as any) ?? []));
+      }
+    });
   }, []);
 
   function reload() {
@@ -89,6 +103,7 @@ export default function PayrollScreen({ navigation }: any) {
 
   const weekOffDateSet = useMemo(() => weekOffDatesInRange(start, end, weeklyOffDay, holidays), [start, end, weeklyOffDay, holidays]);
   const leaveByEmployee = useMemo(() => leaveDatesByEmployee(leaveRequests), [leaveRequests]);
+  const weeklyPattern: WeeklyPatternByEmployee = useMemo(() => buildWeeklyPatternByEmployee(weeklyPatternRows), [weeklyPatternRows]);
 
   const dailyShiftByDate: DailyShiftByDate = useMemo(() => {
     const map: DailyShiftByDate = new Map();
@@ -131,7 +146,7 @@ export default function PayrollScreen({ navigation }: any) {
         const dayLogs = empLogs.filter(l => l.punch_time.slice(0, 10) === day);
         if (dayLogs.length > 0) byDate.set(day, dayLogs);
       }
-      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate);
+      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, weekOffDateSet, weeklyPattern);
       logsByEmployeeDay.set(emp.id, byDate);
     }
     for (const day of days) {
@@ -149,10 +164,16 @@ export default function PayrollScreen({ navigation }: any) {
         }
         const dayLogs = (logsByEmployeeDay.get(emp.id)?.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
         if (dayLogs.length === 0) {
-          if (weekOffDateSet.has(day) || leaveByEmployee.get(emp.id)?.has(day)) row.paidOffDays += 1;
+          // No punch, but still a paid day: company Week-off, a per-employee
+          // Week Off from the roster or recurring weekly pattern (checked
+          // via the same resolveShiftForDate() a day WITH punches already
+          // uses below — a roster/pattern row wins over the company-wide
+          // date), or approved Leave.
+          const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, weekOffDateSet, weeklyPattern);
+          if (isWeekOff(resolved) || leaveByEmployee.get(emp.id)?.has(day)) row.paidOffDays += 1;
           continue;
         }
-        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate);
+        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, weekOffDateSet, weeklyPattern);
         const live = computeDayStatusForResolvedShift(dayLogs, resolved);
         row.days += 1;
         row.hours += live.totalMinutes / 60;
@@ -162,7 +183,7 @@ export default function PayrollScreen({ navigation }: any) {
       }
     }
     return Array.from(map.values()).sort((a, b) => a.enrollId.localeCompare(b.enrollId, undefined, { numeric: true, sensitivity: 'base' }));
-  }, [summaries, logs, shifts, employees, start, end, dailyShiftByDate, weekOffDateSet, leaveByEmployee]);
+  }, [summaries, logs, shifts, employees, start, end, dailyShiftByDate, weekOffDateSet, leaveByEmployee, weeklyPattern]);
 
   const otHours = Number(otHoursPerDay) || 0;
   const otMult = Number(otMultiplier) || 0;

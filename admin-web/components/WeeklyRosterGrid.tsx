@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from 'react';
 import NepaliDate from 'nepali-date-converter';
 import { supabase } from '@/lib/supabase';
 import Avatar from '@/components/Avatar';
+import RosterModeSwitch from '@/components/RosterModeSwitch';
 import { buildMonth, monthDateRange, stepWeek, weekRange, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { Employee, Shift } from '@/lib/types';
+import type { RosterMode } from '@/lib/weekOff';
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 /** Two sentinel cell values, distinct from any real shift_id: "no row for
@@ -52,7 +54,15 @@ function weekdayOf(date: string): number {
   return new Date(date + 'T00:00:00Z').getUTCDay();
 }
 
-export default function WeeklyRosterGrid() {
+export default function WeeklyRosterGrid({
+  companyId,
+  rosterMode,
+  onRosterModeChange,
+}: {
+  companyId: string | null;
+  rosterMode: RosterMode;
+  onRosterModeChange: (mode: RosterMode) => void;
+}) {
   const { system } = useCalendarSystem();
   const [anchor, setAnchor] = useState(todayIso);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -281,6 +291,7 @@ export default function WeeklyRosterGrid() {
           >
             ⧉ Copy this week to rest of {monthLabel}
           </button>
+          <RosterModeSwitch companyId={companyId} mode={rosterMode} onChange={onRosterModeChange} />
         </div>
       </div>
 

@@ -9,6 +9,7 @@ import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import {
   applyOvernightShiftCorrection,
+  buildWeeklyPatternByEmployee,
   computeDayStatusForResolvedShift,
   formatHoursMinutes,
   isWeekOff,
@@ -75,13 +76,24 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
   const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ employee_id: string; weekday: number; shift_id: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     supabase.from('employees').select('*').eq('status', 'active').order('name').then(({ data }) => setEmployees(data ?? []));
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
     supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+      setWeeklyOffDay(weeklyOffDay);
+      // Not date-scoped (a pattern applies to every week), and only ever
+      // relevant in 'weekly' roster_mode — see resolveShiftForDate().
+      if (rosterMode === 'weekly') {
+        supabase
+          .from('employee_weekly_pattern')
+          .select('employee_id, weekday, shift_id')
+          .then(({ data }) => setWeeklyPatternRows(data ?? []));
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -122,6 +134,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
 
   const weekOffDateSet = useMemo(() => weekOffDatesInRange(from, to, weeklyOffDay, holidays), [from, to, weeklyOffDay, holidays]);
   const leaveByEmployee = useMemo(() => leaveDatesByEmployee(leaveRequests), [leaveRequests]);
+  const weeklyPattern = useMemo(() => buildWeeklyPatternByEmployee(weeklyPatternRows), [weeklyPatternRows]);
 
   const rows: Row[] = useMemo(() => {
     const deviceName = (id: string | null) => devices.find(d => d.id === id)?.name ?? 'Mobile / QR / Selfie';
@@ -147,7 +160,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
         const dayLogs = empLogs.filter(l => l.punch_time.slice(0, 10) === day);
         if (dayLogs.length > 0) byDate.set(day, dayLogs);
       }
-      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, weekOffDateSet);
+      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, weekOffDateSet, weeklyPattern);
       logsByEmployeeDay.set(emp.id, byDate);
     }
 
@@ -162,7 +175,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
         // past days' summaries are final and safe to trust.
         const summary = day === today ? undefined : summaries.find(s => s.employee_id === emp.id && s.work_date === day);
         const dayLogs = (logsByEmployeeDay.get(emp.id)?.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
-        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, weekOffDateSet);
+        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, weekOffDateSet, weeklyPattern);
         const shiftLabel = isWeekOff(resolved)
           ? 'Week Off'
           : `${resolved.name} (${resolved.start_time.slice(0, 5)}–${resolved.end_time.slice(0, 5)})`;
@@ -253,7 +266,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
         if (!bId) return -1;
         return aId.localeCompare(bId, undefined, { numeric: true, sensitivity: 'base' });
       });
-  }, [scopedEmployees, summaries, logs, devices, shifts, from, to, status, dailyShiftByDate, weekOffDateSet, leaveByEmployee]);
+  }, [scopedEmployees, summaries, logs, devices, shifts, from, to, status, dailyShiftByDate, weekOffDateSet, leaveByEmployee, weeklyPattern]);
 
   const totals = useMemo(() => {
     const workHours = rows.reduce((sum, r) => sum + r.hours, 0);

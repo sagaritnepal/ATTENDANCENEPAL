@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Modal } from 'react-native';
 import { supabase } from '../lib/supabase';
-import { formatHoursMinutes, nepalTodayIso, type DailyShiftByDate } from '../lib/shift';
+import { buildWeeklyPatternByEmployee, formatHoursMinutes, nepalTodayIso, type DailyShiftByDate, type WeeklyPatternByEmployee } from '../lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '../lib/payrollDetail';
 import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '../lib/weekOff';
 import { buildPeriodOptions, currentSystemYearMonth, formatDdMmYyyy, systemPeriod, type CalendarPeriod } from '../lib/calendar';
@@ -49,10 +49,20 @@ export default function MyPayrollScreen() {
   const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ weekday: number; shift_id: string | null }[]>([]);
 
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
-  }, []);
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+      setWeeklyOffDay(weeklyOffDay);
+      if (rosterMode === 'weekly' && employeeId) {
+        supabase
+          .from('employee_weekly_pattern')
+          .select('weekday, shift_id')
+          .eq('employee_id', employeeId)
+          .then(({ data }) => setWeeklyPatternRows((data as any) ?? []));
+      }
+    });
+  }, [employeeId]);
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -152,18 +162,24 @@ export default function MyPayrollScreen() {
     return map;
   }, [dailyShiftRows, employeeId]);
 
+  const weeklyPattern: WeeklyPatternByEmployee = useMemo(() => {
+    if (!employeeId) return new Map();
+    const rows = weeklyPatternRows.map(r => ({ employee_id: employeeId, weekday: r.weekday, shift_id: r.shift_id }));
+    return buildWeeklyPatternByEmployee(rows);
+  }, [weeklyPatternRows, employeeId]);
+
   const dayRows: DayDetail[] = useMemo(
-    () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate, paidOffDates) : []),
-    [employee, shifts, summaries, logs, start, end, dailyShiftByDate, paidOffDates]
+    () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate, paidOffDates, weeklyPattern) : []),
+    [employee, shifts, summaries, logs, start, end, dailyShiftByDate, paidOffDates, weeklyPattern]
   );
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
 
   const lifetimeDayRows: DayDetail[] = useMemo(
     () =>
       employee?.date_of_joining
-        ? buildEmployeeDayRows(employee, shifts, lifetimeSummaries, lifetimeLogs, employee.date_of_joining, nepalTodayIso(), dailyShiftByDate, paidOffDates)
+        ? buildEmployeeDayRows(employee, shifts, lifetimeSummaries, lifetimeLogs, employee.date_of_joining, nepalTodayIso(), dailyShiftByDate, paidOffDates, weeklyPattern)
         : [],
-    [employee, shifts, lifetimeSummaries, lifetimeLogs, dailyShiftByDate, paidOffDates]
+    [employee, shifts, lifetimeSummaries, lifetimeLogs, dailyShiftByDate, paidOffDates, weeklyPattern]
   );
 
   const totalEarned = useMemo(() => {

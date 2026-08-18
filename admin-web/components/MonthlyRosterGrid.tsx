@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Avatar from '@/components/Avatar';
+import RosterModeSwitch from '@/components/RosterModeSwitch';
 import { buildMonth, stepAnchor, todayAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { Employee, Shift } from '@/lib/types';
+import type { RosterMode } from '@/lib/weekOff';
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 /** Two sentinel cell values, distinct from any real shift_id: "no row for
@@ -24,8 +26,17 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
  * date per column) just spanning a whole AD/BS month instead of one week —
  * filling in a month of exceptions (someone covering nights all month, a
  * rotating crew, etc.) without paging through 4-5 separate weeks. */
-export default function MonthlyRosterGrid() {
+export default function MonthlyRosterGrid({
+  companyId,
+  rosterMode,
+  onRosterModeChange,
+}: {
+  companyId: string | null;
+  rosterMode: RosterMode;
+  onRosterModeChange: (mode: RosterMode) => void;
+}) {
   const { system } = useCalendarSystem();
+  const isInactive = rosterMode === 'weekly';
   const [anchor, setAnchor] = useState(todayAnchor);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -154,9 +165,17 @@ export default function MonthlyRosterGrid() {
             Today
           </button>
         </div>
+        <RosterModeSwitch companyId={companyId} mode={rosterMode} onChange={onRosterModeChange} />
       </div>
 
-      {pendingCount > 0 && (
+      {isInactive && (
+        <div className="border-b border-warning/20 bg-warning-bg px-4 py-3 text-sm text-warning-text sm:px-6">
+          Monthly Roster is inactive — Weekly mode is driving shifts right now. Switch modes above to edit exact dates.
+          Nothing here is deleted; switching back restores it.
+        </div>
+      )}
+
+      {!isInactive && pendingCount > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-accent/20 bg-accent/5 px-4 py-3 sm:px-6">
           <span className="text-sm font-medium text-ink">
             {pendingCount} unsaved change{pendingCount === 1 ? '' : 's'}
@@ -212,7 +231,7 @@ export default function MonthlyRosterGrid() {
                           <button
                             type="button"
                             onClick={() => copyRowToAll(emp.id)}
-                            disabled={currentValue(emp.id, dates[0]) === UNSET}
+                            disabled={isInactive || currentValue(emp.id, dates[0]) === UNSET}
                             title="Copy the first day's pick to every day this month"
                             className="ml-1 shrink-0 rounded-md border border-slate-200 px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-30"
                           >
@@ -228,6 +247,7 @@ export default function MonthlyRosterGrid() {
                             <select
                               value={value}
                               onChange={e => setCell(emp.id, date, e.target.value)}
+                              disabled={isInactive}
                               title={
                                 shiftById.get(value)
                                   ? `${shiftById.get(value)!.name} (${shiftById.get(value)!.start_time.slice(0, 5)}–${shiftById
@@ -235,7 +255,7 @@ export default function MonthlyRosterGrid() {
                                       .end_time.slice(0, 5)})`
                                   : undefined
                               }
-                              className={`w-24 rounded-md border px-1 py-1 text-[11px] shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-accent/30 ${cellTone(
+                              className={`w-24 rounded-md border px-1 py-1 text-[11px] shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-50 ${cellTone(
                                 value,
                                 dirty
                               )}`}

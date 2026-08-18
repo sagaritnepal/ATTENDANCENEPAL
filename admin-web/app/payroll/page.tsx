@@ -17,6 +17,7 @@ import {
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import {
   applyOvernightShiftCorrection,
+  buildWeeklyPatternByEmployee,
   computeDayStatusForResolvedShift,
   formatHoursMinutes,
   isWeekOff,
@@ -46,6 +47,7 @@ export default function PayrollPage() {
   const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ employee_id: string; weekday: number; shift_id: string | null }[]>([]);
   const [pendingSalary, setPendingSalary] = useState<Record<string, string>>({});
   const [savingRowId, setSavingRowId] = useState<string | null>(null);
   const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
@@ -81,7 +83,17 @@ export default function PayrollPage() {
   // The oldest/newest punch on record — bounds the period dropdown to
   // months that actually have data instead of listing years of empty ones.
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+      setWeeklyOffDay(weeklyOffDay);
+      // Not date-scoped (a pattern applies to every week), and only ever
+      // relevant in 'weekly' roster_mode — see resolveShiftForDate().
+      if (rosterMode === 'weekly') {
+        supabase
+          .from('employee_weekly_pattern')
+          .select('employee_id, weekday, shift_id')
+          .then(({ data }) => setWeeklyPatternRows(data ?? []));
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -167,6 +179,7 @@ export default function PayrollPage() {
   // late/early classification but was never actually paid (see calc below).
   const weekOffDateSet = useMemo(() => weekOffDatesInRange(start, end, weeklyOffDay, holidays), [start, end, weeklyOffDay, holidays]);
   const leaveByEmployee = useMemo(() => leaveDatesByEmployee(leaveRequests), [leaveRequests]);
+  const weeklyPattern = useMemo(() => buildWeeklyPatternByEmployee(weeklyPatternRows), [weeklyPatternRows]);
 
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
   // For attendance counting only (possibleDays/absentDays below) — a period
@@ -237,7 +250,7 @@ export default function PayrollPage() {
         const dayLogs = empLogs.filter(l => l.punch_time.slice(0, 10) === day);
         if (dayLogs.length > 0) byDate.set(day, dayLogs);
       }
-      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, weekOffDateSet);
+      applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, weekOffDateSet, weeklyPattern);
       logsByEmployeeDay.set(emp.id, byDate);
     }
 
@@ -267,7 +280,7 @@ export default function PayrollPage() {
           // the company-wide date), or approved Leave. Tracked separately
           // from `hours`/`days` (which stay a pure worked-attendance count)
           // and added as its own credit in calculatedSalary() below.
-          const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, weekOffDateSet);
+          const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, weekOffDateSet, weeklyPattern);
           if (isWeekOff(resolved) || leaveByEmployee.get(emp.id)?.has(day)) {
             row.paidOffDays += 1;
           }
@@ -275,7 +288,7 @@ export default function PayrollPage() {
         }
         // Not yet processed by compute_payroll_summaries() — compute live
         // from the raw punches, same as the Attendance Report page does.
-        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, weekOffDateSet);
+        const resolved = resolveShiftForDate(emp, shifts, day, dailyShiftByDate, weekOffDateSet, weeklyPattern);
         const live = computeDayStatusForResolvedShift(dayLogs, resolved);
         row.days += 1;
         row.hours += live.totalMinutes / 60;
@@ -285,7 +298,7 @@ export default function PayrollPage() {
       }
     }
     return Array.from(map.values()).sort((a, b) => a.enrollId.localeCompare(b.enrollId, undefined, { numeric: true, sensitivity: 'base' }));
-  }, [summaries, logs, shifts, scopedEmployees, start, end, dailyShiftByDate, weekOffDateSet, leaveByEmployee]);
+  }, [summaries, logs, shifts, scopedEmployees, start, end, dailyShiftByDate, weekOffDateSet, leaveByEmployee, weeklyPattern]);
 
   const totals = useMemo(() => {
     const totalHours = byEmployee.reduce((s, r) => s + r.hours, 0);

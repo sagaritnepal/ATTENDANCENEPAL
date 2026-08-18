@@ -6,9 +6,11 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import WeeklyRosterGrid from '@/components/WeeklyRosterGrid';
+import WeeklyPatternGrid from '@/components/WeeklyPatternGrid';
 import MonthlyRosterGrid from '@/components/MonthlyRosterGrid';
 import type { Employee, Shift } from '@/lib/types';
 import { resolveShift, formatShiftHours } from '@/lib/shift';
+import { fetchMyCompanyWeekOffConfig, type RosterMode } from '@/lib/weekOff';
 
 const EMPTY_FORM = { name: '', type: 'fixed' as Shift['type'], start_time: '09:00', end_time: '18:00', grace_minutes: 10, department: '' };
 
@@ -68,6 +70,8 @@ function ShiftsView() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<'templates' | 'roster' | 'monthly'>(initialTab);
+  const [companyId, setCompanyId] = useState<string | null>(null);
+  const [rosterMode, setRosterMode] = useState<RosterMode>('monthly');
 
   function reload() {
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
@@ -76,6 +80,10 @@ function ShiftsView() {
       .from('employee_daily_shifts')
       .select('employee_id')
       .then(({ data }) => setRosterEmployeeIds(new Set((data ?? []).map(r => r.employee_id))));
+    fetchMyCompanyWeekOffConfig().then(({ companyId, rosterMode }) => {
+      setCompanyId(companyId);
+      setRosterMode(rosterMode);
+    });
   }
   useEffect(reload, []);
 
@@ -208,9 +216,13 @@ function ShiftsView() {
       </div>
 
       {tab === 'roster' ? (
-        <WeeklyRosterGrid />
+        rosterMode === 'weekly' ? (
+          <WeeklyPatternGrid companyId={companyId} rosterMode={rosterMode} onRosterModeChange={setRosterMode} />
+        ) : (
+          <WeeklyRosterGrid companyId={companyId} rosterMode={rosterMode} onRosterModeChange={setRosterMode} />
+        )
       ) : tab === 'monthly' ? (
-        <MonthlyRosterGrid />
+        <MonthlyRosterGrid companyId={companyId} rosterMode={rosterMode} onRosterModeChange={setRosterMode} />
       ) : (
         <>
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">

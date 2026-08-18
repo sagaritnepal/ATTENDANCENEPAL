@@ -10,7 +10,7 @@ import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import StatusText from '@/components/StatusText';
 import { buildMonth, formatAdDate, formatDdMmYyyy, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { formatHoursMinutes, type DailyShiftByDate } from '@/lib/shift';
+import { formatHoursMinutes, type DailyShiftByDate, type WeeklyPatternByEmployee } from '@/lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '@/lib/payrollDetail';
 import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '@/lib/weekOff';
 import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
@@ -79,11 +79,24 @@ function PayrollEmployeeDetailView() {
   const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ weekday: number; shift_id: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
-  }, []);
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+      setWeeklyOffDay(weeklyOffDay);
+      // Not date-scoped (a pattern applies to every week), and only ever
+      // relevant in 'weekly' roster_mode — see resolveShiftForDate().
+      if (rosterMode === 'weekly') {
+        supabase
+          .from('employee_weekly_pattern')
+          .select('weekday, shift_id')
+          .eq('employee_id', employeeId)
+          .then(({ data }) => setWeeklyPatternRows(data ?? []));
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId]);
 
   useEffect(() => {
     setLoading(true);
@@ -125,6 +138,14 @@ function PayrollEmployeeDetailView() {
     return map;
   }, [dailyShiftRows, employeeId]);
 
+  const weeklyPattern: WeeklyPatternByEmployee = useMemo(() => {
+    const map: WeeklyPatternByEmployee = new Map();
+    const perWeekday = new Map<number, string | null>();
+    for (const r of weeklyPatternRows) perWeekday.set(r.weekday, r.shift_id);
+    map.set(employeeId, perWeekday);
+    return map;
+  }, [weeklyPatternRows, employeeId]);
+
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
   const monthLabel = useMemo(() => buildMonth(system, parseAdKey(start) ?? todayAnchor()).label, [system, start]);
   // The flat "salary ÷ days in period" rate — same figure on every row,
@@ -148,8 +169,11 @@ function PayrollEmployeeDetailView() {
   }, [start, end, leaveRequests]);
 
   const dayRows = useMemo(
-    () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate, weekOffDates, leaveDates) : []),
-    [employee, shifts, summaries, logs, start, end, dailyShiftByDate, weekOffDates, leaveDates]
+    () =>
+      employee
+        ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate, weekOffDates, leaveDates, weeklyPattern)
+        : [],
+    [employee, shifts, summaries, logs, start, end, dailyShiftByDate, weekOffDates, leaveDates, weeklyPattern]
   );
 
   const dayTotals = useMemo(() => {

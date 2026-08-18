@@ -1,5 +1,5 @@
 import type { AttendanceLog, Employee, Shift } from '../types';
-import { isWeekOff, resolveShiftForDate, type DailyShiftByDate } from './shift';
+import { isWeekOff, resolveShiftForDate, type DailyShiftByDate, type WeeklyPatternByEmployee } from './shift';
 
 export function dateKey(iso: string) {
   return iso.slice(0, 10);
@@ -26,11 +26,12 @@ export function isLate(
   logsForDay: AttendanceLog[],
   date: string,
   dailyShiftByDate?: DailyShiftByDate,
-  companyWeekOffDates?: Set<string>
+  companyWeekOffDates?: Set<string>,
+  weeklyPattern?: WeeklyPatternByEmployee
 ) {
   const checkIn = firstCheckIn(logsForDay);
   if (!checkIn) return false;
-  const shift = resolveShiftForDate(employee, shifts, date, dailyShiftByDate, companyWeekOffDates);
+  const shift = resolveShiftForDate(employee, shifts, date, dailyShiftByDate, companyWeekOffDates, weeklyPattern);
   if (isWeekOff(shift)) return false;
   const startMin = toMinutes(shift.start_time);
   return minutesOfDayUTC(checkIn.punch_time) > startMin + shift.grace_minutes;
