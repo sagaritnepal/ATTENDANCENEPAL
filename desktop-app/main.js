@@ -61,9 +61,7 @@ if (!gotSingleInstanceLock) {
   process.exit(0);
 }
 
-// Update this the day a real domain replaces the sslip.io placeholder — the
-// whole app is this one line, nothing else needs to change.
-const APP_URL = 'https://203-134-250-70.sslip.io';
+const APP_URL = 'https://attendance-nepal.com';
 const LAN_BRIDGE_URL = `${APP_URL}/lan-bridge.js`;
 const LAN_BRIDGE_FETCH_TIMEOUT_MS = 5000;
 
