@@ -13,6 +13,18 @@ function deviceErrorMessage(error: { code?: string; message: string }): string {
   return error.message;
 }
 
+// Both bridges poll every 15s and only write status: 'online'/'offline' when
+// a poll actually runs — if the bridge process itself isn't running (window
+// closed, pm2 stopped, machine off), no code runs at all and the row just
+// keeps whatever status the last successful poll wrote, usually 'online',
+// forever. Trusting last_sync recency instead of the raw column catches
+// that case; 4x the poll interval leaves room for jitter/backoff.
+const STALE_AFTER_MS = 60_000;
+
+function isDeviceOnline(d: Device, now: number): boolean {
+  return d.status === 'online' && !!d.last_sync && now - new Date(d.last_sync).getTime() < STALE_AFTER_MS;
+}
+
 type BridgeCredential = { id: string; email: string; createdAt: string };
 type BridgeResult = { email: string; password: string; envFile: string };
 
@@ -45,6 +57,14 @@ export default function DevicesPage() {
   const [bridgeError, setBridgeError] = useState<string | null>(null);
   const [bridgeResult, setBridgeResult] = useState<BridgeResult | null>(null);
   const [revokingBridgeId, setRevokingBridgeId] = useState<string | null>(null);
+
+  // Ticks so a device's badge flips from online to offline as soon as
+  // last_sync goes stale, even with no new row update arriving to trigger it.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(timer);
+  }, []);
 
   function reload() {
     supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
@@ -145,6 +165,7 @@ export default function DevicesPage() {
       ip_address: form.ip_address,
       port: form.port,
       serial_number: form.serial_number,
+      status: 'offline',
     });
     setSaving(false);
     if (error) {
@@ -223,11 +244,12 @@ export default function DevicesPage() {
           const branch = branches.find(b => b.id === d.branch_id);
           const registered = employees.filter(e => e.branch_id === d.branch_id && e.fingerprint_id).length;
           const fetched = logs.filter(l => l.device_id === d.id).length;
+          const online = isDeviceOnline(d, now);
           return (
             <div key={d.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="font-semibold text-ink">{d.name}</h3>
-                <Badge tone={d.status === 'online' ? 'good' : 'critical'}>{d.status}</Badge>
+                <Badge tone={online ? 'good' : 'critical'}>{online ? 'online' : 'offline'}</Badge>
               </div>
               <p className="mb-3 text-sm text-slate-500">{d.ip_address}:{d.port}</p>
               <p className="text-sm text-slate-600">📍 {branch?.name ?? 'Unassigned branch'}</p>
