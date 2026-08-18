@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Avatar from '@/components/Avatar';
 import RosterModeSwitch from '@/components/RosterModeSwitch';
-import { buildMonth, stepAnchor, todayAnchor } from '@/lib/calendar';
+import { buildMonth, monthDateRange, stepAnchor, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { Employee, Shift } from '@/lib/types';
 import type { RosterMode } from '@/lib/weekOff';
@@ -47,6 +47,11 @@ export default function MonthlyRosterGrid({
   const [pending, setPending] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [copyModalOpen, setCopyModalOpen] = useState(false);
+  const [copyTargetAnchor, setCopyTargetAnchor] = useState<CalendarAnchor | null>(null);
+  const [copying, setCopying] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const [copyDone, setCopyDone] = useState(false);
 
   const month = useMemo(() => buildMonth(system, anchor), [system, anchor]);
   const monthCells = useMemo(() => month.weeks.flat().filter(c => c.inMonth), [month]);
@@ -54,6 +59,17 @@ export default function MonthlyRosterGrid({
   const templateShifts = useMemo(() => shifts.filter(s => s.employee_id === null), [shifts]);
   const shiftById = useMemo(() => new Map(templateShifts.map(s => [s.id, s])), [templateShifts]);
   const today = todayIso();
+
+  const copyTargetMonth = useMemo(() => (copyTargetAnchor ? buildMonth(system, copyTargetAnchor) : null), [system, copyTargetAnchor]);
+  const copyTargetIsSameMonth = useMemo(
+    () => (copyTargetAnchor ? monthDateRange(system, copyTargetAnchor).start === dates[0] : false),
+    [system, copyTargetAnchor, dates]
+  );
+  const copyCandidateCount = useMemo(
+    () => employees.filter(emp => dates.some(date => currentValue(emp.id, date) !== UNSET)).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [employees, dates, rosterRows, pending]
+  );
 
   function reload() {
     if (dates.length === 0) return;
@@ -101,6 +117,52 @@ export default function MonthlyRosterGrid({
       for (const date of dates.slice(1)) next[`${employeeId}|${date}`] = sourceValue;
       return next;
     });
+  }
+
+  function openCopyModal() {
+    setCopyError(null);
+    setCopyTargetAnchor(stepAnchor(system, anchor, 1));
+    setCopyModalOpen(true);
+  }
+
+  // Copies this whole month's picks into another month, matched by
+  // day-of-month position (this month's 1st -> target's 1st, and so on) —
+  // not by weekday, since two different months rarely share the same
+  // weekday-to-date alignment. If the months differ in length, whichever is
+  // shorter caps how many days actually copy. Only employees with a pick on
+  // a given source day write anything; an untouched (—) day leaves the
+  // matching target day alone rather than clearing it. Writes straight to
+  // Supabase (there's nothing to stage — every date it touches is outside
+  // this grid), same as WeeklyRosterGrid's "copy to rest of month".
+  async function performCopyToMonth() {
+    if (!copyTargetAnchor) return;
+    setCopying(true);
+    setCopyError(null);
+    const targetCells = buildMonth(system, copyTargetAnchor).weeks.flat().filter(c => c.inMonth);
+    const upserts: { employee_id: string; work_date: string; shift_id: string | null }[] = [];
+    for (const emp of employees) {
+      dates.forEach((date, i) => {
+        const targetCell = targetCells[i];
+        if (!targetCell) return;
+        const value = currentValue(emp.id, date);
+        if (value === UNSET) return;
+        upserts.push({ employee_id: emp.id, work_date: targetCell.adKey, shift_id: value === WEEK_OFF_VALUE ? null : value });
+      });
+    }
+    if (upserts.length === 0) {
+      setCopying(false);
+      setCopyModalOpen(false);
+      return;
+    }
+    const { error } = await supabase.from('employee_daily_shifts').upsert(upserts, { onConflict: 'employee_id,work_date' });
+    setCopying(false);
+    if (error) {
+      setCopyError(error.message);
+      return;
+    }
+    setCopyModalOpen(false);
+    setCopyDone(true);
+    setTimeout(() => setCopyDone(false), 3000);
   }
 
   const pendingCount = Object.keys(pending).length;
@@ -165,13 +227,31 @@ export default function MonthlyRosterGrid({
             Today
           </button>
         </div>
-        <RosterModeSwitch companyId={companyId} mode={rosterMode} onChange={onRosterModeChange} />
+        <div className="flex items-center gap-3">
+          {copyDone && <span className="text-xs font-semibold text-good-text">✓ Copied to {copyTargetMonth?.label}</span>}
+          <button
+            type="button"
+            onClick={openCopyModal}
+            disabled={isInactive || copyCandidateCount === 0 || pendingCount > 0}
+            title={
+              pendingCount > 0
+                ? 'Save this month’s changes first'
+                : copyCandidateCount === 0
+                  ? 'Nothing to copy — no picks this month'
+                  : undefined
+            }
+            className="rounded-md border border-accent/30 bg-white px-2.5 py-1.5 text-xs font-semibold text-accent shadow-sm hover:bg-accent/5 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            ⧉ Copy this month to…
+          </button>
+          <RosterModeSwitch companyId={companyId} mode={rosterMode} onChange={onRosterModeChange} />
+        </div>
       </div>
 
       {isInactive && (
         <div className="border-b border-warning/20 bg-warning-bg px-4 py-3 text-sm text-warning-text sm:px-6">
-          Monthly Roster is inactive — Weekly mode is driving shifts right now. Switch modes above to edit exact dates.
-          Nothing here is deleted; switching back restores it.
+          Monthly Roster is inactive — Recurring Weekly mode is driving shifts right now. Switch to Exact Dates above to edit
+          specific days. Nothing here is deleted; switching back restores it.
         </div>
       )}
 
@@ -281,6 +361,61 @@ export default function MonthlyRosterGrid({
 
         {saveError && <p className="mt-3 text-sm text-critical">Could not save: {saveError}</p>}
       </div>
+
+      {copyModalOpen && copyTargetAnchor && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+            <h3 className="mb-2 text-lg font-semibold text-ink">Copy {month.label} to…</h3>
+            <div className="mb-4 flex items-center justify-center gap-3 rounded-lg border border-slate-200 bg-slate-50 py-2.5">
+              <button
+                type="button"
+                onClick={() => setCopyTargetAnchor(a => stepAnchor(system, a!, -1))}
+                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-slate-500 shadow-sm hover:bg-slate-50"
+              >
+                ←
+              </button>
+              <span className="min-w-[10rem] text-center text-sm font-semibold text-ink">{copyTargetMonth?.label}</span>
+              <button
+                type="button"
+                onClick={() => setCopyTargetAnchor(a => stepAnchor(system, a!, 1))}
+                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-slate-500 shadow-sm hover:bg-slate-50"
+              >
+                →
+              </button>
+            </div>
+            {copyTargetIsSameMonth ? (
+              <p className="mb-4 text-sm text-critical">Pick a different month — this is the month you&apos;re already viewing.</p>
+            ) : (
+              <p className="mb-4 text-sm text-slate-600">
+                {copyCandidateCount} employee{copyCandidateCount === 1 ? '' : 's'} with a pick this month will get that same
+                plan applied to {copyTargetMonth?.label}, matched by day-of-month position (the 1st here → the 1st there, and
+                so on). If the two months are different lengths, the extra days at the end are left alone. A day here left
+                blank (—) leaves any existing pick on the matching day untouched — this only fills in, it never clears. You
+                can still hand-edit any single day afterward.
+              </p>
+            )}
+            {copyError && <p className="mb-3 text-sm text-critical">Could not copy: {copyError}</p>}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCopyModalOpen(false)}
+                disabled={copying}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={performCopyToMonth}
+                disabled={copying || copyTargetIsSameMonth}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+              >
+                {copying ? 'Copying…' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
