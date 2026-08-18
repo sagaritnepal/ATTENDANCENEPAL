@@ -156,6 +156,26 @@ export default function MonthlyRosterGrid() {
         </div>
       </div>
 
+      {pendingCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-accent/20 bg-accent/5 px-4 py-3 sm:px-6">
+          <span className="text-sm font-medium text-ink">
+            {pendingCount} unsaved change{pendingCount === 1 ? '' : 's'}
+          </span>
+          <div className="flex gap-2">
+            <button onClick={() => setPending({})} className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100">
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+            >
+              {saving ? 'Saving…' : 'Save changes'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="p-4 sm:p-6">
         {loading ? (
           <p className="text-center text-sm text-slate-400">Loading…</p>
@@ -240,26 +260,6 @@ export default function MonthlyRosterGrid() {
         )}
 
         {saveError && <p className="mt-3 text-sm text-critical">Could not save: {saveError}</p>}
-
-        {pendingCount > 0 && (
-          <div className="mt-4 flex items-center justify-between rounded-lg border border-accent/30 bg-accent/5 px-4 py-3">
-            <span className="text-sm font-medium text-ink">
-              {pendingCount} unsaved change{pendingCount === 1 ? '' : 's'}
-            </span>
-            <div className="flex gap-2">
-              <button onClick={() => setPending({})} className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100">
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="rounded-lg bg-accent px-4 py-1.5 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
-              >
-                {saving ? 'Saving…' : 'Save changes'}
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
