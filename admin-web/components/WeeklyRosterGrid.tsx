@@ -68,6 +68,8 @@ export default function WeeklyRosterGrid() {
   const [copying, setCopying] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [copyDone, setCopyDone] = useState(false);
+  const [copyToEmpSource, setCopyToEmpSource] = useState<string | null>(null);
+  const [copyToEmpTargets, setCopyToEmpTargets] = useState<Set<string>>(new Set());
 
   const week = useMemo(() => weekRange(anchor), [anchor]);
   const templateShifts = useMemo(() => shifts.filter(s => s.employee_id === null), [shifts]);
@@ -142,6 +144,25 @@ export default function WeeklyRosterGrid() {
       for (const date of week.dates.slice(1)) next[`${employeeId}|${date}`] = sourceValue;
       return next;
     });
+  }
+
+  // Stages the source employee's whole Sun-Sat pattern onto every selected
+  // target employee — still just pending until the Save changes bar below
+  // is used, same as any other pick, so nothing writes until it's reviewed.
+  function applyCopyToEmployees() {
+    if (!copyToEmpSource || copyToEmpTargets.size === 0) return;
+    setPending(p => {
+      const next = { ...p };
+      for (const targetId of copyToEmpTargets) {
+        for (const date of week.dates) {
+          const value = currentValue(copyToEmpSource, date);
+          if (value !== UNSET) next[`${targetId}|${date}`] = value;
+        }
+      }
+      return next;
+    });
+    setCopyToEmpSource(null);
+    setCopyToEmpTargets(new Set());
   }
 
   const pendingCount = Object.keys(pending).length;
@@ -327,6 +348,18 @@ export default function WeeklyRosterGrid() {
                           >
                             ⧉ Copy all
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCopyToEmpSource(emp.id);
+                              setCopyToEmpTargets(new Set());
+                            }}
+                            disabled={!week.dates.some(date => currentValue(emp.id, date) !== UNSET)}
+                            title="Copy this employee's whole week to other employees"
+                            className="shrink-0 rounded-md border border-slate-200 px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-30"
+                          >
+                            👥 Copy to others
+                          </button>
                         </div>
                       </td>
                       {week.dates.map(date => {
@@ -413,6 +446,80 @@ export default function WeeklyRosterGrid() {
                 className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
               >
                 {copying ? 'Copying…' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {copyToEmpSource && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-lg">
+            <h3 className="mb-1 text-lg font-semibold text-ink">
+              Copy {employees.find(e => e.id === copyToEmpSource)?.name}&apos;s week to…
+            </h3>
+            <p className="mb-3 text-xs text-slate-500">
+              Only stages the change — you&apos;ll still Save or Cancel it below with everything else.
+            </p>
+            <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-2">
+              <span className="text-xs font-medium text-slate-500">
+                {copyToEmpTargets.size} selected
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setCopyToEmpTargets(prev => {
+                    const others = employees.filter(e => e.id !== copyToEmpSource).map(e => e.id);
+                    return prev.size === others.length ? new Set() : new Set(others);
+                  })
+                }
+                className="text-xs font-medium text-accent hover:underline"
+              >
+                {copyToEmpTargets.size === employees.length - 1 ? 'Clear all' : 'Select all'}
+              </button>
+            </div>
+            <div className="mb-4 max-h-64 space-y-1 overflow-y-auto">
+              {employees
+                .filter(e => e.id !== copyToEmpSource)
+                .map(e => (
+                  <label key={e.id} className="flex cursor-pointer items-center gap-2.5 rounded-lg px-1.5 py-1.5 hover:bg-slate-50">
+                    <input
+                      type="checkbox"
+                      checked={copyToEmpTargets.has(e.id)}
+                      onChange={() =>
+                        setCopyToEmpTargets(prev => {
+                          const next = new Set(prev);
+                          if (next.has(e.id)) next.delete(e.id);
+                          else next.add(e.id);
+                          return next;
+                        })
+                      }
+                      className="h-4 w-4 rounded border-slate-300 text-accent focus:ring-accent/30"
+                    />
+                    <Avatar name={e.name} photoUrl={e.profile_photo_url} className="h-7 w-7 text-[11px]" />
+                    <span className="truncate text-sm text-ink">{e.name}</span>
+                  </label>
+                ))}
+              {employees.length <= 1 && <p className="py-2 text-center text-sm text-slate-400">No other employees.</p>}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setCopyToEmpSource(null);
+                  setCopyToEmpTargets(new Set());
+                }}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={applyCopyToEmployees}
+                disabled={copyToEmpTargets.size === 0}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+              >
+                Apply to {copyToEmpTargets.size || ''} employee{copyToEmpTargets.size === 1 ? '' : 's'}
               </button>
             </div>
           </div>
