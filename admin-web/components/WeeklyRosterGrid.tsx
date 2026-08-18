@@ -134,18 +134,6 @@ export default function WeeklyRosterGrid() {
     setPending(p => ({ ...p, [`${employeeId}|${date}`]: value }));
   }
 
-  // Stages the week's first day's pick onto every other day in that row —
-  // still just pending until Save, same as a manual pick on each day.
-  function copyRowToAll(employeeId: string) {
-    const sourceValue = currentValue(employeeId, week.dates[0]);
-    if (sourceValue === UNSET) return;
-    setPending(p => {
-      const next = { ...p };
-      for (const date of week.dates.slice(1)) next[`${employeeId}|${date}`] = sourceValue;
-      return next;
-    });
-  }
-
   // Stages the source employee's whole Sun-Sat pattern onto every selected
   // target employee — still just pending until the Save changes bar below
   // is used, same as any other pick, so nothing writes until it's reviewed.
@@ -328,6 +316,7 @@ export default function WeeklyRosterGrid() {
                       </div>
                     </th>
                   ))}
+                  <th className="whitespace-nowrap px-2 py-2.5 font-medium"></th>
                 </tr>
               </thead>
               <tbody>
@@ -339,27 +328,6 @@ export default function WeeklyRosterGrid() {
                         <div className="flex items-center gap-2">
                           <Avatar name={emp.name} photoUrl={emp.profile_photo_url} className="h-14 w-14 text-base" />
                           <span className="truncate font-medium text-ink">{emp.name}</span>
-                          <button
-                            type="button"
-                            onClick={() => copyRowToAll(emp.id)}
-                            disabled={currentValue(emp.id, week.dates[0]) === UNSET}
-                            title="Copy the first day's pick to every day this week"
-                            className="ml-1 shrink-0 rounded-md border border-slate-200 px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-30"
-                          >
-                            ⧉ Copy all
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCopyToEmpSource(emp.id);
-                              setCopyToEmpTargets(new Set());
-                            }}
-                            disabled={!week.dates.some(date => currentValue(emp.id, date) !== UNSET)}
-                            title="Copy this employee's whole week to other employees"
-                            className="shrink-0 rounded-md border border-slate-200 px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-30"
-                          >
-                            👥 Copy to others
-                          </button>
                         </div>
                       </td>
                       {week.dates.map(date => {
@@ -387,6 +355,20 @@ export default function WeeklyRosterGrid() {
                           </td>
                         );
                       })}
+                      <td className={`whitespace-nowrap px-2 py-1.5 text-center ${rowBg}`}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCopyToEmpSource(emp.id);
+                            setCopyToEmpTargets(new Set());
+                          }}
+                          disabled={!week.dates.some(date => currentValue(emp.id, date) !== UNSET)}
+                          title="Copy this employee's whole week to other employees"
+                          className="shrink-0 whitespace-nowrap rounded-md border border-slate-200 px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-30"
+                        >
+                          👥 Copy to others
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
