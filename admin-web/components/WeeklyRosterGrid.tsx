@@ -80,6 +80,8 @@ export default function WeeklyRosterGrid({
   const [copyDone, setCopyDone] = useState(false);
   const [copyToEmpSource, setCopyToEmpSource] = useState<string | null>(null);
   const [copyToEmpTargets, setCopyToEmpTargets] = useState<Set<string>>(new Set());
+  const [applyingCopyToEmp, setApplyingCopyToEmp] = useState(false);
+  const [copyToEmpError, setCopyToEmpError] = useState<string | null>(null);
 
   const week = useMemo(() => weekRange(anchor), [anchor]);
   const templateShifts = useMemo(() => shifts.filter(s => s.employee_id === null), [shifts]);
@@ -144,23 +146,41 @@ export default function WeeklyRosterGrid({
     setPending(p => ({ ...p, [`${employeeId}|${date}`]: value }));
   }
 
-  // Stages the source employee's whole Sun-Sat pattern onto every selected
-  // target employee — still just pending until the Save changes bar below
-  // is used, same as any other pick, so nothing writes until it's reviewed.
-  function applyCopyToEmployees() {
+  // Writes the source employee's whole Sun-Sat pattern onto every selected
+  // target employee straight to Supabase — deliberately NOT staged into
+  // `pending`: staging it made the "Apply" click feel like it did nothing
+  // until a separate, easy-to-miss "Save changes" click ("I can copy but
+  // can't paste"). The modal's own "Apply to N employee(s)" button is
+  // already the confirm step, so no extra one is needed here. Only a
+  // source day that actually has a pick (not —) writes anything, leaving
+  // whatever's already on that target day alone — same fill-only semantics
+  // as before, just applied immediately instead of staged.
+  async function applyCopyToEmployees() {
     if (!copyToEmpSource || copyToEmpTargets.size === 0) return;
-    setPending(p => {
-      const next = { ...p };
-      for (const targetId of copyToEmpTargets) {
-        for (const date of week.dates) {
-          const value = currentValue(copyToEmpSource, date);
-          if (value !== UNSET) next[`${targetId}|${date}`] = value;
-        }
+    setApplyingCopyToEmp(true);
+    setCopyToEmpError(null);
+    const upserts: { employee_id: string; work_date: string; shift_id: string | null }[] = [];
+    for (const targetId of copyToEmpTargets) {
+      for (const date of week.dates) {
+        const value = currentValue(copyToEmpSource, date);
+        if (value !== UNSET) upserts.push({ employee_id: targetId, work_date: date, shift_id: value === WEEK_OFF_VALUE ? null : value });
       }
-      return next;
-    });
+    }
+    if (upserts.length === 0) {
+      setApplyingCopyToEmp(false);
+      setCopyToEmpSource(null);
+      setCopyToEmpTargets(new Set());
+      return;
+    }
+    const { error } = await supabase.from('employee_daily_shifts').upsert(upserts, { onConflict: 'employee_id,work_date' });
+    setApplyingCopyToEmp(false);
+    if (error) {
+      setCopyToEmpError(error.message);
+      return;
+    }
     setCopyToEmpSource(null);
     setCopyToEmpTargets(new Set());
+    reload();
   }
 
   const pendingCount = Object.keys(pending).length;
@@ -392,6 +412,7 @@ export default function WeeklyRosterGrid({
                           onClick={() => {
                             setCopyToEmpSource(emp.id);
                             setCopyToEmpTargets(new Set());
+                            setCopyToEmpError(null);
                           }}
                           disabled={!week.dates.some(date => currentValue(emp.id, date) !== UNSET)}
                           title="Copy this employee's whole week to other employees"
@@ -452,8 +473,9 @@ export default function WeeklyRosterGrid({
               Copy {employees.find(e => e.id === copyToEmpSource)?.name}&apos;s week to…
             </h3>
             <p className="mb-3 text-xs text-slate-500">
-              Only stages the change — you&apos;ll still Save or Cancel it below with everything else.
+              Applies and saves immediately — a day left blank (—) leaves the matching day on each target employee untouched.
             </p>
+            {copyToEmpError && <p className="mb-3 text-xs text-critical">Could not copy: {copyToEmpError}</p>}
             <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-2">
               <span className="text-xs font-medium text-slate-500">
                 {copyToEmpTargets.size} selected
@@ -502,17 +524,18 @@ export default function WeeklyRosterGrid({
                   setCopyToEmpSource(null);
                   setCopyToEmpTargets(new Set());
                 }}
-                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                disabled={applyingCopyToEmp}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-60"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={applyCopyToEmployees}
-                disabled={copyToEmpTargets.size === 0}
+                disabled={copyToEmpTargets.size === 0 || applyingCopyToEmp}
                 className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
               >
-                Apply to {copyToEmpTargets.size || ''} employee{copyToEmpTargets.size === 1 ? '' : 's'}
+                {applyingCopyToEmp ? 'Copying…' : `Apply to ${copyToEmpTargets.size || ''} employee${copyToEmpTargets.size === 1 ? '' : 's'}`}
               </button>
             </div>
           </div>

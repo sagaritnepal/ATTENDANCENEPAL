@@ -52,6 +52,7 @@ export default function MonthlyRosterGrid({
   const [copying, setCopying] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [copyDone, setCopyDone] = useState(false);
+  const [copyingRowId, setCopyingRowId] = useState<string | null>(null);
 
   const month = useMemo(() => buildMonth(system, anchor), [system, anchor]);
   const monthCells = useMemo(() => month.weeks.flat().filter(c => c.inMonth), [month]);
@@ -107,16 +108,36 @@ export default function MonthlyRosterGrid({
     setPending(p => ({ ...p, [`${employeeId}|${date}`]: value }));
   }
 
-  // Stages the month's first day's pick onto every other day in that row —
-  // still just pending until Save, same as a manual pick on each day.
-  function copyRowToAll(employeeId: string) {
+  // Writes the month's first day's pick onto every other day in that row
+  // straight to Supabase — deliberately NOT staged into `pending` (unlike a
+  // manual per-cell pick): staging it made the button feel like it did
+  // nothing until a separate, easy-to-miss "Save changes" click, which is
+  // exactly the "I can copy but can't paste" complaint this replaced.
+  // Overwrites every other day unconditionally (there's no "leave day 2
+  // alone" concept for a single source value), so it confirms first.
+  async function copyRowToAll(employeeId: string) {
     const sourceValue = currentValue(employeeId, dates[0]);
     if (sourceValue === UNSET) return;
-    setPending(p => {
-      const next = { ...p };
-      for (const date of dates.slice(1)) next[`${employeeId}|${date}`] = sourceValue;
-      return next;
-    });
+    const emp = employees.find(e => e.id === employeeId);
+    if (
+      !confirm(
+        `Copy ${emp?.name ?? 'this employee'}'s day-1 pick to every other day this month? This overwrites all ${
+          dates.length - 1
+        } remaining days in their row right away.`
+      )
+    ) {
+      return;
+    }
+    setCopyingRowId(employeeId);
+    const shiftId = sourceValue === WEEK_OFF_VALUE ? null : sourceValue;
+    const upserts = dates.slice(1).map(date => ({ employee_id: employeeId, work_date: date, shift_id: shiftId }));
+    const { error } = await supabase.from('employee_daily_shifts').upsert(upserts, { onConflict: 'employee_id,work_date' });
+    setCopyingRowId(null);
+    if (error) {
+      setSaveError(error.message);
+      return;
+    }
+    reload();
   }
 
   function openCopyModal() {
@@ -311,11 +332,11 @@ export default function MonthlyRosterGrid({
                           <button
                             type="button"
                             onClick={() => copyRowToAll(emp.id)}
-                            disabled={isInactive || currentValue(emp.id, dates[0]) === UNSET}
-                            title="Copy the first day's pick to every day this month"
+                            disabled={isInactive || currentValue(emp.id, dates[0]) === UNSET || copyingRowId === emp.id}
+                            title="Copy the first day's pick to every day this month — saves immediately"
                             className="ml-1 shrink-0 rounded-md border border-slate-200 px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-30"
                           >
-                            ⧉ Copy all
+                            {copyingRowId === emp.id ? 'Copying…' : '⧉ Copy all'}
                           </button>
                         </div>
                       </td>
