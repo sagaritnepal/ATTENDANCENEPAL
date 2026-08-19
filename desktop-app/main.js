@@ -20,13 +20,16 @@
 // this window is closed — this is the only process that ever talks to a LAN
 // device (see zkteco-bridge/README.md), so it has to keep running
 // unattended the way ZKTeco's own bridging software does, not just while a
-// dashboard window happens to be open. On a machine actually running a
-// bridge, closing the window only hides it — Quit from the tray menu is
-// what actually exits (and stops that background sync). On a machine with
-// no bridge configured (most of them — just people viewing the dashboard),
-// closing the window quits the whole app normally instead, since there's
-// nothing worth keeping alive in the background — see the isQuitting flag
-// below.
+// dashboard window happens to be open.
+//
+// Closing the window (the X button) always just hides it to the tray now,
+// for every machine — Quit from the tray menu is what actually exits (see
+// the isQuitting flag below). This isn't only about the device bridge: fully
+// killing the process on every close also killed Supabase's background
+// token-refresh loop, so on a machine with no bridge (most of them), closing
+// the window and reopening it later than the access token's lifetime forced
+// a real re-login — the refresh only gets a chance to run while the process
+// is alive. Keeping the process resident in the tray avoids that entirely.
 //
 // Unlike the dashboard (which is never bundled at all, just loaded live),
 // the bridge logic itself is fetched from admin-web/public/lan-bridge.js at
@@ -236,16 +239,10 @@ function createWindow() {
   win.on('resize', scheduleSave);
   win.on('move', scheduleSave);
 
-  // Closing the window (the X button) only hides it to the tray IF a device
-  // bridge is actually configured on this machine — that's the only reason
-  // to keep a background process alive after the window's gone, since it's
-  // the only thing pulling attendance off a LAN device (see the module
-  // comment above). On a machine that's just viewing the dashboard, with no
-  // bridge configured, there's nothing worth keeping alive for, so the close
-  // proceeds normally and the whole app quits like any ordinary program.
+  // Always hide instead of closing (see the module comment above for why) —
+  // Quit from the tray menu is the only thing that actually exits.
   win.on('close', event => {
     if (isQuitting) return;
-    if (!lanBridge?.getStatus().configured) return;
     event.preventDefault();
     win.hide();
   });
@@ -428,16 +425,10 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('window-all-closed', () => {
-  // Only stay running with no windows open if there's an actual device
-  // bridge configured to keep syncing in the background — otherwise this
-  // behaves like an ordinary app and quits fully once its window is closed,
-  // same as win.on('close') above already decided.
-  if (!lanBridge?.getStatus().configured) {
-    isQuitting = true;
-    app.quit();
-  }
-});
+// Not wired to quit on this anymore: win.on('close') above always hides
+// instead of letting the window actually close, so this only fires from
+// paths that destroy the window outright (there are none currently) —
+// Quit from the tray menu is the sole way the app exits.
 
 app.on('before-quit', () => {
   isQuitting = true;
