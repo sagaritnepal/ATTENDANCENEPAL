@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Avatar from '@/components/Avatar';
 import RosterModeSwitch from '@/components/RosterModeSwitch';
-import { buildMonth, stepAnchor, todayAnchor } from '@/lib/calendar';
+import { buildMonth, monthDateRange, stepAnchor, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { Employee, Shift } from '@/lib/types';
 import type { RosterMode } from '@/lib/weekOff';
@@ -47,6 +47,20 @@ export default function MonthlyRosterGrid({
   const [pending, setPending] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [copyModalOpen, setCopyModalOpen] = useState(false);
+  const [copyTargetAnchor, setCopyTargetAnchor] = useState<CalendarAnchor | null>(null);
+  const [copying, setCopying] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const [copyDone, setCopyDone] = useState(false);
+  const [copyingRowId, setCopyingRowId] = useState<string | null>(null);
+  // Clipboard-style copy/paste between employees: Copy marks a source
+  // employee, then Paste on any other employee's row writes that source's
+  // whole month onto them immediately — no modal, no separate Save step.
+  // Stays set across multiple pastes so one Copy can go out to several
+  // employees one click at a time.
+  const [copiedEmployeeId, setCopiedEmployeeId] = useState<string | null>(null);
+  const [pastingEmployeeId, setPastingEmployeeId] = useState<string | null>(null);
+  const [pasteError, setPasteError] = useState<string | null>(null);
 
   const month = useMemo(() => buildMonth(system, anchor), [system, anchor]);
   const monthCells = useMemo(() => month.weeks.flat().filter(c => c.inMonth), [month]);
@@ -54,6 +68,17 @@ export default function MonthlyRosterGrid({
   const templateShifts = useMemo(() => shifts.filter(s => s.employee_id === null), [shifts]);
   const shiftById = useMemo(() => new Map(templateShifts.map(s => [s.id, s])), [templateShifts]);
   const today = todayIso();
+
+  const copyTargetMonth = useMemo(() => (copyTargetAnchor ? buildMonth(system, copyTargetAnchor) : null), [system, copyTargetAnchor]);
+  const copyTargetIsSameMonth = useMemo(
+    () => (copyTargetAnchor ? monthDateRange(system, copyTargetAnchor).start === dates[0] : false),
+    [system, copyTargetAnchor, dates]
+  );
+  const copyCandidateCount = useMemo(
+    () => employees.filter(emp => dates.some(date => currentValue(emp.id, date) !== UNSET)).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [employees, dates, rosterRows, pending]
+  );
 
   function reload() {
     if (dates.length === 0) return;
@@ -91,16 +116,122 @@ export default function MonthlyRosterGrid({
     setPending(p => ({ ...p, [`${employeeId}|${date}`]: value }));
   }
 
-  // Stages the month's first day's pick onto every other day in that row —
-  // still just pending until Save, same as a manual pick on each day.
-  function copyRowToAll(employeeId: string) {
+  // Writes the month's first day's pick onto every other day in that row
+  // straight to Supabase — deliberately NOT staged into `pending` (unlike a
+  // manual per-cell pick): staging it made the button feel like it did
+  // nothing until a separate, easy-to-miss "Save changes" click, which is
+  // exactly the "I can copy but can't paste" complaint this replaced.
+  // Overwrites every other day unconditionally (there's no "leave day 2
+  // alone" concept for a single source value), so it confirms first.
+  async function copyRowToAll(employeeId: string) {
     const sourceValue = currentValue(employeeId, dates[0]);
     if (sourceValue === UNSET) return;
+    const emp = employees.find(e => e.id === employeeId);
+    if (
+      !confirm(
+        `Copy ${emp?.name ?? 'this employee'}'s day-1 pick to every other day this month? This overwrites all ${
+          dates.length - 1
+        } remaining days in their row right away.`
+      )
+    ) {
+      return;
+    }
+    setCopyingRowId(employeeId);
+    const shiftId = sourceValue === WEEK_OFF_VALUE ? null : sourceValue;
+    const upserts = dates.slice(1).map(date => ({ employee_id: employeeId, work_date: date, shift_id: shiftId }));
+    const { error } = await supabase.from('employee_daily_shifts').upsert(upserts, { onConflict: 'employee_id,work_date' });
+    setCopyingRowId(null);
+    if (error) {
+      setSaveError(error.message);
+      return;
+    }
+    reload();
+  }
+
+  // Writes the copied employee's whole month onto `targetId` straight to
+  // Supabase — but only after an explicit confirm, so nothing changes
+  // without the admin actually saying so. Only a source day that actually
+  // has a pick (not —) writes anything, leaving whatever's already on that
+  // target day alone. Also drops any of the target's own still-unsaved
+  // manual picks on the days just written, so the grid doesn't keep
+  // showing a stale pending value that no longer matches what Paste just
+  // saved underneath it.
+  async function pasteToEmployee(targetId: string) {
+    if (!copiedEmployeeId || copiedEmployeeId === targetId) return;
+    const sourceName = employees.find(e => e.id === copiedEmployeeId)?.name ?? 'the copied employee';
+    const targetName = employees.find(e => e.id === targetId)?.name ?? 'this employee';
+    if (!confirm(`Paste ${sourceName}'s month onto ${targetName}? This overwrites their matching days right away.`)) {
+      return;
+    }
+    setPastingEmployeeId(targetId);
+    setPasteError(null);
+    const upserts: { employee_id: string; work_date: string; shift_id: string | null }[] = [];
+    for (const date of dates) {
+      const value = currentValue(copiedEmployeeId, date);
+      if (value !== UNSET) upserts.push({ employee_id: targetId, work_date: date, shift_id: value === WEEK_OFF_VALUE ? null : value });
+    }
+    if (upserts.length === 0) {
+      setPastingEmployeeId(null);
+      return;
+    }
+    const { error } = await supabase.from('employee_daily_shifts').upsert(upserts, { onConflict: 'employee_id,work_date' });
+    setPastingEmployeeId(null);
+    if (error) {
+      setPasteError(error.message);
+      return;
+    }
     setPending(p => {
       const next = { ...p };
-      for (const date of dates.slice(1)) next[`${employeeId}|${date}`] = sourceValue;
+      for (const u of upserts) delete next[`${targetId}|${u.work_date}`];
       return next;
     });
+    reload();
+  }
+
+  function openCopyModal() {
+    setCopyError(null);
+    setCopyTargetAnchor(stepAnchor(system, anchor, 1));
+    setCopyModalOpen(true);
+  }
+
+  // Copies this whole month's picks into another month, matched by
+  // day-of-month position (this month's 1st -> target's 1st, and so on) —
+  // not by weekday, since two different months rarely share the same
+  // weekday-to-date alignment. If the months differ in length, whichever is
+  // shorter caps how many days actually copy. Only employees with a pick on
+  // a given source day write anything; an untouched (—) day leaves the
+  // matching target day alone rather than clearing it. Writes straight to
+  // Supabase (there's nothing to stage — every date it touches is outside
+  // this grid), same as WeeklyRosterGrid's "copy to rest of month".
+  async function performCopyToMonth() {
+    if (!copyTargetAnchor) return;
+    setCopying(true);
+    setCopyError(null);
+    const targetCells = buildMonth(system, copyTargetAnchor).weeks.flat().filter(c => c.inMonth);
+    const upserts: { employee_id: string; work_date: string; shift_id: string | null }[] = [];
+    for (const emp of employees) {
+      dates.forEach((date, i) => {
+        const targetCell = targetCells[i];
+        if (!targetCell) return;
+        const value = currentValue(emp.id, date);
+        if (value === UNSET) return;
+        upserts.push({ employee_id: emp.id, work_date: targetCell.adKey, shift_id: value === WEEK_OFF_VALUE ? null : value });
+      });
+    }
+    if (upserts.length === 0) {
+      setCopying(false);
+      setCopyModalOpen(false);
+      return;
+    }
+    const { error } = await supabase.from('employee_daily_shifts').upsert(upserts, { onConflict: 'employee_id,work_date' });
+    setCopying(false);
+    if (error) {
+      setCopyError(error.message);
+      return;
+    }
+    setCopyModalOpen(false);
+    setCopyDone(true);
+    setTimeout(() => setCopyDone(false), 3000);
   }
 
   const pendingCount = Object.keys(pending).length;
@@ -165,13 +296,31 @@ export default function MonthlyRosterGrid({
             Today
           </button>
         </div>
-        <RosterModeSwitch companyId={companyId} mode={rosterMode} onChange={onRosterModeChange} />
+        <div className="flex items-center gap-3">
+          {copyDone && <span className="text-xs font-semibold text-good-text">✓ Copied to {copyTargetMonth?.label}</span>}
+          <button
+            type="button"
+            onClick={openCopyModal}
+            disabled={isInactive || copyCandidateCount === 0 || pendingCount > 0}
+            title={
+              pendingCount > 0
+                ? 'Save this month’s changes first'
+                : copyCandidateCount === 0
+                  ? 'Nothing to copy — no picks this month'
+                  : undefined
+            }
+            className="rounded-md border border-accent/30 bg-white px-2.5 py-1.5 text-xs font-semibold text-accent shadow-sm hover:bg-accent/5 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            ⧉ Copy this month to…
+          </button>
+          <RosterModeSwitch companyId={companyId} mode={rosterMode} onChange={onRosterModeChange} />
+        </div>
       </div>
 
       {isInactive && (
         <div className="border-b border-warning/20 bg-warning-bg px-4 py-3 text-sm text-warning-text sm:px-6">
-          Monthly Roster is inactive — Weekly mode is driving shifts right now. Switch modes above to edit exact dates.
-          Nothing here is deleted; switching back restores it.
+          Monthly Roster is inactive — Recurring Weekly mode is driving shifts right now. Switch to Exact Dates above to edit
+          specific days. Nothing here is deleted; switching back restores it.
         </div>
       )}
 
@@ -193,6 +342,21 @@ export default function MonthlyRosterGrid({
             </button>
           </div>
         </div>
+      )}
+
+      {!isInactive && copiedEmployeeId && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-good/20 bg-good-bg px-4 py-2.5 text-sm sm:px-6">
+          <span className="font-medium text-good-text">
+            📋 Copied {employees.find(e => e.id === copiedEmployeeId)?.name ?? 'an employee'}&apos;s month — click{' '}
+            <strong>📋 Paste</strong> on any other employee below to apply it. Saves immediately, as many times as you like.
+          </span>
+          <button onClick={() => setCopiedEmployeeId(null)} className="shrink-0 text-xs font-medium text-slate-600 hover:underline">
+            ✕ Clear
+          </button>
+        </div>
+      )}
+      {pasteError && (
+        <div className="border-b border-critical/20 bg-critical-bg px-4 py-2.5 text-sm text-critical-text sm:px-6">Could not paste: {pasteError}</div>
       )}
 
       <div className="p-4 sm:p-6">
@@ -231,12 +395,42 @@ export default function MonthlyRosterGrid({
                           <button
                             type="button"
                             onClick={() => copyRowToAll(emp.id)}
-                            disabled={isInactive || currentValue(emp.id, dates[0]) === UNSET}
-                            title="Copy the first day's pick to every day this month"
+                            disabled={isInactive || currentValue(emp.id, dates[0]) === UNSET || copyingRowId === emp.id}
+                            title="Copy the first day's pick to every day this month — saves immediately"
                             className="ml-1 shrink-0 rounded-md border border-slate-200 px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-30"
                           >
-                            ⧉ Copy all
+                            {copyingRowId === emp.id ? 'Copying…' : '⧉ Copy all'}
                           </button>
+                          {copiedEmployeeId === emp.id ? (
+                            <button
+                              type="button"
+                              onClick={() => setCopiedEmployeeId(null)}
+                              title="This employee's month is copied — click to clear"
+                              className="shrink-0 rounded-md border border-good/30 bg-good-bg px-1.5 py-1 text-[10px] font-semibold text-good-text"
+                            >
+                              📋 Copied ✓
+                            </button>
+                          ) : copiedEmployeeId ? (
+                            <button
+                              type="button"
+                              onClick={() => pasteToEmployee(emp.id)}
+                              disabled={isInactive || pastingEmployeeId === emp.id}
+                              title={`Paste ${employees.find(e => e.id === copiedEmployeeId)?.name ?? "the copied employee"}'s month onto ${emp.name} — saves immediately`}
+                              className="shrink-0 rounded-md border border-accent/40 bg-accent/5 px-1.5 py-1 text-[10px] font-semibold text-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {pastingEmployeeId === emp.id ? 'Pasting…' : '📋 Paste'}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setCopiedEmployeeId(emp.id)}
+                              disabled={isInactive || !dates.some(date => currentValue(emp.id, date) !== UNSET)}
+                              title="Copy this employee's whole month — then click Paste on another employee"
+                              className="shrink-0 rounded-md border border-slate-200 px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-30"
+                            >
+                              📋 Copy
+                            </button>
+                          )}
                         </div>
                       </td>
                       {dates.map(date => {
@@ -281,6 +475,61 @@ export default function MonthlyRosterGrid({
 
         {saveError && <p className="mt-3 text-sm text-critical">Could not save: {saveError}</p>}
       </div>
+
+      {copyModalOpen && copyTargetAnchor && (
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
+            <h3 className="mb-2 text-lg font-semibold text-ink">Copy {month.label} to…</h3>
+            <div className="mb-4 flex items-center justify-center gap-3 rounded-lg border border-slate-200 bg-slate-50 py-2.5">
+              <button
+                type="button"
+                onClick={() => setCopyTargetAnchor(a => stepAnchor(system, a!, -1))}
+                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-slate-500 shadow-sm hover:bg-slate-50"
+              >
+                ←
+              </button>
+              <span className="min-w-[10rem] text-center text-sm font-semibold text-ink">{copyTargetMonth?.label}</span>
+              <button
+                type="button"
+                onClick={() => setCopyTargetAnchor(a => stepAnchor(system, a!, 1))}
+                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-slate-500 shadow-sm hover:bg-slate-50"
+              >
+                →
+              </button>
+            </div>
+            {copyTargetIsSameMonth ? (
+              <p className="mb-4 text-sm text-critical">Pick a different month — this is the month you&apos;re already viewing.</p>
+            ) : (
+              <p className="mb-4 text-sm text-slate-600">
+                {copyCandidateCount} employee{copyCandidateCount === 1 ? '' : 's'} with a pick this month will get that same
+                plan applied to {copyTargetMonth?.label}, matched by day-of-month position (the 1st here → the 1st there, and
+                so on). If the two months are different lengths, the extra days at the end are left alone. A day here left
+                blank (—) leaves any existing pick on the matching day untouched — this only fills in, it never clears. You
+                can still hand-edit any single day afterward.
+              </p>
+            )}
+            {copyError && <p className="mb-3 text-sm text-critical">Could not copy: {copyError}</p>}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCopyModalOpen(false)}
+                disabled={copying}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={performCopyToMonth}
+                disabled={copying || copyTargetIsSameMonth}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
+              >
+                {copying ? 'Copying…' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

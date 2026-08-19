@@ -31,6 +31,24 @@ let syncRequestTimer = null;
 let running = false;
 const failureCounts = new Map();
 const warnedUnmappedFingerprints = new Set();
+// A ZKTeco terminal generally only accepts one active TCP session at a
+// time — the periodic full poll (syncAllDevices, every SYNC_INTERVAL_MS)
+// and the on-demand sync-request poll (pollSyncRequests, e.g. the
+// dashboard's "Sync Now" button) are two independent timers with no
+// coordination between them, so without this a device could get hit by
+// both at once. Whichever connection loses that race fails, and its catch
+// block marks the device 'offline' even though it's perfectly reachable —
+// this is the most likely cause of a device flickering to "offline" while
+// actually online. This set makes the two loops take turns per device
+// instead of racing into it.
+const busyDeviceIds = new Set();
+// Backoff was computed on every failure but never actually used to slow
+// anything down — syncAllDevices() kept retrying a dead device every
+// SYNC_INTERVAL_MS regardless, hammering it and making it less likely to
+// ever settle. This now actually gates the periodic poll (not on-demand
+// "Sync Now" requests, which always represent explicit intent and should
+// still try right away).
+const nextRetryAt = new Map();
 
 const status = {
   configured: false,
@@ -135,22 +153,43 @@ async function upsertUsers(device, rawUsers) {
   return { total: rawUsers.length, added };
 }
 
+// Every write to `devices` status/last_sync went through unchecked before —
+// a failed write (a network blip, an RLS surprise) vanished with no log and
+// no way to tell the status column had gone stale for a reason other than
+// the device itself.
+async function markDeviceStatus(deviceId, fields) {
+  const { error } = await supabase.from('devices').update(fields).eq('id', deviceId);
+  if (error) console.error(`[lan-bridge] could not update device status:`, error.message);
+}
+
 async function syncDevice(device) {
+  if (busyDeviceIds.has(device.id)) {
+    console.log(`[lan-bridge] ${device.name}: skipping this poll, already being synced right now`);
+    return;
+  }
+  const retryAt = nextRetryAt.get(device.id);
+  if (retryAt && Date.now() < retryAt) return;
+
+  busyDeviceIds.add(device.id);
   try {
     const rawLogs = await pullDeviceLogs(device);
     const count = await upsertLogs(device, rawLogs);
     if (count > 0) console.log(`[lan-bridge] ${device.name}: synced ${count} new punch(es)`);
     failureCounts.set(device.id, 0);
-    await supabase.from('devices').update({ last_sync: new Date().toISOString(), status: 'online' }).eq('id', device.id);
+    nextRetryAt.delete(device.id);
+    await markDeviceStatus(device.id, { last_sync: new Date().toISOString(), status: 'online' });
     status.lastSyncAt = new Date().toISOString();
     status.lastError = null;
   } catch (err) {
     const failures = (failureCounts.get(device.id) || 0) + 1;
     failureCounts.set(device.id, failures);
     const backoff = Math.min(MAX_BACKOFF_MS, SYNC_INTERVAL_MS * 2 ** failures);
+    nextRetryAt.set(device.id, Date.now() + backoff);
     console.error(`[lan-bridge] ${device.name} sync failed (attempt ${failures}), next retry in ${Math.round(backoff / 1000)}s:`, err.message);
-    await supabase.from('devices').update({ status: 'offline' }).eq('id', device.id);
+    await markDeviceStatus(device.id, { status: 'offline' });
     status.lastError = `${device.name}: ${err.message}`;
+  } finally {
+    busyDeviceIds.delete(device.id);
   }
 }
 
@@ -174,6 +213,14 @@ async function fetchPendingSyncEvents() {
 
 async function processSyncEvent(event) {
   const device = event.device;
+  // Leave it pending (don't even mark it 'running' yet) if the periodic
+  // poll already has a connection open to this exact device right now —
+  // it'll be picked up on the very next SYNC_REQUEST_POLL_MS tick instead
+  // of racing a second TCP session into a device that can usually only
+  // hold one.
+  if (busyDeviceIds.has(device.id)) return;
+
+  busyDeviceIds.add(device.id);
   await supabase.from('device_sync_events').update({ status: 'running' }).eq('id', event.id);
   try {
     let summary;
@@ -191,14 +238,21 @@ async function processSyncEvent(event) {
       .from('device_sync_events')
       .update({ status: 'success', completed_at: new Date().toISOString(), summary })
       .eq('id', event.id);
-    await supabase.from('devices').update({ last_sync: new Date().toISOString(), status: 'online' }).eq('id', device.id);
+    failureCounts.set(device.id, 0);
+    nextRetryAt.delete(device.id);
+    await markDeviceStatus(device.id, { last_sync: new Date().toISOString(), status: 'online' });
   } catch (err) {
     console.error(`[lan-bridge] ${device.name} ${event.sync_type} sync failed:`, err.message);
     await supabase
       .from('device_sync_events')
       .update({ status: 'failed', completed_at: new Date().toISOString(), error: err.message })
       .eq('id', event.id);
-    await supabase.from('devices').update({ status: 'offline' }).eq('id', device.id);
+    const failures = (failureCounts.get(device.id) || 0) + 1;
+    failureCounts.set(device.id, failures);
+    nextRetryAt.set(device.id, Date.now() + Math.min(MAX_BACKOFF_MS, SYNC_INTERVAL_MS * 2 ** failures));
+    await markDeviceStatus(device.id, { status: 'offline' });
+  } finally {
+    busyDeviceIds.delete(device.id);
   }
 }
 

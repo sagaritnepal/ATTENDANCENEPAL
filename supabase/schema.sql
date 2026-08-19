@@ -44,7 +44,7 @@ create table if not exists devices (
   branch_id uuid not null references branches(id),
   ip_address text not null default '192.168.1.201',
   port integer not null default 4370,
-  status text not null default 'online' check (status in ('online', 'offline')),
+  status text not null default 'offline' check (status in ('online', 'offline')),
   last_sync timestamptz
 );
 create index if not exists idx_devices_branch_status on devices(branch_id, status);

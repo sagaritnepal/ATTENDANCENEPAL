@@ -5,6 +5,7 @@ import NepaliDate from 'nepali-date-converter';
 import { supabase } from '@/lib/supabase';
 import Avatar from '@/components/Avatar';
 import RosterModeSwitch from '@/components/RosterModeSwitch';
+import RosterCellPicker, { type RosterCellOption } from '@/components/RosterCellPicker';
 import { buildMonth, monthDateRange, stepWeek, weekRange, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { Employee, Shift } from '@/lib/types';
@@ -78,12 +79,25 @@ export default function WeeklyRosterGrid({
   const [copying, setCopying] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [copyDone, setCopyDone] = useState(false);
-  const [copyToEmpSource, setCopyToEmpSource] = useState<string | null>(null);
-  const [copyToEmpTargets, setCopyToEmpTargets] = useState<Set<string>>(new Set());
+  // Clipboard-style copy/paste between employees: Copy marks a source
+  // employee, then Paste on any other employee's row writes that source's
+  // whole Sun-Sat week onto them immediately — no modal, no separate Save
+  // step. Stays set across multiple pastes so one Copy can go out to
+  // several employees one click at a time.
+  const [copiedEmployeeId, setCopiedEmployeeId] = useState<string | null>(null);
+  const [pastingEmployeeId, setPastingEmployeeId] = useState<string | null>(null);
+  const [pasteError, setPasteError] = useState<string | null>(null);
 
   const week = useMemo(() => weekRange(anchor), [anchor]);
   const templateShifts = useMemo(() => shifts.filter(s => s.employee_id === null), [shifts]);
-  const shiftById = useMemo(() => new Map(templateShifts.map(s => [s.id, s])), [templateShifts]);
+  const cellOptions: RosterCellOption[] = useMemo(
+    () => [
+      { id: UNSET, label: '—' },
+      { id: WEEK_OFF_VALUE, label: 'Week Off' },
+      ...templateShifts.map(s => ({ id: s.id, label: s.name, sub: `${s.start_time.slice(0, 5)}–${s.end_time.slice(0, 5)}` })),
+    ],
+    [templateShifts]
+  );
   const today = todayIso();
 
   // "The month" this bulk-copy fills the rest of — anchored to the middle
@@ -144,23 +158,44 @@ export default function WeeklyRosterGrid({
     setPending(p => ({ ...p, [`${employeeId}|${date}`]: value }));
   }
 
-  // Stages the source employee's whole Sun-Sat pattern onto every selected
-  // target employee — still just pending until the Save changes bar below
-  // is used, same as any other pick, so nothing writes until it's reviewed.
-  function applyCopyToEmployees() {
-    if (!copyToEmpSource || copyToEmpTargets.size === 0) return;
+  // Writes the copied employee's whole Sun-Sat week onto `targetId` straight
+  // to Supabase — but only after an explicit confirm, so nothing changes
+  // without the admin actually saying so. Only a source day that actually
+  // has a pick (not —) writes anything, leaving whatever's already on that
+  // target day alone. Also drops any of the target's own still-unsaved
+  // manual picks on the days just written, so the grid doesn't keep
+  // showing a stale pending value that no longer matches what Paste just
+  // saved underneath it.
+  async function pasteToEmployee(targetId: string) {
+    if (!copiedEmployeeId || copiedEmployeeId === targetId) return;
+    const sourceName = employees.find(e => e.id === copiedEmployeeId)?.name ?? 'the copied employee';
+    const targetName = employees.find(e => e.id === targetId)?.name ?? 'this employee';
+    if (!confirm(`Paste ${sourceName}'s week onto ${targetName}? This overwrites their matching days this week right away.`)) {
+      return;
+    }
+    setPastingEmployeeId(targetId);
+    setPasteError(null);
+    const upserts: { employee_id: string; work_date: string; shift_id: string | null }[] = [];
+    for (const date of week.dates) {
+      const value = currentValue(copiedEmployeeId, date);
+      if (value !== UNSET) upserts.push({ employee_id: targetId, work_date: date, shift_id: value === WEEK_OFF_VALUE ? null : value });
+    }
+    if (upserts.length === 0) {
+      setPastingEmployeeId(null);
+      return;
+    }
+    const { error } = await supabase.from('employee_daily_shifts').upsert(upserts, { onConflict: 'employee_id,work_date' });
+    setPastingEmployeeId(null);
+    if (error) {
+      setPasteError(error.message);
+      return;
+    }
     setPending(p => {
       const next = { ...p };
-      for (const targetId of copyToEmpTargets) {
-        for (const date of week.dates) {
-          const value = currentValue(copyToEmpSource, date);
-          if (value !== UNSET) next[`${targetId}|${date}`] = value;
-        }
-      }
+      for (const u of upserts) delete next[`${targetId}|${u.work_date}`];
       return next;
     });
-    setCopyToEmpSource(null);
-    setCopyToEmpTargets(new Set());
+    reload();
   }
 
   const pendingCount = Object.keys(pending).length;
@@ -315,6 +350,21 @@ export default function WeeklyRosterGrid({
         </div>
       )}
 
+      {copiedEmployeeId && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-good/20 bg-good-bg px-4 py-2.5 text-sm sm:px-6">
+          <span className="font-medium text-good-text">
+            📋 Copied {employees.find(e => e.id === copiedEmployeeId)?.name ?? 'an employee'}&apos;s week — click{' '}
+            <strong>📋 Paste</strong> on any other employee below to apply it. Saves immediately, as many times as you like.
+          </span>
+          <button onClick={() => setCopiedEmployeeId(null)} className="shrink-0 text-xs font-medium text-slate-600 hover:underline">
+            ✕ Clear
+          </button>
+        </div>
+      )}
+      {pasteError && (
+        <div className="border-b border-critical/20 bg-critical-bg px-4 py-2.5 text-sm text-critical-text sm:px-6">Could not paste: {pasteError}</div>
+      )}
+
       <div className="p-4 sm:p-6">
         {loading ? (
           <p className="text-center text-sm text-slate-400">Loading…</p>
@@ -366,39 +416,46 @@ export default function WeeklyRosterGrid({
                         const dirty = `${emp.id}|${date}` in pending;
                         return (
                           <td key={date} className={`px-1 py-1.5 text-center ${date === today ? 'bg-accent/5' : rowBg}`}>
-                            <select
+                            <RosterCellPicker
                               value={value}
-                              onChange={e => setCell(emp.id, date, e.target.value)}
-                              title={shiftById.get(value)?.name}
-                              className={`w-full rounded-md border px-1 py-1 text-xs shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-accent/30 ${cellTone(
-                                value,
-                                dirty
-                              )}`}
-                            >
-                              <option value={UNSET}>—</option>
-                              <option value={WEEK_OFF_VALUE}>Week Off</option>
-                              {templateShifts.map(s => (
-                                <option key={s.id} value={s.id}>
-                                  {s.name} ({s.start_time.slice(0, 5)}–{s.end_time.slice(0, 5)})
-                                </option>
-                              ))}
-                            </select>
+                              onChange={v => setCell(emp.id, date, v)}
+                              options={cellOptions}
+                              buttonClassName={`rounded-md border shadow-sm ${cellTone(value, dirty)}`}
+                            />
                           </td>
                         );
                       })}
                       <td className={`whitespace-nowrap px-2 py-1.5 text-center ${rowBg}`}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCopyToEmpSource(emp.id);
-                            setCopyToEmpTargets(new Set());
-                          }}
-                          disabled={!week.dates.some(date => currentValue(emp.id, date) !== UNSET)}
-                          title="Copy this employee's whole week to other employees"
-                          className="shrink-0 whitespace-nowrap rounded-md border border-slate-200 px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-30"
-                        >
-                          👥 Copy to others
-                        </button>
+                        {copiedEmployeeId === emp.id ? (
+                          <button
+                            type="button"
+                            onClick={() => setCopiedEmployeeId(null)}
+                            title="This employee's week is copied — click to clear"
+                            className="shrink-0 whitespace-nowrap rounded-md border border-good/30 bg-good-bg px-1.5 py-1 text-[10px] font-semibold text-good-text"
+                          >
+                            📋 Copied ✓
+                          </button>
+                        ) : copiedEmployeeId ? (
+                          <button
+                            type="button"
+                            onClick={() => pasteToEmployee(emp.id)}
+                            disabled={pastingEmployeeId === emp.id}
+                            title={`Paste ${employees.find(e => e.id === copiedEmployeeId)?.name ?? "the copied employee"}'s week onto ${emp.name} — saves immediately`}
+                            className="shrink-0 whitespace-nowrap rounded-md border border-accent/40 bg-accent/5 px-1.5 py-1 text-[10px] font-semibold text-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {pastingEmployeeId === emp.id ? 'Pasting…' : '📋 Paste'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setCopiedEmployeeId(emp.id)}
+                            disabled={!week.dates.some(date => currentValue(emp.id, date) !== UNSET)}
+                            title="Copy this employee's whole week — then click Paste on another employee"
+                            className="shrink-0 whitespace-nowrap rounded-md border border-slate-200 px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:border-accent/40 hover:text-accent disabled:cursor-not-allowed disabled:opacity-30"
+                          >
+                            📋 Copy
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -445,79 +502,6 @@ export default function WeeklyRosterGrid({
         </div>
       )}
 
-      {copyToEmpSource && (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-lg">
-            <h3 className="mb-1 text-lg font-semibold text-ink">
-              Copy {employees.find(e => e.id === copyToEmpSource)?.name}&apos;s week to…
-            </h3>
-            <p className="mb-3 text-xs text-slate-500">
-              Only stages the change — you&apos;ll still Save or Cancel it below with everything else.
-            </p>
-            <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-2">
-              <span className="text-xs font-medium text-slate-500">
-                {copyToEmpTargets.size} selected
-              </span>
-              <button
-                type="button"
-                onClick={() =>
-                  setCopyToEmpTargets(prev => {
-                    const others = employees.filter(e => e.id !== copyToEmpSource).map(e => e.id);
-                    return prev.size === others.length ? new Set() : new Set(others);
-                  })
-                }
-                className="text-xs font-medium text-accent hover:underline"
-              >
-                {copyToEmpTargets.size === employees.length - 1 ? 'Clear all' : 'Select all'}
-              </button>
-            </div>
-            <div className="mb-4 max-h-64 space-y-1 overflow-y-auto">
-              {employees
-                .filter(e => e.id !== copyToEmpSource)
-                .map(e => (
-                  <label key={e.id} className="flex cursor-pointer items-center gap-2.5 rounded-lg px-1.5 py-1.5 hover:bg-slate-50">
-                    <input
-                      type="checkbox"
-                      checked={copyToEmpTargets.has(e.id)}
-                      onChange={() =>
-                        setCopyToEmpTargets(prev => {
-                          const next = new Set(prev);
-                          if (next.has(e.id)) next.delete(e.id);
-                          else next.add(e.id);
-                          return next;
-                        })
-                      }
-                      className="h-4 w-4 rounded border-slate-300 text-accent focus:ring-accent/30"
-                    />
-                    <Avatar name={e.name} photoUrl={e.profile_photo_url} className="h-7 w-7 text-[11px]" />
-                    <span className="truncate text-sm text-ink">{e.name}</span>
-                  </label>
-                ))}
-              {employees.length <= 1 && <p className="py-2 text-center text-sm text-slate-400">No other employees.</p>}
-            </div>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setCopyToEmpSource(null);
-                  setCopyToEmpTargets(new Set());
-                }}
-                className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={applyCopyToEmployees}
-                disabled={copyToEmpTargets.size === 0}
-                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
-              >
-                Apply to {copyToEmpTargets.size || ''} employee{copyToEmpTargets.size === 1 ? '' : 's'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

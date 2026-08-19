@@ -14,6 +14,15 @@ import { fetchMyCompanyWeekOffConfig, type RosterMode } from '@/lib/weekOff';
 
 const EMPTY_FORM = { name: '', type: 'fixed' as Shift['type'], start_time: '09:00', end_time: '18:00', grace_minutes: 10, department: '' };
 
+// Icon + plain-language line under each tab so it's clear what to click
+// without already knowing this app's terms — "Weekly" vs "Monthly" alone
+// doesn't say what either screen actually lets you do.
+const TABS: { key: 'templates' | 'roster' | 'monthly'; icon: string; label: string; description: string }[] = [
+  { key: 'templates', icon: '🕐', label: 'Shift Templates', description: 'Set up the shift types you use (e.g. Day Duty, Night Duty) with their start and end times.' },
+  { key: 'roster', icon: '📅', label: 'Weekly Roster', description: 'Plan one week at a time — pick which shift (or Week Off) each employee works, day by day.' },
+  { key: 'monthly', icon: '🗓️', label: 'Monthly Roster', description: 'Plan a whole month at once — the same day-by-day picks as Weekly Roster, without paging week to week.' },
+];
+
 /** Plain 24-hour HH:MM input — native <input type="time"> renders AM/PM on
  * some Windows/Chrome locale combos regardless of the `lang` attribute. */
 function Time24Input({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -174,32 +183,20 @@ function ShiftsView() {
 
   return (
     <AppShell title="Shift Roster Management">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex gap-1 rounded-lg border border-slate-200 bg-white p-1 text-sm font-semibold shadow-sm">
-          <button
-            onClick={() => setTab('templates')}
-            className={`rounded-md px-3 py-1.5 transition-colors ${
-              tab === 'templates' ? 'bg-accent text-white' : 'text-slate-500 hover:bg-slate-50'
-            }`}
-          >
-            Shift Templates
-          </button>
-          <button
-            onClick={() => setTab('roster')}
-            className={`rounded-md px-3 py-1.5 transition-colors ${
-              tab === 'roster' ? 'bg-accent text-white' : 'text-slate-500 hover:bg-slate-50'
-            }`}
-          >
-            Weekly Roster
-          </button>
-          <button
-            onClick={() => setTab('monthly')}
-            className={`rounded-md px-3 py-1.5 transition-colors ${
-              tab === 'monthly' ? 'bg-accent text-white' : 'text-slate-500 hover:bg-slate-50'
-            }`}
-          >
-            Monthly Roster
-          </button>
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-2 transition-colors ${
+                tab === t.key ? 'bg-accent text-white' : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              <span aria-hidden>{t.icon}</span>
+              {t.label}
+            </button>
+          ))}
         </div>
         {tab === 'templates' && (
           <button
@@ -214,6 +211,7 @@ function ShiftsView() {
           </button>
         )}
       </div>
+      <p className="mb-5 text-sm text-slate-500">{TABS.find(t => t.key === tab)?.description}</p>
 
       {tab === 'roster' ? (
         rosterMode === 'weekly' ? (

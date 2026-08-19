@@ -1,6 +1,6 @@
 {
   "name": "attendance-nepal-desktop",
-  "version": "1.0.6",
+  "version": "1.0.8",
   "description": "Attendance Nepal admin dashboard as a Windows desktop app",
   "main": "main.js",
   "private": true,
@@ -23,7 +23,7 @@
     "productName": "Attendance Nepal",
     "publish": {
       "provider": "generic",
-      "url": "https://203-134-250-70.sslip.io/desktop-updates/"
+      "url": "https://attendance-nepal.com/desktop-updates/"
     },
     "files": [
       "main.js",

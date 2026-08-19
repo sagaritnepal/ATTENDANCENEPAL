@@ -16,9 +16,20 @@
 // Also embeds the LAN device bridge — if a device bridge credential is
 // configured (Tray icon → Configure Device Bridge…), this PC also pulls
 // attendance from any ZKTeco terminal on its own local network and syncs it
-// to the cloud, for as long as the app is open. Closing the window always
-// fully quits the app (no hiding to the tray to keep syncing in the
-// background) — see the isQuitting flag below.
+// to the cloud, running in the background via the system tray even when
+// this window is closed — this is the only process that ever talks to a LAN
+// device (see zkteco-bridge/README.md), so it has to keep running
+// unattended the way ZKTeco's own bridging software does, not just while a
+// dashboard window happens to be open.
+//
+// Closing the window (the X button) always just hides it to the tray now,
+// for every machine — Quit from the tray menu is what actually exits (see
+// the isQuitting flag below). This isn't only about the device bridge: fully
+// killing the process on every close also killed Supabase's background
+// token-refresh loop, so on a machine with no bridge (most of them), closing
+// the window and reopening it later than the access token's lifetime forced
+// a real re-login — the refresh only gets a chance to run while the process
+// is alive. Keeping the process resident in the tray avoids that entirely.
 //
 // Unlike the dashboard (which is never bundled at all, just loaded live),
 // the bridge logic itself is fetched from admin-web/public/lan-bridge.js at
@@ -61,9 +72,7 @@ if (!gotSingleInstanceLock) {
   process.exit(0);
 }
 
-// Update this the day a real domain replaces the sslip.io placeholder — the
-// whole app is this one line, nothing else needs to change.
-const APP_URL = 'https://203-134-250-70.sslip.io';
+const APP_URL = 'https://attendance-nepal.com';
 const LAN_BRIDGE_URL = `${APP_URL}/lan-bridge.js`;
 const LAN_BRIDGE_FETCH_TIMEOUT_MS = 5000;
 
@@ -230,14 +239,14 @@ function createWindow() {
   win.on('resize', scheduleSave);
   win.on('move', scheduleSave);
 
-  // Closing the window (the X button) always fully quits the app now —
-  // deliberately NOT hiding to the tray to keep a background process alive.
-  // That was tried (conditional on whether a device bridge was configured)
-  // but even that traded away something the user cares more about: not
-  // having this sit in memory eating RAM/battery after they think they've
-  // closed it. If background device-bridge sync while the window is closed
-  // is ever wanted again, it needs to be an explicit opt-in the user
-  // chooses, not a default behavior imposed on everyone.
+  // Always hide instead of closing (see the module comment above for why) —
+  // Quit from the tray menu is the only thing that actually exits.
+  win.on('close', event => {
+    if (isQuitting) return;
+    event.preventDefault();
+    win.hide();
+  });
+
   mainWindow = win;
   return win;
 }
@@ -416,13 +425,10 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('window-all-closed', () => {
-  // Always quit once the window is closed — see the comment in
-  // createWindow() for why this app doesn't try to keep running in the
-  // background/tray after that.
-  isQuitting = true;
-  app.quit();
-});
+// Not wired to quit on this anymore: win.on('close') above always hides
+// instead of letting the window actually close, so this only fires from
+// paths that destroy the window outright (there are none currently) —
+// Quit from the tray menu is the sole way the app exits.
 
 app.on('before-quit', () => {
   isQuitting = true;
