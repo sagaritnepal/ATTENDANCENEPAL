@@ -192,14 +192,17 @@ function readBody(req) {
 // time reporting would NOT get this adjustment — keyed by serial number,
 // not applied globally.
 //
-// GED7261303176 (Crossfire Attendance Machine / Soulful Motor) added after
-// its first real punch landed with punch_time ~2h15m AFTER its own
-// created_at (receipt time) — impossible for a real punch, same signature
-// and same magnitude as A6F5211860719 above, so almost certainly the same
-// firmware default on another unit from the same batch/vendor.
+// GED7261303176 (Crossfire Attendance Machine / Soulful Motor) and
+// MFP3261000484 (Ashadeep Nepal / Ashadeep Foundation) added the same way —
+// each one's first live punches landed with punch_time ~2h15m AFTER their
+// own created_at (receipt time), impossible for a real punch, same exact
+// signature and magnitude as A6F5211860719 above. Three-for-three now, so
+// this is a firmware default on this whole hardware batch/vendor, not a
+// one-off unit — expect to keep adding new serials here as more come online.
 const CLOCK_OFFSET_MINUTES_BY_SERIAL = {
   A6F5211860719: -135,
   GED7261303176: -135,
+  MFP3261000484: -135,
 };
 
 // How far a raw timestamp's apparent skew is allowed to drift from the
