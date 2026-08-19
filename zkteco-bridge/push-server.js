@@ -182,18 +182,24 @@ function readBody(req) {
   });
 }
 
-// This specific K40 unit (serial A6F5211860719) runs its internal clock
-// exactly 2h15m ahead of real time — confirmed by comparing server receipt
-// time against its reported punch time across multiple punches, consistent
-// to the second (matches China Standard Time, UTC+8, vs Nepal, UTC+5:45 —
-// very likely a factory-hardcoded home-region default in the firmware that
-// only manifests once the device gets real internet access). No exposed
-// setting on the device corrects this, so we compensate for this one
-// device's known-bad clock here instead of at the device itself. A
-// different device with correct time reporting would NOT get this
-// adjustment — keyed by serial number, not applied globally.
+// These K40 units run their internal clock exactly 2h15m ahead of real time
+// — confirmed by comparing server receipt time against reported punch time
+// (matches China Standard Time, UTC+8, vs Nepal, UTC+5:45 — very likely a
+// factory-hardcoded home-region default in the firmware that only manifests
+// once a device gets real internet access). No exposed setting on the
+// device corrects this, so we compensate for each known-bad unit's clock
+// here instead of at the device itself. A different device with correct
+// time reporting would NOT get this adjustment — keyed by serial number,
+// not applied globally.
+//
+// GED7261303176 (Crossfire Attendance Machine / Soulful Motor) added after
+// its first real punch landed with punch_time ~2h15m AFTER its own
+// created_at (receipt time) — impossible for a real punch, same signature
+// and same magnitude as A6F5211860719 above, so almost certainly the same
+// firmware default on another unit from the same batch/vendor.
 const CLOCK_OFFSET_MINUTES_BY_SERIAL = {
   A6F5211860719: -135,
+  GED7261303176: -135,
 };
 
 // How far a raw timestamp's apparent skew is allowed to drift from the
