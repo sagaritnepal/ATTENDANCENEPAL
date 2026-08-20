@@ -16,13 +16,11 @@
 // device_id/company_id pairing comes from that same devices-table lookup.
 //
 // The protocol itself is plain text, not JSON: tab-separated fields, records
-// separated by \r\n. Only ATTLOG (attendance punches) is parsed into
-// attendance_logs here, since that's the one table whose field layout is
-// actually documented/known. BIODATA/OPERLOG (user enrollment) is still
-// logged raw instead of guessed at — inspect a real payload from a live
-// device before writing a parser for it. Until then, newly-enrolled
-// fingerprints still need "Sync Users" run via index.js (the old per-company
-// pull bridge) or manual entry in the admin UI to get an employees row.
+// separated by \r\n. ATTLOG (attendance punches) and OPERLOG (user
+// enrollment) are both parsed — see handleAttlog()/handleOperlog() below.
+// BIODATA is still logged raw instead of guessed at (a different table name
+// some device/firmware combos use instead of/alongside OPERLOG) — inspect a
+// real payload from a live device before writing a parser for it.
 require('dotenv').config();
 const http = require('http');
 const WebSocket = require('ws');
@@ -292,6 +290,32 @@ async function handleAttlog(companyId, deviceId, serialNumber, body) {
   return rows.length;
 }
 
+// OPERLOG carries mixed line types (tab-separated, one event per line):
+// `OPLOG <opcode> ...` bookkeeping entries (add/delete user, etc — not
+// parsed, no PIN-to-name mapping in them anyway) and, for each enrolled
+// finger, a self-labeled `FP PIN=<id> FID=<finger-index> Size=<n> Valid=<n>
+// TMP=<base64 template>` line. That PIN is the exact same numeric ID ATTLOG
+// calls deviceUserId elsewhere in this file — captured from a real device
+// payload (see the comment above CLOCK_OFFSET_MINUTES_BY_SERIAL's siblings
+// for the same "inspect a real payload first" policy). Reusing
+// getOrCreateEmployeeId() here means a person enrolled directly on the
+// device gets an employees row the moment they're enrolled, instead of
+// only on their first punch — previously the only trigger, which is why
+// enrolled-but-never-punched users silently never showed up in the app.
+async function handleOperlog(companyId, deviceId, body) {
+  const lines = body.split(/\r\n|\n/).map(l => l.trim()).filter(Boolean);
+  let created = 0;
+  for (const line of lines) {
+    const match = line.match(/^FP\s+PIN=(\d+)/);
+    if (!match) continue;
+    const fingerprintId = match[1];
+    if (employeesByCompany.get(companyId)?.has(fingerprintId)) continue;
+    const employeeId = await getOrCreateEmployeeId(companyId, deviceId, fingerprintId);
+    if (employeeId) created++;
+  }
+  return created;
+}
+
 function logRawPayload(table, sn, body) {
   console.log(`[push] device ${sn} sent table=${table} (${body.length} bytes) — logging raw, no parser yet:`);
   console.log(body.slice(0, 2000));
@@ -425,6 +449,9 @@ const server = http.createServer(async (req, res) => {
       if (table === 'ATTLOG') {
         const count = await handleAttlog(device.companyId, device.deviceId, sn, body);
         console.log(`[push] ${device.name}: ${count} punch(es) upserted`);
+      } else if (table === 'OPERLOG') {
+        const created = await handleOperlog(device.companyId, device.deviceId, body);
+        if (created > 0) console.log(`[push] ${device.name}: ${created} new employee(s) auto-created from device enrollment`);
       } else {
         logRawPayload(table, sn, body);
       }

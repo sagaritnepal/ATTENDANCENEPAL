@@ -25,14 +25,14 @@ up without restarting this process.
   into `attendance_logs`, same idempotent `(employee_id, punch_time)` upsert
   as `index.js` uses, so it's safe to run both this and a company's old
   `index.js` bridge at the same time during migration.
-- **New employee enrollment (`OPERLOG`/`BIODATA`)**: **not yet parsed** —
-  logged raw to the console only. This mirrors `index.js`'s own long-standing
-  policy of not guessing a field layout without having inspected a real
-  payload from a live device first. Practically: a newly fingerprint-enrolled
-  person still won't get an `employees` row automatically from this server
-  alone. Until someone captures a real `OPERLOG` payload and a parser gets
-  written for it, new enrollments still need either `index.js`'s "Sync
-  Users" pull flow run at least once, or manual creation in the admin UI.
+- **New employee enrollment (`OPERLOG`)**: handled — each `FP PIN=<id> ...`
+  line (one per enrolled finger) auto-creates an `employees` row the moment
+  someone enrolls on the device, same as a punch would, so there's no need
+  to wait for their first punch anymore.
+- **`BIODATA`**: still not parsed — a different table name some
+  device/firmware combos use instead of/alongside `OPERLOG`. Logged raw to
+  the console only, same "inspect a real payload before writing a parser"
+  policy `index.js` and `OPERLOG` both followed until a real sample existed.
 - **Online/offline status**: unlike `index.js` (which knows a device is
   offline because a poll attempt failed), this server has no way to
   actively check — a device just stops pushing. So a device is marked
