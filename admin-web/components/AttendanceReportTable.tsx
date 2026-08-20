@@ -220,13 +220,21 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             pending: true,
           });
         } else {
-          // A company Week-off or approved Leave day is a known, paid day
-          // off — takes priority over the Upcoming/Absent distinction below,
-          // whether it's already passed or not. A requested (and approved)
-          // Leave keeps its own label even on a day that's also a company
-          // Week-off — it's still paid the same either way.
+          // A company Week-off, a per-employee roster Week Off, or an
+          // approved Leave day is a known, paid day off — takes priority
+          // over the Upcoming/Absent distinction below, whether it's
+          // already passed or not. A requested (and approved) Leave keeps
+          // its own label even on a day that's also a Week Off — it's still
+          // paid the same either way. `resolved` (computed above for the
+          // Shift column) already reflects the per-employee roster
+          // regardless of roster_mode, so this only needs to check it
+          // alongside the company-wide set instead of duplicating that
+          // resolution — the previous version checked weekOffDateSet only,
+          // which meant an employee with a roster Week Off (but no
+          // company-wide off day) still showed "Absent" here even though
+          // the Shift column on the same row already said "Week Off".
           const isOnLeave = leaveByEmployee.get(emp.id)?.has(day);
-          const isWeekOff = weekOffDateSet.has(day);
+          const isOnWeekOff = weekOffDateSet.has(day) || isWeekOff(resolved);
           out.push({
             key: `${emp.id}-${day}`,
             date: day,
@@ -242,7 +250,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             // today).
             status: isOnLeave
               ? 'Leave'
-              : isWeekOff
+              : isOnWeekOff
                 ? 'Week Off'
                 : day > today
                   ? 'Upcoming'
