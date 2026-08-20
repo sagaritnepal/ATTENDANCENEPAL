@@ -13,6 +13,7 @@ import {
   applyOvernightShiftCorrection,
   buildWeeklyPatternByEmployee,
   computeDayStatusForResolvedShift,
+  isWeekOff,
   nepalTodayIso,
   punchTypeLabel,
   resolveShiftForDate,
@@ -188,14 +189,28 @@ export default function DashboardPage() {
     }));
   }, [onLeave, employees]);
 
+  // todayIsWeekOff only covers the COMPANY-wide off day — an employee can
+  // also have their own per-employee roster Week Off for today specifically
+  // (an employee_daily_shifts row, or an employee_weekly_pattern row in
+  // 'weekly' roster_mode) with no company-wide off day in effect at all.
+  // Without resolving each employee's own shift here, someone on a roster
+  // Week Off who hasn't punched in showed up as "Absent" on this dashboard
+  // even though every other page (Payroll, My Calendar, the Attendance
+  // Report) already knew to call them Week Off instead.
   const absentRows = useMemo<DetailRow[]>(
     () =>
       todayIsWeekOff
         ? []
         : activeEmployees
-            .filter(emp => !presentIds.has(emp.id) && !onLeaveIds.has(emp.id) && !emp.attendance_exempt)
+            .filter(
+              emp =>
+                !presentIds.has(emp.id) &&
+                !onLeaveIds.has(emp.id) &&
+                !emp.attendance_exempt &&
+                !isWeekOff(resolveShiftForDate(emp, shifts, today, dailyShiftByDate, companyWeekOffDates, weeklyPattern))
+            )
             .map(emp => ({ id: emp.id, primary: emp.name, secondary: emp.department ?? undefined })),
-    [activeEmployees, presentIds, onLeaveIds, todayIsWeekOff]
+    [activeEmployees, presentIds, onLeaveIds, todayIsWeekOff, shifts, today, dailyShiftByDate, companyWeekOffDates, weeklyPattern]
   );
   const absentCount = absentRows.length;
 
