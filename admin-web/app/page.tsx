@@ -14,6 +14,7 @@ import {
   buildWeeklyPatternByEmployee,
   computeDayStatusForResolvedShift,
   nepalTodayIso,
+  punchTypeLabel,
   resolveShiftForDate,
   type DailyShiftByDate,
 } from '@/lib/shift';
@@ -366,8 +367,8 @@ export default function DashboardPage() {
                   <div className="text-xs text-slate-500">{item.method}</div>
                 </div>
                 <div className="text-right">
-                  <Badge tone={item.punch_type === '0' ? 'good' : 'info'}>
-                    {item.punch_type === '0' ? 'Check-in' : 'Check-out'}
+                  <Badge tone={item.punch_type === '0' ? 'good' : item.punch_type === '1' ? 'info' : 'warning'}>
+                    {punchTypeLabel(item.punch_type)}
                   </Badge>
                   <div className="mt-1 text-xs text-slate-500">
                     {new Date(item.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

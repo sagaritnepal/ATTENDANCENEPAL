@@ -6,6 +6,7 @@ import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
+import { punchTypeLabel } from '@/lib/shift';
 import type { Employee, CorrectionRequest, AttendanceGpsRequest } from '@/lib/types';
 
 function formatTime(value: string | null) {
@@ -135,7 +136,7 @@ export default function CorrectionsPage() {
                   <div className="min-w-0">
                     <div className="truncate font-medium text-ink">{employeeName(item.employee_id)}</div>
                     <div className="text-xs text-slate-500">
-                      {item.kind === 'correction' ? 'Missed Punch' : item.data.punch_type === '0' ? 'Check In' : 'Check Out'} ·{' '}
+                      {item.kind === 'correction' ? 'Missed Punch' : punchTypeLabel(item.data.punch_type)} ·{' '}
                       {item.kind === 'correction'
                         ? formatAdDate(item.data.work_date, system)
                         : formatAdDate(item.data.punch_time.slice(0, 10), system)}
@@ -209,7 +210,7 @@ export default function CorrectionsPage() {
                 <tr key={`${item.kind}-${item.id}`} className="border-b border-slate-100 last:border-0">
                   <td className="px-5 py-3 font-medium text-ink">{employeeName(item.employee_id)}</td>
                   <td className="px-5 py-3 text-slate-600">
-                    {item.kind === 'correction' ? 'Missed Punch' : item.data.punch_type === '0' ? 'Check In' : 'Check Out'}
+                    {item.kind === 'correction' ? 'Missed Punch' : punchTypeLabel(item.data.punch_type)}
                   </td>
                   <td className="px-5 py-3 text-slate-600">
                     {item.kind === 'correction'

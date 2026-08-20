@@ -7,7 +7,8 @@ import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
 import { formatAdDate, localDateKey } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { selectDayPunches } from '@/lib/shift';
+import { punchTypeLabel, selectDayPunches } from '@/lib/shift';
+import { fetchMyCompanyWeekOffConfig } from '@/lib/weekOff';
 import type { AttendanceGpsRequest, AttendanceLog, CorrectionRequest, LeaveRequest, LeaveType } from '@/lib/types';
 
 const HISTORY_WINDOW_DAYS = 90;
@@ -16,7 +17,7 @@ const HISTORY_RANGE_DAYS: Record<HistoryRange, number> = { daily: 1, weekly: 7, 
 
 type View = 'menu' | 'fix' | 'leave';
 type PunchModal = {
-  punchType: '0' | '1';
+  punchType: '0' | '1' | '2' | '3';
   punchTime: string;
   status: 'locating' | 'ready' | 'error';
   coords?: { lat: number; lng: number; accuracy: number };
@@ -64,6 +65,7 @@ export default function CheckInPage() {
   const { system } = useCalendarSystem();
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [view, setView] = useState<View>('menu');
+  const [breakEnabled, setBreakEnabled] = useState(false);
 
   // Live check-in/out state
   const [busy, setBusy] = useState(false);
@@ -95,6 +97,7 @@ export default function CheckInPage() {
         .single();
       setEmployeeId(profile?.employee_id ?? null);
     });
+    fetchMyCompanyWeekOffConfig().then(({ breakEnabled }) => setBreakEnabled(breakEnabled));
   }, []);
 
   useEffect(() => {
@@ -216,7 +219,7 @@ export default function CheckInPage() {
     );
   }
 
-  function openPunchModal(punchType: '0' | '1') {
+  function openPunchModal(punchType: '0' | '1' | '2' | '3') {
     if (!employeeId) {
       setMessage({ kind: 'critical', text: 'No employee linked to this account.' });
       return;
@@ -251,7 +254,7 @@ export default function CheckInPage() {
     else {
       setMessage({
         kind: 'good',
-        text: `${punchType === '0' ? 'Check-in' : 'Check-out'} submitted — waiting for Admin/HR approval.`,
+        text: `${punchTypeLabel(punchType)} submitted — waiting for Admin/HR approval.`,
       });
       reloadGpsRequests(employeeId);
     }
@@ -352,6 +355,24 @@ export default function CheckInPage() {
             >
               📍 Check Out
             </button>
+            {breakEnabled && (
+              <>
+                <button
+                  onClick={() => openPunchModal('2')}
+                  disabled={!employeeId}
+                  className="rounded-xl bg-amber-500 py-4 text-base font-semibold text-white shadow-sm hover:bg-amber-600 disabled:opacity-50"
+                >
+                  ☕ Start Break
+                </button>
+                <button
+                  onClick={() => openPunchModal('3')}
+                  disabled={!employeeId}
+                  className="rounded-xl bg-amber-600 py-4 text-base font-semibold text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+                >
+                  ☕ End Break
+                </button>
+              </>
+            )}
             <button
               onClick={() => setView('fix')}
               className="rounded-xl bg-green-600 py-4 text-base font-semibold text-white shadow-sm hover:bg-green-700"
@@ -373,7 +394,7 @@ export default function CheckInPage() {
                 {pendingGpsRequests.map(r => (
                   <div key={r.id} className="flex items-center gap-3 px-4 py-3">
                     <div className="flex-1">
-                      <div className="text-sm font-medium text-ink">{r.punch_type === '0' ? 'Check In' : 'Check Out'}</div>
+                      <div className="text-sm font-medium text-ink">{punchTypeLabel(r.punch_type)}</div>
                       <div className="text-xs text-slate-400">{formatDateTime(r.punch_time, system)}</div>
                     </div>
                     <Badge tone={statusTone(r.status)}>{r.status === 'approved' ? 'Accepted' : r.status}</Badge>
@@ -407,10 +428,14 @@ export default function CheckInPage() {
                 <div key={entry.id} className="flex items-center gap-3 px-4 py-3">
                   <span
                     className={`w-12 shrink-0 rounded-md px-2 py-1 text-center text-xs font-bold ${
-                      entry.punchType === '0' ? 'bg-good-bg text-good-text' : 'bg-warning-bg text-warning-text'
+                      entry.punchType === '0'
+                        ? 'bg-good-bg text-good-text'
+                        : entry.punchType === '1'
+                          ? 'bg-warning-bg text-warning-text'
+                          : 'bg-info-bg text-info-text'
                     }`}
                   >
-                    {entry.punchType === '0' ? 'IN' : 'OUT'}
+                    {entry.punchType === '0' ? 'IN' : entry.punchType === '1' ? 'OUT' : entry.punchType === '2' ? 'BRK' : 'BACK'}
                   </span>
                   <div className="flex-1">
                     <div className="text-sm text-ink">{formatDateTime(entry.punchTime, system)}</div>
@@ -572,7 +597,7 @@ export default function CheckInPage() {
         <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
           <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-lg">
             <h3 className="mb-1 text-lg font-semibold text-ink">
-              Confirm {modal.punchType === '0' ? 'Check In' : 'Check Out'}
+              Confirm {punchTypeLabel(modal.punchType)}
             </h3>
             <p className="mb-4 text-xs text-slate-500">{formatDateTime(modal.punchTime, system)}</p>
 

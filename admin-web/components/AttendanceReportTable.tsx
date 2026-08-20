@@ -34,6 +34,9 @@ type Row = {
   lateMinutes: number;
   earlyMinutes: number;
   overtime: number;
+  /** Completed-break minutes this day — paid, already included in `hours`,
+   * purely a display stat. */
+  breakMinutes: number;
   /** No payroll_summaries row yet (only computed by the nightly job or
    * "Recalculate month" on the Payroll page) — late/early/hours/overtime
    * here are computed live client-side from the raw punches (same math,
@@ -195,6 +198,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             lateMinutes: summary.is_late && !emp.attendance_exempt ? summary.late_minutes : 0,
             earlyMinutes: summary.is_early_departure && !emp.attendance_exempt ? summary.early_departure_minutes : 0,
             overtime: summary.overtime_hours,
+            breakMinutes: summary.break_minutes,
           });
         } else if (dayLogs.length > 0) {
           // Not yet processed by compute_payroll_summaries() (runs nightly
@@ -217,6 +221,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             lateMinutes: emp.attendance_exempt ? 0 : live.lateMinutes,
             earlyMinutes: emp.attendance_exempt ? 0 : live.earlyMinutes,
             overtime: live.overtimeMinutes / 60,
+            breakMinutes: live.breakMinutes,
             pending: true,
           });
         } else {
@@ -252,6 +257,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             lateMinutes: 0,
             earlyMinutes: 0,
             overtime: 0,
+            breakMinutes: 0,
           });
         }
       }
@@ -271,11 +277,12 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
   const totals = useMemo(() => {
     const workHours = rows.reduce((sum, r) => sum + r.hours, 0);
     const overtimeHours = rows.reduce((sum, r) => sum + r.overtime, 0);
+    const breakMinutes = rows.reduce((sum, r) => sum + r.breakMinutes, 0);
     const lateMinutes = rows.reduce((sum, r) => sum + r.lateMinutes, 0);
     const earlyMinutes = rows.reduce((sum, r) => sum + r.earlyMinutes, 0);
     const presentDays = rows.filter(r => r.checkIn).length;
     const absentDays = rows.filter(r => !r.checkIn && r.status !== 'Upcoming' && r.status !== 'Exempt').length;
-    return { workHours, overtimeHours, lateMinutes, earlyMinutes, presentDays, absentDays };
+    return { workHours, overtimeHours, breakMinutes, lateMinutes, earlyMinutes, presentDays, absentDays };
   }, [rows]);
 
   function exportCsv() {
@@ -290,6 +297,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
       'Early Out (min)',
       'Total Work Hours',
       'Overtime',
+      'Break',
       'Status',
       'Device',
     ];
@@ -304,6 +312,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
       r.earlyMinutes || '',
       r.hours.toFixed(1),
       r.overtime.toFixed(1),
+      r.breakMinutes || '',
       r.status,
       r.device,
     ]);
@@ -397,6 +406,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
               <th className="whitespace-nowrap px-2 py-1.5 font-medium">Late / Early</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium">Work Hours</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium">Overtime</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Break</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium">Status</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium">Device</th>
             </tr>
@@ -431,6 +441,9 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                   {fmtHrs(r.overtime)}
                   {r.pending && <span className="ml-1 text-[9px] text-slate-400">(live)</span>}
                 </td>
+                <td className="whitespace-nowrap px-2 py-1 text-slate-600">
+                  {r.breakMinutes > 0 ? formatHoursMinutes(r.breakMinutes) : <span className="text-slate-400">—</span>}
+                </td>
                 <td className="whitespace-nowrap px-2 py-1">
                   {statusBadge(r)}
                 </td>
@@ -439,7 +452,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={11} className="px-4 py-6 text-center text-slate-400">
                   {loading ? 'Loading…' : 'No records in this range.'}
                 </td>
               </tr>
@@ -460,6 +473,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                 </td>
                 <td className="whitespace-nowrap px-2 py-1.5">{fmtHrs(totals.workHours)}</td>
                 <td className="whitespace-nowrap px-2 py-1.5">{fmtHrs(totals.overtimeHours)}</td>
+                <td className="whitespace-nowrap px-2 py-1.5">{totals.breakMinutes > 0 ? formatHoursMinutes(totals.breakMinutes) : '—'}</td>
                 <td className="whitespace-nowrap px-2 py-1.5 text-[10px] font-semibold">
                   <span className="text-good-text">{totals.presentDays} present</span>
                   {' · '}

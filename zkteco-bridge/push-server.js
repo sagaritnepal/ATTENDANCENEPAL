@@ -257,6 +257,11 @@ function spoofedDateHeader(serialNumber) {
 
 // ATTLOG line format (from the device vendor's own protocol doc):
 // UserID <tab> Timestamp <tab> State <tab> VerifyType <tab> ...
+// State: 0=check-in, 1=check-out, 2=break-start ("break-out" in vendor
+// terms), 3=break-end ("break-in") — matches attendance_logs.punch_type
+// exactly, so no translation needed beyond defaulting an unrecognized state
+// to check-in (today's existing safe fallback, unchanged).
+const KNOWN_PUNCH_STATES = new Set(['0', '1', '2', '3']);
 async function handleAttlog(companyId, deviceId, serialNumber, body) {
   const lines = body.split(/\r\n|\n/).map(l => l.trim()).filter(Boolean);
   const rows = [];
@@ -272,7 +277,7 @@ async function handleAttlog(companyId, deviceId, serialNumber, body) {
       employee_id: employeeId,
       device_id: deviceId,
       punch_time: correctDeviceTimestamp(serialNumber, timestamp).toISOString(),
-      punch_type: state === '1' ? '1' : '0',
+      punch_type: KNOWN_PUNCH_STATES.has(state) ? state : '0',
       method: 'zkteco',
       verification_mode: verifyType ?? '1',
     });

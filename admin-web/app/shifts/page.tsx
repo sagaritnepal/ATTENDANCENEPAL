@@ -8,6 +8,7 @@ import Badge from '@/components/Badge';
 import WeeklyRosterGrid from '@/components/WeeklyRosterGrid';
 import WeeklyPatternGrid from '@/components/WeeklyPatternGrid';
 import MonthlyRosterGrid from '@/components/MonthlyRosterGrid';
+import BreakEnabledSwitch from '@/components/BreakEnabledSwitch';
 import type { Employee, Shift } from '@/lib/types';
 import { resolveShift, formatShiftHours } from '@/lib/shift';
 import { fetchMyCompanyWeekOffConfig, type RosterMode } from '@/lib/weekOff';
@@ -81,6 +82,7 @@ function ShiftsView() {
   const [tab, setTab] = useState<'templates' | 'roster' | 'monthly'>(initialTab);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [rosterMode, setRosterMode] = useState<RosterMode>('monthly');
+  const [breakEnabled, setBreakEnabled] = useState(false);
 
   function reload() {
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
@@ -89,9 +91,10 @@ function ShiftsView() {
       .from('employee_daily_shifts')
       .select('employee_id')
       .then(({ data }) => setRosterEmployeeIds(new Set((data ?? []).map(r => r.employee_id))));
-    fetchMyCompanyWeekOffConfig().then(({ companyId, rosterMode }) => {
+    fetchMyCompanyWeekOffConfig().then(({ companyId, rosterMode, breakEnabled }) => {
       setCompanyId(companyId);
       setRosterMode(rosterMode);
+      setBreakEnabled(breakEnabled);
     });
   }
   useEffect(reload, []);
@@ -198,18 +201,21 @@ function ShiftsView() {
             </button>
           ))}
         </div>
-        {tab === 'templates' && (
-          <button
-            onClick={() => {
-              setForm(EMPTY_FORM);
-              setEditingId(null);
-              setShowForm(true);
-            }}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
-          >
-            + New Shift
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <BreakEnabledSwitch companyId={companyId} enabled={breakEnabled} onChange={setBreakEnabled} />
+          {tab === 'templates' && (
+            <button
+              onClick={() => {
+                setForm(EMPTY_FORM);
+                setEditingId(null);
+                setShowForm(true);
+              }}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent/90"
+            >
+              + New Shift
+            </button>
+          )}
+        </div>
       </div>
       <p className="mb-5 text-sm text-slate-500">{TABS.find(t => t.key === tab)?.description}</p>
 

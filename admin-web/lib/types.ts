@@ -127,7 +127,7 @@ export type AttendanceLog = {
   employee_id: string;
   device_id: string | null;
   punch_time: string;
-  punch_type: '0' | '1';
+  punch_type: '0' | '1' | '2' | '3';
   method: 'zkteco' | 'gps' | 'qr' | 'selfie';
   verification_mode: string | null;
 };
@@ -165,7 +165,7 @@ export type CorrectionRequest = {
 export type AttendanceGpsRequest = {
   id: string;
   employee_id: string;
-  punch_type: '0' | '1';
+  punch_type: '0' | '1' | '2' | '3';
   punch_time: string;
   lat: number | null;
   lng: number | null;
@@ -237,6 +237,9 @@ export type PayrollSummary = {
   is_early_departure: boolean;
   early_departure_minutes: number;
   overtime_hours: number;
+  /** Completed-break minutes for this day (20260820100000_break_punches.sql)
+   * — paid, NOT subtracted from total_hours/overtime_hours, display only. */
+  break_minutes: number;
   manually_corrected: boolean;
   overtime_approved: boolean;
   computed_at: string;

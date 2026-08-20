@@ -179,6 +179,7 @@ function PayrollEmployeeDetailView() {
   const dayTotals = useMemo(() => {
     let hours = 0;
     let overtime = 0;
+    let breakMinutes = 0;
     let lateMinutes = 0;
     let earlyMinutes = 0;
     let mySalary = 0;
@@ -190,6 +191,7 @@ function PayrollEmployeeDetailView() {
     for (const d of dayRows) {
       hours += d.hours;
       overtime += d.overtime;
+      breakMinutes += d.breakMinutes;
       lateMinutes += d.lateMinutes;
       earlyMinutes += d.earlyMinutes;
       if (d.checkIn) presentDays += 1;
@@ -202,7 +204,7 @@ function PayrollEmployeeDetailView() {
         totalSalary += earning.total;
       }
     }
-    return { hours, overtime, lateMinutes, earlyMinutes, mySalary, otSalary, totalSalary, presentDays, absentDays, paidOffDays };
+    return { hours, overtime, breakMinutes, lateMinutes, earlyMinutes, mySalary, otSalary, totalSalary, presentDays, absentDays, paidOffDays };
   }, [dayRows, employee, daysInRange, otHoursPerDay, otMultiplier, otOn]);
 
 
@@ -210,7 +212,7 @@ function PayrollEmployeeDetailView() {
 
   function exportCsv() {
     if (!employee) return;
-    const header = ['Date', 'In', 'Out', 'Total Hours', 'Overtime', 'Late (min)', 'Early (min)', 'Status', 'Salary/Day', 'My Salary', 'OT Salary', 'Total Salary'];
+    const header = ['Date', 'In', 'Out', 'Total Hours', 'Overtime', 'Break', 'Late (min)', 'Early (min)', 'Status', 'Salary/Day', 'My Salary', 'OT Salary', 'Total Salary'];
     const lines = dayRows.map(d => {
       const earning = dailySalaryEarning(d, employee.salary, daysInRange, otHoursPerDay, otMultiplier, otOn);
       return [
@@ -219,6 +221,7 @@ function PayrollEmployeeDetailView() {
         d.checkOut ? fmtTime(d.checkOut) : '',
         d.hours.toFixed(1),
         d.overtime.toFixed(1),
+        d.breakMinutes ? formatHoursMinutes(d.breakMinutes) : '',
         d.lateMinutes || '',
         d.earlyMinutes || '',
         d.checkIn ? 'Present' : d.status,
@@ -443,6 +446,7 @@ function PayrollEmployeeDetailView() {
                     <th className="whitespace-nowrap px-3 py-2 font-medium">In / Out</th>
                     <th className="whitespace-nowrap px-3 py-2 font-medium">Total Hours</th>
                     <th className="whitespace-nowrap px-3 py-2 font-medium">Overtime</th>
+                    <th className="whitespace-nowrap px-3 py-2 font-medium">Break</th>
                     <th className="whitespace-nowrap px-3 py-2 font-medium">Late / Early</th>
                     <th className="whitespace-nowrap px-3 py-2 font-medium">Status</th>
                     <th className="whitespace-nowrap px-3 py-2 font-medium">Salary/Day</th>
@@ -467,6 +471,7 @@ function PayrollEmployeeDetailView() {
                           {fmtHrs(d.hours)}{d.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
                         </td>
                         <td className="px-3 py-2 text-slate-600">{fmtHrs(d.overtime)}</td>
+                        <td className="px-3 py-2 text-slate-600">{d.breakMinutes > 0 ? formatHoursMinutes(d.breakMinutes) : '—'}</td>
                         <td className="whitespace-nowrap px-3 py-2">
                           {d.lateMinutes === 0 && d.earlyMinutes === 0 && <span className="text-slate-400">—</span>}
                           {d.lateMinutes > 0 && <span className="font-medium text-warning-text">L {formatHoursMinutes(d.lateMinutes)}</span>}
@@ -489,7 +494,7 @@ function PayrollEmployeeDetailView() {
                   })}
                   {dayRows.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
+                      <td colSpan={11} className="px-4 py-8 text-center text-slate-400">
                         No days in this period.
                       </td>
                     </tr>
@@ -503,6 +508,7 @@ function PayrollEmployeeDetailView() {
                       </td>
                       <td className="whitespace-nowrap px-3 py-2">{fmtHrs(dayTotals.hours)}</td>
                       <td className="whitespace-nowrap px-3 py-2">{fmtHrs(dayTotals.overtime)}</td>
+                      <td className="whitespace-nowrap px-3 py-2">{dayTotals.breakMinutes > 0 ? formatHoursMinutes(dayTotals.breakMinutes) : '—'}</td>
                       <td className="whitespace-nowrap px-3 py-2 text-xs">
                         {dayTotals.lateMinutes > 0 && <span className="text-warning-text">L {formatHoursMinutes(dayTotals.lateMinutes)}</span>}
                         {dayTotals.lateMinutes > 0 && dayTotals.earlyMinutes > 0 && ' · '}
