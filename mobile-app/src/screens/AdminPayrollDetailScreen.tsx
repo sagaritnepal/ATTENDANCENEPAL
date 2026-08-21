@@ -123,6 +123,7 @@ export default function AdminPayrollDetailScreen({ route }: any) {
   const totals = useMemo(() => {
     const totalHours = dayRows.reduce((s, r) => s + r.hours, 0);
     const overtimeHours = dayRows.reduce((s, r) => s + r.overtime, 0);
+    const breakMinutes = dayRows.reduce((s, r) => s + r.breakMinutes, 0);
     const presentDays = dayRows.filter(r => r.checkIn).length;
     const absentDays = dayRows.filter(r => r.status === 'Absent').length;
     const paidOffDays = dayRows.filter(r => r.status === 'Week Off').length;
@@ -135,7 +136,7 @@ export default function AdminPayrollDetailScreen({ route }: any) {
         overtimeEarning += earning.overtime;
       }
     }
-    return { totalHours, overtimeHours, presentDays, absentDays, paidOffDays, totalSalary: baseEarning + overtimeEarning, overtimeEarning };
+    return { totalHours, overtimeHours, breakMinutes, presentDays, absentDays, paidOffDays, totalSalary: baseEarning + overtimeEarning, overtimeEarning };
   }, [dayRows, employee, daysInRange]);
 
   function changeMonth(delta: number) {
@@ -214,11 +215,12 @@ export default function AdminPayrollDetailScreen({ route }: any) {
 
             <Text style={styles.sectionHeading}>Daily Breakdown</Text>
             <View style={styles.tableHeader}>
-              <Text style={[styles.th, { flex: 0.15 }]}>Date</Text>
-              <Text style={[styles.th, { flex: 0.15 }]}>Hrs</Text>
-              <Text style={[styles.th, { flex: 0.15 }]}>OT</Text>
-              <Text style={[styles.th, { flex: 0.2 }]}>Status</Text>
-              <Text style={[styles.th, { flex: 0.35 }]}>Total (OT)</Text>
+              <Text style={[styles.th, { flex: 0.14 }]}>Date</Text>
+              <Text style={[styles.th, { flex: 0.13 }]}>Hrs</Text>
+              <Text style={[styles.th, { flex: 0.13 }]}>OT</Text>
+              <Text style={[styles.th, { flex: 0.13 }]}>Break</Text>
+              <Text style={[styles.th, { flex: 0.17 }]}>Status</Text>
+              <Text style={[styles.th, { flex: 0.3 }]}>Total (OT)</Text>
             </View>
           </>
         }
@@ -227,19 +229,20 @@ export default function AdminPayrollDetailScreen({ route }: any) {
             row.checkIn || row.paidOff ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true) : null;
           return (
             <View style={[styles.tr, index % 2 === 1 && styles.trAlt]}>
-              <Text style={[styles.td, { flex: 0.15 }]}>{formatDdMmYyyy(row.date, system).slice(0, 5)}</Text>
-              <Text style={[styles.td, { flex: 0.15 }]}>{row.checkIn ? fmtHrs(row.hours) : '—'}</Text>
-              <Text style={[styles.td, { flex: 0.15, color: colors.infoText }]}>{row.checkIn ? fmtHrs(row.overtime) : '—'}</Text>
+              <Text style={[styles.td, { flex: 0.14 }]}>{formatDdMmYyyy(row.date, system).slice(0, 5)}</Text>
+              <Text style={[styles.td, { flex: 0.13 }]}>{row.checkIn ? fmtHrs(row.hours) : '—'}</Text>
+              <Text style={[styles.td, { flex: 0.13, color: colors.infoText }]}>{row.checkIn ? fmtHrs(row.overtime) : '—'}</Text>
+              <Text style={[styles.td, { flex: 0.13 }]}>{row.breakMinutes > 0 ? formatHoursMinutes(row.breakMinutes) : '—'}</Text>
               <Text
                 style={[
                   styles.td,
-                  { flex: 0.2 },
+                  { flex: 0.17 },
                   row.checkIn ? { color: colors.goodText } : row.status === 'Week Off' ? { color: colors.accent } : row.status === 'Absent' ? { color: colors.criticalText } : styles.dim,
                 ]}
               >
                 {row.checkIn ? 'Present' : row.status === 'Week Off' ? 'Week Off' : row.status === 'Absent' ? 'Absent' : '—'}
               </Text>
-              <Text style={[styles.td, styles.tdBold, { flex: 0.35 }]}>
+              <Text style={[styles.td, styles.tdBold, { flex: 0.3 }]}>
                 {earning ? earning.total.toFixed(0) : '—'}
                 {earning && earning.overtime > 0 ? <Text style={{ color: colors.infoText }}> ({earning.overtime.toFixed(0)})</Text> : null}
               </Text>
@@ -250,14 +253,15 @@ export default function AdminPayrollDetailScreen({ route }: any) {
         ListFooterComponent={
           dayRows.length > 0 ? (
             <View style={styles.footerRow}>
-              <Text style={[styles.tf, { flex: 0.15 }]}>Total</Text>
-              <Text style={[styles.tf, { flex: 0.15 }]}>{fmtHrs(totals.totalHours)}</Text>
-              <Text style={[styles.tf, { flex: 0.15, color: colors.infoText }]}>{fmtHrs(totals.overtimeHours)}</Text>
-              <Text style={[styles.tf, { flex: 0.2 }]}>
+              <Text style={[styles.tf, { flex: 0.14 }]}>Total</Text>
+              <Text style={[styles.tf, { flex: 0.13 }]}>{fmtHrs(totals.totalHours)}</Text>
+              <Text style={[styles.tf, { flex: 0.13, color: colors.infoText }]}>{fmtHrs(totals.overtimeHours)}</Text>
+              <Text style={[styles.tf, { flex: 0.13 }]}>{totals.breakMinutes > 0 ? formatHoursMinutes(totals.breakMinutes) : '—'}</Text>
+              <Text style={[styles.tf, { flex: 0.17 }]}>
                 <Text style={{ color: colors.goodText }}>{totals.presentDays}P</Text> <Text style={{ color: colors.accent }}>{totals.paidOffDays}W</Text>{' '}
                 <Text style={{ color: colors.criticalText }}>{totals.absentDays}A</Text>
               </Text>
-              <Text style={[styles.tf, { flex: 0.35, color: colors.goodText }]}>{Math.round(totals.totalSalary).toLocaleString()}</Text>
+              <Text style={[styles.tf, { flex: 0.3, color: colors.goodText }]}>{Math.round(totals.totalSalary).toLocaleString()}</Text>
             </View>
           ) : null
         }

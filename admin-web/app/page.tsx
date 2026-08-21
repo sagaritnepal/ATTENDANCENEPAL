@@ -13,7 +13,9 @@ import {
   applyOvernightShiftCorrection,
   buildWeeklyPatternByEmployee,
   computeDayStatusForResolvedShift,
+  isWeekOff,
   nepalTodayIso,
+  punchTypeLabel,
   resolveShiftForDate,
   type DailyShiftByDate,
 } from '@/lib/shift';
@@ -187,14 +189,28 @@ export default function DashboardPage() {
     }));
   }, [onLeave, employees]);
 
+  // todayIsWeekOff only covers the COMPANY-wide off day — an employee can
+  // also have their own per-employee roster Week Off for today specifically
+  // (an employee_daily_shifts row, or an employee_weekly_pattern row in
+  // 'weekly' roster_mode) with no company-wide off day in effect at all.
+  // Without resolving each employee's own shift here, someone on a roster
+  // Week Off who hasn't punched in showed up as "Absent" on this dashboard
+  // even though every other page (Payroll, My Calendar, the Attendance
+  // Report) already knew to call them Week Off instead.
   const absentRows = useMemo<DetailRow[]>(
     () =>
       todayIsWeekOff
         ? []
         : activeEmployees
-            .filter(emp => !presentIds.has(emp.id) && !onLeaveIds.has(emp.id) && !emp.attendance_exempt)
+            .filter(
+              emp =>
+                !presentIds.has(emp.id) &&
+                !onLeaveIds.has(emp.id) &&
+                !emp.attendance_exempt &&
+                !isWeekOff(resolveShiftForDate(emp, shifts, today, dailyShiftByDate, companyWeekOffDates, weeklyPattern))
+            )
             .map(emp => ({ id: emp.id, primary: emp.name, secondary: emp.department ?? undefined })),
-    [activeEmployees, presentIds, onLeaveIds, todayIsWeekOff]
+    [activeEmployees, presentIds, onLeaveIds, todayIsWeekOff, shifts, today, dailyShiftByDate, companyWeekOffDates, weeklyPattern]
   );
   const absentCount = absentRows.length;
 
@@ -366,8 +382,8 @@ export default function DashboardPage() {
                   <div className="text-xs text-slate-500">{item.method}</div>
                 </div>
                 <div className="text-right">
-                  <Badge tone={item.punch_type === '0' ? 'good' : 'info'}>
-                    {item.punch_type === '0' ? 'Check-in' : 'Check-out'}
+                  <Badge tone={item.punch_type === '0' ? 'good' : item.punch_type === '1' ? 'info' : 'warning'}>
+                    {punchTypeLabel(item.punch_type)}
                   </Badge>
                   <div className="mt-1 text-xs text-slate-500">
                     {new Date(item.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

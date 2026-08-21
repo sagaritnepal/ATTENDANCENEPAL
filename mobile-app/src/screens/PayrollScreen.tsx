@@ -31,6 +31,7 @@ type Row = {
   days: number;
   hours: number;
   overtime: number;
+  breakMinutes: number;
   lateDays: number;
   earlyDays: number;
   paidOffDays: number;
@@ -135,7 +136,7 @@ export default function PayrollScreen({ navigation }: any) {
     }
     const map = new Map<string, Row>();
     for (const emp of employees) {
-      map.set(emp.id, { id: emp.id, enrollId: emp.fingerprint_id ?? '—', name: emp.name, salary: emp.salary, days: 0, hours: 0, overtime: 0, lateDays: 0, earlyDays: 0, paidOffDays: 0 });
+      map.set(emp.id, { id: emp.id, enrollId: emp.fingerprint_id ?? '—', name: emp.name, salary: emp.salary, days: 0, hours: 0, overtime: 0, breakMinutes: 0, lateDays: 0, earlyDays: 0, paidOffDays: 0 });
     }
     const today = nepalTodayIso();
     const logsByEmployeeDay = new Map<string, Map<string, AttendanceLog[]>>();
@@ -158,6 +159,7 @@ export default function PayrollScreen({ navigation }: any) {
           row.days += 1;
           row.hours += Number(summary.total_hours);
           row.overtime += Number(summary.overtime_hours);
+          row.breakMinutes += summary.break_minutes;
           if (summary.is_late) row.lateDays += 1;
           if (summary.is_early_departure) row.earlyDays += 1;
           continue;
@@ -178,6 +180,7 @@ export default function PayrollScreen({ navigation }: any) {
         row.days += 1;
         row.hours += live.totalMinutes / 60;
         row.overtime += live.overtimeMinutes / 60;
+        row.breakMinutes += live.breakMinutes;
         if (live.isLate) row.lateDays += 1;
         if (live.isEarly) row.earlyDays += 1;
       }
@@ -357,6 +360,10 @@ export default function PayrollScreen({ navigation }: any) {
                 <View style={styles.gridItem}>
                   <Text style={styles.gridLabel}>Overtime</Text>
                   <Text style={[styles.gridValue, { color: colors.infoText }]}>{fmtHrs(item.overtime)}</Text>
+                </View>
+                <View style={styles.gridItem}>
+                  <Text style={styles.gridLabel}>Break</Text>
+                  <Text style={styles.gridValue}>{item.breakMinutes > 0 ? formatHoursMinutes(item.breakMinutes) : '—'}</Text>
                 </View>
                 <View style={styles.gridItem}>
                   <Text style={styles.gridLabel}>Late / Early</Text>

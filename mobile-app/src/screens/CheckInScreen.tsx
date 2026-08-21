@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, Modal } from 'react-native';
 import * as Location from 'expo-location';
 import { supabase } from '../lib/supabase';
-import { selectDayPunches } from '../lib/shift';
+import { punchTypeLabel, selectDayPunches } from '../lib/shift';
 import type { AttendanceGpsRequest, AttendanceLog, CorrectionRequest } from '../types';
 import { colors } from '../theme';
 import Badge from '../components/Badge';
@@ -15,7 +15,7 @@ import type { CompanyHoliday } from '../types';
 
 type ViewMode = 'menu' | 'fix';
 type PunchModal = {
-  punchType: '0' | '1';
+  punchType: '0' | '1' | '2' | '3';
   punchTime: string;
   status: 'locating' | 'ready' | 'error';
   coords?: { lat: number; lng: number; accuracy: number | null };
@@ -58,10 +58,14 @@ export default function CheckInScreen({ navigation }: any) {
   const [correctionError, setCorrectionError] = useState<string | null>(null);
   const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
   const [todayHoliday, setTodayHoliday] = useState<CompanyHoliday | null>(null);
+  const [breakEnabled, setBreakEnabled] = useState(false);
 
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => setWeeklyOffDay(weeklyOffDay));
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, breakEnabled }) => {
+      setWeeklyOffDay(weeklyOffDay);
+      setBreakEnabled(breakEnabled);
+    });
     supabase.from('company_holidays').select('*').eq('holiday_date', today).maybeSingle().then(({ data }) => setTodayHoliday((data as CompanyHoliday) ?? null));
   }, []);
 
@@ -152,7 +156,7 @@ export default function CheckInScreen({ navigation }: any) {
     }
   }
 
-  function openPunchModal(punchType: '0' | '1') {
+  function openPunchModal(punchType: '0' | '1' | '2' | '3') {
     if (!employeeId) {
       setMessage({ kind: 'critical', text: 'No employee linked to this account.' });
       return;
@@ -184,7 +188,7 @@ export default function CheckInScreen({ navigation }: any) {
     setModal(null);
     if (error) setMessage({ kind: 'critical', text: `Check-in failed: ${error.message}` });
     else {
-      setMessage({ kind: 'good', text: `${punchType === '0' ? 'Check-in' : 'Check-out'} submitted — waiting for Admin/HR approval.` });
+      setMessage({ kind: 'good', text: `${punchTypeLabel(punchType)} submitted — waiting for Admin/HR approval.` });
       reloadGpsRequests(employeeId);
     }
   }
@@ -312,6 +316,16 @@ export default function CheckInScreen({ navigation }: any) {
             <TouchableOpacity style={[styles.punchBtn, { backgroundColor: colors.good }]} disabled={!employeeId} onPress={() => openPunchModal('1')}>
               <Text style={styles.punchBtnText}>📍 Check Out</Text>
             </TouchableOpacity>
+            {breakEnabled && (
+              <>
+                <TouchableOpacity style={[styles.punchBtn, { backgroundColor: '#f59e0b' }]} disabled={!employeeId} onPress={() => openPunchModal('2')}>
+                  <Text style={styles.punchBtnText}>☕ Start Break</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.punchBtn, { backgroundColor: '#d97706' }]} disabled={!employeeId} onPress={() => openPunchModal('3')}>
+                  <Text style={styles.punchBtnText}>☕ End Break</Text>
+                </TouchableOpacity>
+              </>
+            )}
             <TouchableOpacity style={[styles.punchBtn, { backgroundColor: colors.good }]} onPress={() => setView('fix')}>
               <Text style={styles.punchBtnText}>🔧 Fix a Missed Punch</Text>
             </TouchableOpacity>
@@ -325,7 +339,7 @@ export default function CheckInScreen({ navigation }: any) {
                 {pendingGpsRequests.map(r => (
                   <View key={r.id} style={styles.row}>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.rowTitle}>{r.punch_type === '0' ? 'Check In' : 'Check Out'}</Text>
+                      <Text style={styles.rowTitle}>{punchTypeLabel(r.punch_type)}</Text>
                       <Text style={styles.rowSub}>{formatDateTime(r.punch_time, system)}</Text>
                     </View>
                     <Badge tone={statusTone(r.status)}>{r.status === 'approved' ? 'Accepted' : r.status}</Badge>
@@ -350,8 +364,21 @@ export default function CheckInScreen({ navigation }: any) {
         keyExtractor={item => item.id}
         renderItem={({ item }) => (
           <View style={styles.row}>
-            <View style={[styles.punchTypeBadge, { backgroundColor: item.punchType === '0' ? colors.goodBg : colors.warningBg }]}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: item.punchType === '0' ? colors.goodText : colors.warningText }}>{item.punchType === '0' ? 'IN' : 'OUT'}</Text>
+            <View
+              style={[
+                styles.punchTypeBadge,
+                { backgroundColor: item.punchType === '0' ? colors.goodBg : item.punchType === '1' ? colors.warningBg : colors.infoBg },
+              ]}
+            >
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '700',
+                  color: item.punchType === '0' ? colors.goodText : item.punchType === '1' ? colors.warningText : colors.infoText,
+                }}
+              >
+                {item.punchType === '0' ? 'IN' : item.punchType === '1' ? 'OUT' : item.punchType === '2' ? 'BRK' : 'BACK'}
+              </Text>
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.rowTitle}>{formatDateTime(item.punchTime, system)}</Text>
@@ -366,7 +393,7 @@ export default function CheckInScreen({ navigation }: any) {
       <Modal visible={!!modal} transparent animationType="fade" onRequestClose={() => setModal(null)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Confirm {modal?.punchType === '0' ? 'Check In' : 'Check Out'}</Text>
+            <Text style={styles.modalTitle}>Confirm {modal ? punchTypeLabel(modal.punchType) : ''}</Text>
             <Text style={styles.modalSub}>{modal ? formatDateTime(modal.punchTime, system) : ''}</Text>
             {modal?.status === 'locating' && <Text style={styles.modalStatus}>📍 Getting your location…</Text>}
             {modal?.status === 'ready' && <Text style={[styles.modalStatus, { color: colors.goodText }]}>📍 Location confirmed</Text>}

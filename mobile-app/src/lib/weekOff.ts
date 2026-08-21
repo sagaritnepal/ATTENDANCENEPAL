@@ -17,23 +17,32 @@ export type CompanyWeekOffConfig = {
    * employee_weekly_pattern is consulted instead (see resolveShiftForDate in
    * lib/shift.ts). Defaults to 'monthly' when there's no company yet. */
   rosterMode: RosterMode;
+  /** Self-serve per-company toggle (companies.break_enabled) — whether Start
+   * Break/End Break buttons show up on the self-checkin screen. Defaults to
+   * false when there's no company yet, same as every other flag here. */
+  breakEnabled: boolean;
 };
 
-/** The current user's own company_id + weekly_off_day + roster_mode.
- * `companies` has no RLS of its own, so this goes through `profiles`
- * (RLS-scoped to the caller's own row) first rather than trusting an
- * unfiltered select. */
+/** The current user's own company_id + weekly_off_day + roster_mode +
+ * break_enabled. `companies` has no RLS of its own, so this goes through
+ * `profiles` (RLS-scoped to the caller's own row) first rather than trusting
+ * an unfiltered select. */
 export async function fetchMyCompanyWeekOffConfig(): Promise<CompanyWeekOffConfig> {
   const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return { companyId: null, weeklyOffDay: null, rosterMode: 'monthly' };
+  if (!auth.user) return { companyId: null, weeklyOffDay: null, rosterMode: 'monthly', breakEnabled: false };
   const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', auth.user.id).single();
   const companyId = profile?.company_id ?? null;
-  if (!companyId) return { companyId: null, weeklyOffDay: null, rosterMode: 'monthly' };
-  const { data: company } = await supabase.from('companies').select('weekly_off_day, roster_mode').eq('id', companyId).single();
+  if (!companyId) return { companyId: null, weeklyOffDay: null, rosterMode: 'monthly', breakEnabled: false };
+  const { data: company } = await supabase
+    .from('companies')
+    .select('weekly_off_day, roster_mode, break_enabled')
+    .eq('id', companyId)
+    .single();
   return {
     companyId,
     weeklyOffDay: company?.weekly_off_day ?? null,
     rosterMode: (company?.roster_mode as RosterMode) ?? 'monthly',
+    breakEnabled: company?.break_enabled ?? false,
   };
 }
 

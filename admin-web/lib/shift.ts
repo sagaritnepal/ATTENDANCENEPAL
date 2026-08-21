@@ -104,6 +104,19 @@ export function formatShiftHours(shift: Pick<Shift, 'start_time' | 'end_time'>) 
   return `${shift.start_time.slice(0, 5)}–${shift.end_time.slice(0, 5)} (${hh(shift.start_time)}-${hh(shift.end_time)})`;
 }
 
+/** How many hours a resolved shift actually spans — 0 for WEEK_OFF, same
+ * overnight-safe math computeDayStatus() uses internally for its own
+ * shiftDurationMin, exposed here so a "how many hours was this employee
+ * expected to work" total (e.g. a payroll/attendance export's hours
+ * summary) doesn't have to recompute or duplicate that logic. */
+export function shiftDurationHours(resolved: ResolvedShift): number {
+  if (isWeekOff(resolved)) return 0;
+  const startMin = toMinutes(resolved.start_time);
+  const endMin = toMinutes(resolved.end_time);
+  const durationMin = endMin > startMin ? endMin - startMin : 24 * 60 - startMin + endMin;
+  return durationMin / 60;
+}
+
 export type DayStatus = {
   hasIn: boolean;
   hasOut: boolean;
@@ -117,7 +130,29 @@ export type DayStatus = {
   totalMinutes: number;
   /** Minutes worked beyond the shift's duration — 0 unless totalMinutes exceeds it. */
   overtimeMinutes: number;
+  /** Minutes spent on completed breaks this day — paid, NOT subtracted from
+   * totalMinutes/overtimeMinutes, purely a display stat. See computeBreakMinutes(). */
+  breakMinutes: number;
 };
+
+/** Punch type -> the label shown everywhere a single punch is rendered
+ * (live feeds, history rows, request review). '0'/'1' mirror what these
+ * already displayed; '2'/'3' are new (see 20260820100000_break_punches.sql
+ * — they match ZKTeco's own break-out/break-in status codes). */
+export function punchTypeLabel(punchType: string): string {
+  switch (punchType) {
+    case '0':
+      return 'Check In';
+    case '1':
+      return 'Check Out';
+    case '2':
+      return 'Start Break';
+    case '3':
+      return 'End Break';
+    default:
+      return 'Check In';
+  }
+}
 
 /** Minutes -> "Xh Ym" — used everywhere a duration (late-by, early-by, total
  * hours, overtime) is shown, so every table reads the same way. */
@@ -166,9 +201,16 @@ function punchMinuteOfDay(iso: string) {
 /** One calendar day's punches -> the two that actually count: first
  * check-in (or earliest punch) is "in", last check-out (or latest punch, if
  * there's more than one) is "out". Any other punch that day (duplicate
- * ZKTeco taps, etc.) is neither. Mirrors calculateDailyRecord() in calc.js. */
+ * ZKTeco taps, etc.) is neither. Mirrors calculateDailyRecord() in calc.js.
+ *
+ * Break punches ('2'/'3') are filtered out before any of this runs — they
+ * must never be eligible for the "no explicit check-out yet, fall back to
+ * the day's last punch" branch, or an in-progress day (checked in, on break,
+ * not checked out yet) would show the break-end punch as its checkout. */
 export function selectDayPunches(logs: AttendanceLog[]): { checkIn: AttendanceLog; checkOut: AttendanceLog | null } {
-  const sorted = [...logs].sort((a, b) => a.punch_time.localeCompare(b.punch_time));
+  const sorted = logs
+    .filter(l => l.punch_type !== '2' && l.punch_type !== '3')
+    .sort((a, b) => a.punch_time.localeCompare(b.punch_time));
   const checkIn = sorted.find(l => l.punch_type === '0') ?? sorted[0];
   const outCandidates = sorted.filter(l => l.punch_type === '1');
   const checkOut = outCandidates.length
@@ -177,6 +219,29 @@ export function selectDayPunches(logs: AttendanceLog[]): { checkIn: AttendanceLo
       ? sorted[sorted.length - 1]
       : null;
   return { checkIn, checkOut: checkOut !== checkIn ? checkOut : null };
+}
+
+/** One calendar day's punches -> total completed-break minutes. Pairs each
+ * Start Break ('2') with the next End Break ('3') in time order and sums the
+ * gaps; an unpaired trailing '2' (still on break) contributes nothing, same
+ * as how an unpaired checkout is handled. Mirrors the identical pairing walk
+ * in compute_payroll_summaries() (20260820110000_break_minutes_payroll.sql)
+ * so live and finalized numbers agree. */
+export function computeBreakMinutes(logs: AttendanceLog[]): number {
+  const breakPunches = logs
+    .filter(l => l.punch_type === '2' || l.punch_type === '3')
+    .sort((a, b) => a.punch_time.localeCompare(b.punch_time));
+  let total = 0;
+  let breakStart: string | null = null;
+  for (const punch of breakPunches) {
+    if (punch.punch_type === '2') {
+      breakStart = punch.punch_time;
+    } else if (punch.punch_type === '3' && breakStart) {
+      total += Math.round((new Date(punch.punch_time).getTime() - new Date(breakStart).getTime()) / 60000);
+      breakStart = null;
+    }
+  }
+  return total;
 }
 
 /** One calendar day's punches -> attendance state for that day. */
@@ -215,6 +280,7 @@ export function computeDayStatus(
     earlyMinutes,
     totalMinutes,
     overtimeMinutes,
+    breakMinutes: computeBreakMinutes(logs),
   };
 }
 
@@ -241,6 +307,7 @@ export function computeDayStatusForResolvedShift(logs: AttendanceLog[], resolved
       earlyMinutes: 0,
       totalMinutes,
       overtimeMinutes: totalMinutes,
+      breakMinutes: computeBreakMinutes(logs),
     };
   }
   return computeDayStatus(logs, resolved);

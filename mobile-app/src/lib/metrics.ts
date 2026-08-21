@@ -15,8 +15,13 @@ function toMinutes(hhmm: string) {
   return h * 60 + m;
 }
 
+// Break punches ('2'/'3') are excluded from the fallback so a Start Break
+// with no prior check-in never gets mistaken for one (same fix as
+// shift.ts's selectDayPunches).
 export function firstCheckIn(logsForDay: AttendanceLog[]): AttendanceLog | undefined {
-  const sorted = [...logsForDay].sort((a, b) => a.punch_time.localeCompare(b.punch_time));
+  const sorted = logsForDay
+    .filter(l => l.punch_type !== '2' && l.punch_type !== '3')
+    .sort((a, b) => a.punch_time.localeCompare(b.punch_time));
   return sorted.find(l => l.punch_type === '0') ?? sorted[0];
 }
 

@@ -11,7 +11,9 @@ import {
   applyOvernightShiftCorrection,
   buildWeeklyPatternByEmployee,
   computeDayStatusForResolvedShift,
+  isWeekOff,
   nepalTodayIso,
+  punchTypeLabel,
   resolveShiftForDate,
   type DailyShiftByDate,
   type WeeklyPatternByEmployee,
@@ -176,14 +178,26 @@ export default function DashboardScreen({ navigation }: any) {
   }, [activeEmployees, todayLogs, shifts, today, dailyShiftByDate, companyWeekOffDates, weeklyPattern]);
   const lateCount = lateEmployees.length;
 
+  // todayIsWeekOff only covers the COMPANY-wide off day — an employee can
+  // also have their own per-employee roster Week Off for today specifically
+  // (an employee_daily_shifts row, or an employee_weekly_pattern row in
+  // 'weekly' roster_mode) with no company-wide off day in effect at all.
+  // Without resolving each employee's own shift here, someone on a roster
+  // Week Off who hasn't punched in showed up as "Absent" even though the
+  // admin dashboard/Payroll/My Calendar already knew to call them Week Off.
   const absentRows = useMemo<DetailRow[]>(
     () =>
       todayIsWeekOff
         ? []
         : activeEmployees
-            .filter(emp => !presentIds.has(emp.id) && !onLeaveIds.has(emp.id))
+            .filter(
+              emp =>
+                !presentIds.has(emp.id) &&
+                !onLeaveIds.has(emp.id) &&
+                !isWeekOff(resolveShiftForDate(emp, shifts, today, dailyShiftByDate, companyWeekOffDates, weeklyPattern))
+            )
             .map(emp => ({ id: emp.id, primary: emp.name, secondary: emp.department ?? undefined })),
-    [activeEmployees, presentIds, onLeaveIds, todayIsWeekOff]
+    [activeEmployees, presentIds, onLeaveIds, todayIsWeekOff, shifts, today, dailyShiftByDate, companyWeekOffDates, weeklyPattern]
   );
   const absentCount = absentRows.length;
 
@@ -336,6 +350,7 @@ export default function DashboardScreen({ navigation }: any) {
           const emp = employeeLookup[item.employee_id];
           const name = emp?.name ?? 'Unknown';
           const isIn = item.punch_type === '0';
+          const isBreak = item.punch_type === '2' || item.punch_type === '3';
           return (
             <View style={styles.row}>
               {emp?.profile_photo_url && !photoFailed.has(item.employee_id) ? (
@@ -355,8 +370,10 @@ export default function DashboardScreen({ navigation }: any) {
                   {new Date(item.punch_time).toLocaleTimeString()} · {item.method}
                 </Text>
               </View>
-              <View style={[styles.typeBadge, isIn ? styles.typeInBg : styles.typeOutBg]}>
-                <Text style={isIn ? styles.typeInText : styles.typeOutText}>{isIn ? 'Check-in' : 'Check-out'}</Text>
+              <View style={[styles.typeBadge, isIn ? styles.typeInBg : isBreak ? styles.typeBreakBg : styles.typeOutBg]}>
+                <Text style={isIn ? styles.typeInText : isBreak ? styles.typeBreakText : styles.typeOutText}>
+                  {punchTypeLabel(item.punch_type)}
+                </Text>
               </View>
             </View>
           );
@@ -426,8 +443,10 @@ const styles = StyleSheet.create({
   typeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   typeInBg: { backgroundColor: colors.goodBg },
   typeOutBg: { backgroundColor: colors.infoBg },
+  typeBreakBg: { backgroundColor: colors.warningBg },
   typeInText: { fontSize: 11, fontWeight: '700', color: colors.goodText },
   typeOutText: { fontSize: 11, fontWeight: '700', color: colors.infoText },
+  typeBreakText: { fontSize: 11, fontWeight: '700', color: colors.warningText },
   empty: { textAlign: 'center', marginTop: 40, color: colors.slate400 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', padding: 20 },
   detailSheet: { backgroundColor: colors.white, borderRadius: 16, padding: 20, maxHeight: '75%' },

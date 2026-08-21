@@ -96,6 +96,9 @@ export type PayrollSummary = {
   check_out: string | null;
   total_hours: number;
   overtime_hours: number;
+  /** Completed-break minutes for this day — paid, NOT subtracted from
+   * total_hours/overtime_hours, display only. */
+  break_minutes: number;
   is_late: boolean;
   late_minutes: number;
   is_early_departure: boolean;
@@ -107,7 +110,7 @@ export type AttendanceLog = {
   employee_id: string;
   device_id?: string | null;
   punch_time: string;
-  punch_type: '0' | '1';
+  punch_type: '0' | '1' | '2' | '3';
   method: PunchMethod;
   lat?: number | null;
   lng?: number | null;
@@ -196,7 +199,7 @@ export type CorrectionRequest = {
 export type AttendanceGpsRequest = {
   id: string;
   employee_id: string;
-  punch_type: '0' | '1';
+  punch_type: '0' | '1' | '2' | '3';
   punch_time: string;
   lat: number | null;
   lng: number | null;

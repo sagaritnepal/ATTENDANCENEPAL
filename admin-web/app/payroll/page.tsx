@@ -217,6 +217,7 @@ export default function PayrollPage() {
         days: number;
         hours: number;
         overtime: number;
+        breakMinutes: number;
         lateDays: number;
         earlyDays: number;
         paidOffDays: number;
@@ -231,6 +232,7 @@ export default function PayrollPage() {
         days: 0,
         hours: 0,
         overtime: 0,
+        breakMinutes: 0,
         lateDays: 0,
         earlyDays: 0,
         paidOffDays: 0,
@@ -267,6 +269,7 @@ export default function PayrollPage() {
           row.days += 1;
           row.hours += Number(summary.total_hours);
           row.overtime += Number(summary.overtime_hours);
+          row.breakMinutes += summary.break_minutes;
           if (summary.is_late) row.lateDays += 1;
           if (summary.is_early_departure) row.earlyDays += 1;
           continue;
@@ -293,6 +296,7 @@ export default function PayrollPage() {
         row.days += 1;
         row.hours += live.totalMinutes / 60;
         row.overtime += live.overtimeMinutes / 60;
+        row.breakMinutes += live.breakMinutes;
         if (live.isLate) row.lateDays += 1;
         if (live.isEarly) row.earlyDays += 1;
       }
@@ -303,6 +307,7 @@ export default function PayrollPage() {
   const totals = useMemo(() => {
     const totalHours = byEmployee.reduce((s, r) => s + r.hours, 0);
     const overtimeHours = byEmployee.reduce((s, r) => s + r.overtime, 0);
+    const breakMinutes = byEmployee.reduce((s, r) => s + r.breakMinutes, 0);
     const workedDays = byEmployee.reduce((s, r) => s + r.days, 0);
     const paidOffDays = byEmployee.reduce((s, r) => s + r.paidOffDays, 0);
     const lateDays = byEmployee.reduce((s, r) => s + r.lateDays, 0);
@@ -320,6 +325,7 @@ export default function PayrollPage() {
     return {
       totalHours,
       overtimeHours,
+      breakMinutes,
       workedDays,
       paidOffDays,
       absentDays,
@@ -364,13 +370,14 @@ export default function PayrollPage() {
   }
 
   function exportCsv() {
-    const header = ['ID', 'Employee', 'Worked Days', 'Total Hours', 'Overtime', 'Late Days', 'Early Days', 'Salary', 'Calculated Salary', 'Overtime Salary', 'Total Salary'];
+    const header = ['ID', 'Employee', 'Worked Days', 'Total Hours', 'Overtime', 'Break', 'Late Days', 'Early Days', 'Salary', 'Calculated Salary', 'Overtime Salary', 'Total Salary'];
     const lines = byEmployee.map(row => [
       row.enrollId,
       row.name,
       row.days,
       fmtHrs(row.hours),
       fmtHrs(row.overtime),
+      row.breakMinutes ? formatHoursMinutes(row.breakMinutes) : '',
       row.lateDays,
       row.earlyDays,
       row.salary ?? '',
@@ -664,6 +671,10 @@ export default function PayrollPage() {
                   <dd className="text-ink">{fmtHrs(row.overtime)}</dd>
                 </div>
                 <div>
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Break</dt>
+                  <dd className="text-ink">{row.breakMinutes > 0 ? formatHoursMinutes(row.breakMinutes) : '—'}</dd>
+                </div>
+                <div>
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Salary</dt>
                   <dd>{salaryCellContent(row)}</dd>
                 </div>
@@ -704,6 +715,7 @@ export default function PayrollPage() {
               <th className="whitespace-nowrap px-3 py-2 font-medium">Worked Days</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Total Hours</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Overtime</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Break</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Late / Early Days</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Salary</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Calculated Salary</th>
@@ -731,6 +743,7 @@ export default function PayrollPage() {
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-slate-600">{fmtHrs(row.hours)}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-slate-600">{fmtHrs(row.overtime)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">{row.breakMinutes > 0 ? formatHoursMinutes(row.breakMinutes) : '—'}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-xs">
                     <span className="text-warning-text">{row.lateDays}L</span>
                     {' / '}
@@ -752,7 +765,7 @@ export default function PayrollPage() {
             })}
             {byEmployee.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={11} className="px-4 py-8 text-center text-slate-400">
                   {loading ? 'Loading…' : 'No active employees.'}
                 </td>
               </tr>
@@ -773,6 +786,7 @@ export default function PayrollPage() {
                 </td>
                 <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.totalHours)}</td>
                 <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.overtimeHours)}</td>
+                <td className="whitespace-nowrap px-3 py-2">{totals.breakMinutes > 0 ? formatHoursMinutes(totals.breakMinutes) : '—'}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-xs">
                   <span className="text-warning-text">{totals.lateDays}L</span>
                   {' / '}

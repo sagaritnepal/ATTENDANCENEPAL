@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase, supabaseConfigured } from '@/lib/supabase';
@@ -13,9 +13,38 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Clicking an email-confirmation link redirects here with the new session
+  // already established (register's emailRedirectTo points at this page,
+  // and the Supabase client auto-parses the token out of the URL) — without
+  // this, that session just sits there unused and the user sees what looks
+  // like an empty, broken login form right after confirming their email.
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    if (!supabaseConfigured) {
+      setCheckingSession(false);
+      return;
+    }
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        router.replace('/');
+      } else {
+        setCheckingSession(false);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!supabaseConfigured) {
     return <ConfigWarning />;
+  }
+
+  if (checkingSession) {
+    return (
+      <AuthCard>
+        <p className="text-center text-sm text-slate-500">Loading…</p>
+      </AuthCard>
+    );
   }
 
   async function handleSubmit(e: React.FormEvent) {

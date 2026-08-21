@@ -15,6 +15,9 @@ export type DayDetail = {
   checkOut: string | null;
   hours: number;
   overtime: number;
+  /** Completed-break minutes this day — paid, already included in `hours`,
+   * purely a display stat (see computeBreakMinutes() in lib/shift.ts). */
+  breakMinutes: number;
   lateMinutes: number;
   earlyMinutes: number;
   status: 'Present' | 'Late' | 'Absent' | 'Upcoming' | 'Week Off';
@@ -66,6 +69,7 @@ export function buildEmployeeDayRows(
         checkOut: summary.check_out,
         hours: Number(summary.total_hours),
         overtime: Number(summary.overtime_hours),
+        breakMinutes: summary.break_minutes,
         lateMinutes: summary.is_late ? summary.late_minutes : 0,
         earlyMinutes: summary.is_early_departure ? summary.early_departure_minutes : 0,
         status: summary.is_late ? ('Late' as const) : ('Present' as const),
@@ -78,10 +82,10 @@ export function buildEmployeeDayRows(
       // Week-off date — check it the same way a day WITH punches already
       // does below via resolveShiftForDate(), instead of only paidOffDates.
       if (paidOffDates?.has(day) || isWeekOff(resolveShiftForDate(employee, shifts, day, dailyShiftByDate, paidOffDates, weeklyPattern))) {
-        return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status: 'Week Off' as const, paidOff: true };
+        return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, breakMinutes: 0, lateMinutes: 0, earlyMinutes: 0, status: 'Week Off' as const, paidOff: true };
       }
       const status = day > today ? ('Upcoming' as const) : ('Absent' as const);
-      return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, lateMinutes: 0, earlyMinutes: 0, status };
+      return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, breakMinutes: 0, lateMinutes: 0, earlyMinutes: 0, status };
     }
     const resolved = resolveShiftForDate(employee, shifts, day, dailyShiftByDate, paidOffDates, weeklyPattern);
     const live = computeDayStatusForResolvedShift(dayLogs, resolved);
@@ -91,6 +95,7 @@ export function buildEmployeeDayRows(
       checkOut: live.checkOut?.punch_time ?? null,
       hours: live.totalMinutes / 60,
       overtime: live.overtimeMinutes / 60,
+      breakMinutes: live.breakMinutes,
       lateMinutes: live.lateMinutes,
       earlyMinutes: live.earlyMinutes,
       status: live.isLate ? ('Late' as const) : ('Present' as const),
