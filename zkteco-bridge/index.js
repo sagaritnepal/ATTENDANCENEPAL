@@ -243,7 +243,12 @@ async function syncDevice(device) {
   busyDeviceIds.add(device.id);
   try {
     const rawLogs = await pullDeviceLogs(device);
-    const count = await upsertLogs(device, rawLogs);
+    // upsertLogs() makes its own per-row Supabase calls (fetchEmployeeByFingerprint
+    // for each punch, then the upsert itself) with no timeout of their own — a
+    // stalled connection here (this machine's network has been observed dropping
+    // out for stretches) would wedge busyDeviceIds exactly like the unbounded ZK
+    // call did before withDevice() got its own timeout. Same fix, same reason.
+    const count = await withTimeout(upsertLogs(device, rawLogs), 30000, `${device.name}: upsertLogs`);
     if (count > 0) console.log(`[${device.name}] synced ${count} new punch(es)`);
     failureCounts.set(device.id, 0);
     nextRetryAt.delete(device.id);
@@ -297,11 +302,11 @@ async function processSyncEvent(event) {
     let summary;
     if (event.sync_type === 'users') {
       const rawUsers = await pullDeviceUsers(device);
-      const { total, added } = await upsertUsers(device, rawUsers);
+      const { total, added } = await withTimeout(upsertUsers(device, rawUsers), 30000, `${device.name}: upsertUsers`);
       summary = `${total} user(s) on device, ${added} new employee(s) added`;
     } else {
       const rawLogs = await pullDeviceLogs(device);
-      const count = await upsertLogs(device, rawLogs);
+      const count = await withTimeout(upsertLogs(device, rawLogs), 30000, `${device.name}: upsertLogs`);
       summary = `${rawLogs.length} record(s) on device, ${count} matched to an employee`;
     }
     console.log(`[${device.name}] ${event.sync_type} sync: ${summary}`);

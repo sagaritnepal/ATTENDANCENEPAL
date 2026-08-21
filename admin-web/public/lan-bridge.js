@@ -148,7 +148,7 @@ async function upsertUsers(device, rawUsers) {
 async function syncDevice(device) {
   try {
     const rawLogs = await pullDeviceLogs(device);
-    const count = await upsertLogs(device, rawLogs);
+    const count = await withTimeout(upsertLogs(device, rawLogs), 30000, `${device.name}: upsertLogs`);
     if (count > 0) console.log(`[lan-bridge] ${device.name}: synced ${count} new punch(es)`);
     failureCounts.set(device.id, 0);
     await supabase.from('devices').update({ last_sync: new Date().toISOString(), status: 'online' }).eq('id', device.id);
@@ -189,11 +189,11 @@ async function processSyncEvent(event) {
     let summary;
     if (event.sync_type === 'users') {
       const rawUsers = await pullDeviceUsers(device);
-      const { total, added } = await upsertUsers(device, rawUsers);
+      const { total, added } = await withTimeout(upsertUsers(device, rawUsers), 30000, `${device.name}: upsertUsers`);
       summary = `${total} user(s) on device, ${added} new employee(s) added`;
     } else {
       const rawLogs = await pullDeviceLogs(device);
-      const count = await upsertLogs(device, rawLogs);
+      const count = await withTimeout(upsertLogs(device, rawLogs), 30000, `${device.name}: upsertLogs`);
       summary = `${rawLogs.length} record(s) on device, ${count} matched to an employee`;
     }
     console.log(`[lan-bridge] ${device.name} ${event.sync_type} sync: ${summary}`);
