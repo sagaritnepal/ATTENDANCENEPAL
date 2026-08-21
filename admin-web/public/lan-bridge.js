@@ -61,13 +61,23 @@ async function fetchEmployeeByFingerprint(fingerprintId) {
   return data;
 }
 
+// See index.js's withDevice() for why this timeout wrapper exists — a
+// hung getAttendances()/getUsers() call (no error event ever fires) leaves
+// busyDeviceIds wedged forever without it, confirmed happening live.
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
+  ]);
+}
+
 async function withDevice(device, fn) {
   const zk = new ZKLib(device.ip_address, device.port, 10000, 4000);
-  await zk.createSocket();
+  await withTimeout(zk.createSocket(), 15000, `${device.name}: connect`);
   try {
-    return await fn(zk);
+    return await withTimeout(fn(zk), 30000, `${device.name}: operation`);
   } finally {
-    await zk.disconnect();
+    await withTimeout(zk.disconnect(), 5000, `${device.name}: disconnect`).catch(() => {});
   }
 }
 
