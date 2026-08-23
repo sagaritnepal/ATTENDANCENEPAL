@@ -438,7 +438,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                   {' – '}
                   {r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
                 </td>
-                <td className="whitespace-nowrap px-2 py-1 print:border print:border-slate-400 print:px-2 print:py-1">
+                <td className="whitespace-nowrap px-2 py-1 print:border print:border-slate-400 print:px-2 print:py-1 print:text-[8px]">
                   {r.lateMinutes === 0 && r.earlyMinutes === 0 && <span className="text-slate-400 print:text-ink">—</span>}
                   {r.lateMinutes > 0 && (
                     <span className="font-medium text-warning-text print:text-ink">L {formatHoursMinutes(r.lateMinutes)}</span>
@@ -450,11 +450,11 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                 </td>
                 <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">
                   {fmtHrs(r.hours)}
-                  {r.pending && <span className="ml-1 text-[9px] text-slate-400 print:text-sm print:text-ink">(live)</span>}
+                  {r.pending && <span className="ml-1 text-[9px] text-slate-400 print:hidden">(live)</span>}
                 </td>
                 <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">
                   {fmtHrs(r.overtime)}
-                  {r.pending && <span className="ml-1 text-[9px] text-slate-400 print:text-sm print:text-ink">(live)</span>}
+                  {r.pending && <span className="ml-1 text-[9px] text-slate-400 print:hidden">(live)</span>}
                 </td>
                 <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">
                   {r.breakMinutes > 0 ? formatHoursMinutes(r.breakMinutes) : <span className="text-slate-400 print:text-ink">—</span>}
@@ -463,7 +463,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                   <span className="print:hidden">{statusBadge(r)}</span>
                   <span className="hidden print:inline print:text-ink">{r.status}</span>
                 </td>
-                <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">{r.device}</td>
+                <td className="whitespace-nowrap print-wrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-[8px] print:text-ink">{r.device}</td>
               </tr>
             ))}
             {rows.length === 0 && (

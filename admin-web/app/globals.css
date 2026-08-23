@@ -43,6 +43,14 @@ html, body {
     padding: 1px 2px !important;
     white-space: nowrap !important;
   }
+  /* Opt-out for the rare column (e.g. Device, whose real-world names run
+     longer than any other cell) whose forced nowrap above is exactly what
+     pushes the table past the page's width — lets that one column's text
+     wrap onto a second line instead of stretching the whole table. */
+  .print-wrap {
+    white-space: normal !important;
+    word-break: break-word;
+  }
   /* Column headers are the widest text relative to their data (e.g. "Late
      By (min)", "Calculated Salary") — letting them wrap to two lines saves
      far more horizontal room than the data cells below them would if they
