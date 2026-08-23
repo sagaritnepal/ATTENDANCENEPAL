@@ -22,21 +22,25 @@ html, body {
      rest of this block shrinks text/padding small enough that either
      orientation the user picks still fits one page. */
   @page {
-    margin: 8mm;
+    margin: 6mm;
   }
   /* Every exported table gets visible gridlines, and shrinks down to
      something that actually fits a page even in Portrait — much easier to
      read as a printed/PDF report than the screen's whitespace-only row
-     separation. */
+     separation. 9px (not the previous 7px) is the largest size that still
+     keeps the widest report (Attendance Report, 11 columns) inside one A4
+     Portrait page's width; table-layout: auto (not fixed) still lets short
+     columns like ID/Break stay narrow so that budget goes to columns that
+     actually need it (Shift, In/Out). */
   table {
     border-collapse: collapse !important;
-    font-size: 7px !important;
+    font-size: 9px !important;
     width: 100% !important;
     table-layout: auto !important;
   }
   th, td {
     border: 1px solid #cbd5e1 !important;
-    padding: 1px 3px !important;
+    padding: 1px 2px !important;
     white-space: nowrap !important;
   }
   /* Column headers are the widest text relative to their data (e.g. "Late
