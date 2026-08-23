@@ -8,7 +8,7 @@ import { useConfirm } from '@/components/ConfirmDialog';
 import { buildMonth, formatAdDate, stepAnchor, todayAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { nepalTodayIso } from '@/lib/shift';
-import { datesInRange, upcomingHolidays } from '@/lib/nepalHolidays';
+import { datesInRange, fetchUpcomingHolidays, type PredefinedHoliday } from '@/lib/nepalHolidays';
 import type { CompanyHoliday } from '@/lib/types';
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -67,11 +67,7 @@ export default function WeekOffPage() {
   // "Today" for the predefined-holiday suggestions, re-checked once a day
   // rather than only read once at mount — an admin panel left open for
   // multiple days would otherwise keep suggesting a holiday that already
-  // passed until the page is manually reloaded. This same daily recheck is
-  // also what carries the suggestions over to a new BS year automatically
-  // once one starts (upcomingHolidays() resolves the BS year from `today`
-  // itself, see lib/nepalHolidays.ts) — no separate year-rollover logic
-  // needed here.
+  // passed until the page is manually reloaded.
   const [today, setToday] = useState(nepalTodayIso);
   useEffect(() => {
     const id = setInterval(() => setToday(nepalTodayIso()), 24 * 60 * 60 * 1000);
@@ -79,8 +75,15 @@ export default function WeekOffPage() {
   }, []);
 
   // Suggestions for the Name field's datalist — every predefined Nepal
-  // public holiday whose last day hasn't passed yet, soonest first.
-  const upcoming = useMemo(() => upcomingHolidays(today), [today]);
+  // public holiday whose last day hasn't passed yet, soonest first. Pulled
+  // live from nepal_public_holidays (a daily hamropatro.com scrape, see
+  // lib/nepalHolidays.ts) rather than anything bundled with the app, so it
+  // carries over to a new BS year on its own once that year's holidays are
+  // actually published — nothing here needs updating when that happens.
+  const [upcoming, setUpcoming] = useState<PredefinedHoliday[]>([]);
+  useEffect(() => {
+    fetchUpcomingHolidays(today).then(setUpcoming);
+  }, [today]);
   const predefinedByName = useMemo(() => new Map(upcoming.map(h => [h.name, h])), [upcoming]);
 
   async function handleAddHoliday(e: React.FormEvent) {
