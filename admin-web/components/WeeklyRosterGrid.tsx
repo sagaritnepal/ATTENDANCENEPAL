@@ -87,6 +87,17 @@ export default function WeeklyRosterGrid({
   const [copiedEmployeeId, setCopiedEmployeeId] = useState<string | null>(null);
   const [pastingEmployeeId, setPastingEmployeeId] = useState<string | null>(null);
   const [pasteError, setPasteError] = useState<string | null>(null);
+  // Multi-target paste: check several employees below a Copy, then one
+  // "Paste to N selected" writes the copied week to all of them in a single
+  // request instead of clicking Paste on each row individually. Cleared
+  // whenever the copied source changes so a stale selection never carries
+  // over to a different source's paste.
+  const [selectedTargetIds, setSelectedTargetIds] = useState<Set<string>>(new Set());
+  const [pastingSelected, setPastingSelected] = useState(false);
+
+  useEffect(() => {
+    setSelectedTargetIds(new Set());
+  }, [copiedEmployeeId]);
 
   const week = useMemo(() => weekRange(anchor), [anchor]);
   const templateShifts = useMemo(() => shifts.filter(s => s.employee_id === null), [shifts]);
@@ -159,10 +170,15 @@ export default function WeeklyRosterGrid({
   }
 
   // Writes the copied employee's whole Sun-Sat week onto `targetId` straight
-  // to Supabase — but only after an explicit confirm, so nothing changes
-  // without the admin actually saying so. Only a source day that actually
-  // has a pick (not —) writes anything, leaving whatever's already on that
-  // target day alone. Also drops any of the target's own still-unsaved
+  // to Supabase. Only a source day that actually has a pick (not —) writes
+  // anything, leaving whatever's already on that target day alone if the
+  // source day itself is blank. A target day that already has its OWN
+  // assignment is a real conflict, though — that's silently destructive
+  // without a specific warning, so it's only allowed through an explicit
+  // confirm naming exactly which days already have a roster and would get
+  // overwritten. A target with no conflicts at all pastes immediately, no
+  // dialog — the whole point of Paste is fast, repeated application onto
+  // still-blank rows. Also drops any of the target's own still-unsaved
   // manual picks on the days just written, so the grid doesn't keep
   // showing a stale pending value that no longer matches what Paste just
   // saved underneath it.
@@ -170,16 +186,25 @@ export default function WeeklyRosterGrid({
     if (!copiedEmployeeId || copiedEmployeeId === targetId) return;
     const sourceName = employees.find(e => e.id === copiedEmployeeId)?.name ?? 'the copied employee';
     const targetName = employees.find(e => e.id === targetId)?.name ?? 'this employee';
-    if (!confirm(`Paste ${sourceName}'s week onto ${targetName}? This overwrites their matching days this week right away.`)) {
-      return;
+    const sourcePicks = week.dates
+      .map(date => ({ date, value: currentValue(copiedEmployeeId, date) }))
+      .filter(p => p.value !== UNSET);
+    if (sourcePicks.length === 0) return;
+    const conflictDates = sourcePicks.filter(p => currentValue(targetId, p.date) !== UNSET).map(p => shortDate(p.date));
+    if (conflictDates.length > 0) {
+      const denyMsg =
+        `${targetName} already has a shift roster assigned on ${conflictDates.length} of these day` +
+        `${conflictDates.length === 1 ? '' : 's'} (${conflictDates.join(', ')}).\n\n` +
+        `Paste ${sourceName}'s week anyway and overwrite ${conflictDates.length === 1 ? 'it' : 'them'}?`;
+      if (!confirm(denyMsg)) return;
     }
     setPastingEmployeeId(targetId);
     setPasteError(null);
-    const upserts: { employee_id: string; work_date: string; shift_id: string | null }[] = [];
-    for (const date of week.dates) {
-      const value = currentValue(copiedEmployeeId, date);
-      if (value !== UNSET) upserts.push({ employee_id: targetId, work_date: date, shift_id: value === WEEK_OFF_VALUE ? null : value });
-    }
+    const upserts = sourcePicks.map(p => ({
+      employee_id: targetId,
+      work_date: p.date,
+      shift_id: p.value === WEEK_OFF_VALUE ? null : p.value,
+    }));
     if (upserts.length === 0) {
       setPastingEmployeeId(null);
       return;
@@ -195,6 +220,56 @@ export default function WeeklyRosterGrid({
       for (const u of upserts) delete next[`${targetId}|${u.work_date}`];
       return next;
     });
+    reload();
+  }
+
+  // Same paste as pasteToEmployee, but fanned out to every selected target
+  // in one batch upsert instead of one request per click — same conflict
+  // rule too: only a target that already has its own roster on one of the
+  // pasted days needs an explicit confirm, and the dialog names which of the
+  // selected employees those are, not just a raw count of days.
+  async function pasteToSelected() {
+    if (!copiedEmployeeId || selectedTargetIds.size === 0) return;
+    const targetIds = [...selectedTargetIds].filter(id => id !== copiedEmployeeId);
+    if (targetIds.length === 0) return;
+    const sourceName = employees.find(e => e.id === copiedEmployeeId)?.name ?? 'the copied employee';
+    const sourcePicks = week.dates
+      .map(date => ({ date, value: currentValue(copiedEmployeeId, date) }))
+      .filter(p => p.value !== UNSET);
+    if (sourcePicks.length === 0) return;
+    const conflictingTargetIds = targetIds.filter(id => sourcePicks.some(p => currentValue(id, p.date) !== UNSET));
+    if (conflictingTargetIds.length > 0) {
+      const names = conflictingTargetIds.map(id => employees.find(e => e.id === id)?.name ?? 'Unknown').join(', ');
+      const denyMsg =
+        `${conflictingTargetIds.length} of the ${targetIds.length} selected employees already ` +
+        `${conflictingTargetIds.length === 1 ? 'has' : 'have'} a shift roster assigned on some of these days: ${names}.\n\n` +
+        `Paste ${sourceName}'s week anyway and overwrite ${conflictingTargetIds.length === 1 ? 'that roster' : 'those rosters'}?`;
+      if (!confirm(denyMsg)) return;
+    }
+    setPastingSelected(true);
+    setPasteError(null);
+    const upserts: { employee_id: string; work_date: string; shift_id: string | null }[] = [];
+    for (const targetId of targetIds) {
+      for (const { date, value } of sourcePicks) {
+        upserts.push({ employee_id: targetId, work_date: date, shift_id: value === WEEK_OFF_VALUE ? null : value });
+      }
+    }
+    if (upserts.length === 0) {
+      setPastingSelected(false);
+      return;
+    }
+    const { error } = await supabase.from('employee_daily_shifts').upsert(upserts, { onConflict: 'employee_id,work_date' });
+    setPastingSelected(false);
+    if (error) {
+      setPasteError(error.message);
+      return;
+    }
+    setPending(p => {
+      const next = { ...p };
+      for (const u of upserts) delete next[`${u.employee_id}|${u.work_date}`];
+      return next;
+    });
+    setSelectedTargetIds(new Set());
     reload();
   }
 
@@ -288,6 +363,25 @@ export default function WeeklyRosterGrid({
     [employees, week.dates, rosterRows, pending]
   );
 
+  const selectableTargetIds = useMemo(
+    () => employees.filter(e => e.id !== copiedEmployeeId).map(e => e.id),
+    [employees, copiedEmployeeId]
+  );
+  const allTargetsSelected = selectableTargetIds.length > 0 && selectableTargetIds.every(id => selectedTargetIds.has(id));
+
+  function toggleSelectedTarget(employeeId: string) {
+    setSelectedTargetIds(prev => {
+      const next = new Set(prev);
+      if (next.has(employeeId)) next.delete(employeeId);
+      else next.add(employeeId);
+      return next;
+    });
+  }
+
+  function toggleSelectAllTargets() {
+    setSelectedTargetIds(allTargetsSelected ? new Set() : new Set(selectableTargetIds));
+  }
+
   function cellTone(value: string, dirty: boolean) {
     if (dirty) return 'border-accent bg-accent/10 text-ink font-medium';
     if (value === WEEK_OFF_VALUE) return 'border-warning/30 bg-warning-bg text-warning-text font-semibold';
@@ -354,11 +448,24 @@ export default function WeeklyRosterGrid({
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-good/20 bg-good-bg px-4 py-2.5 text-sm sm:px-6">
           <span className="font-medium text-good-text">
             📋 Copied {employees.find(e => e.id === copiedEmployeeId)?.name ?? 'an employee'}&apos;s week — click{' '}
-            <strong>📋 Paste</strong> on any other employee below to apply it. Saves immediately, as many times as you like.
+            <strong>📋 Paste</strong> on one employee below, or check several then{' '}
+            <strong>Paste to selected</strong>. Saves immediately, as many times as you like.
           </span>
-          <button onClick={() => setCopiedEmployeeId(null)} className="shrink-0 text-xs font-medium text-slate-600 hover:underline">
-            ✕ Clear
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {selectedTargetIds.size > 0 && (
+              <button
+                type="button"
+                onClick={pasteToSelected}
+                disabled={pastingSelected}
+                className="rounded-md border border-accent bg-accent px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {pastingSelected ? 'Pasting…' : `📋 Paste to ${selectedTargetIds.size} selected`}
+              </button>
+            )}
+            <button onClick={() => setCopiedEmployeeId(null)} className="shrink-0 text-xs font-medium text-slate-600 hover:underline">
+              ✕ Clear
+            </button>
+          </div>
         </div>
       )}
       {pasteError && (
@@ -380,7 +487,21 @@ export default function WeeklyRosterGrid({
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                  <th className="sticky left-0 z-10 whitespace-nowrap bg-slate-50 px-3 py-2.5 font-medium">Employee</th>
+                  <th className="sticky left-0 z-10 whitespace-nowrap bg-slate-50 px-3 py-2.5 font-medium">
+                    {copiedEmployeeId ? (
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={allTargetsSelected}
+                          onChange={toggleSelectAllTargets}
+                          className="h-3.5 w-3.5 rounded border-slate-300 text-accent focus:ring-accent/30"
+                        />
+                        Employee
+                      </label>
+                    ) : (
+                      'Employee'
+                    )}
+                  </th>
                   {week.dates.map((date, i) => (
                     <th key={date} className={`whitespace-nowrap px-1.5 py-2.5 text-center font-medium ${date === today ? 'bg-accent/10 text-accent' : ''}`}>
                       {WEEKDAY_LABELS[i]}
@@ -407,6 +528,14 @@ export default function WeeklyRosterGrid({
                     <tr key={emp.id} className="border-b border-slate-100 last:border-0">
                       <td className={`sticky left-0 z-10 whitespace-nowrap px-3 py-2 ${rowBg}`}>
                         <div className="flex items-center gap-2">
+                          {copiedEmployeeId && emp.id !== copiedEmployeeId && (
+                            <input
+                              type="checkbox"
+                              checked={selectedTargetIds.has(emp.id)}
+                              onChange={() => toggleSelectedTarget(emp.id)}
+                              className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-accent focus:ring-accent/30"
+                            />
+                          )}
                           <Avatar name={emp.name} photoUrl={emp.profile_photo_url} className="h-14 w-14 text-base" />
                           <span className="truncate font-medium text-ink">{emp.name}</span>
                         </div>

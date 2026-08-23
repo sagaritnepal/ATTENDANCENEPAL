@@ -289,7 +289,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
     const lateMinutes = rows.reduce((sum, r) => sum + r.lateMinutes, 0);
     const earlyMinutes = rows.reduce((sum, r) => sum + r.earlyMinutes, 0);
     const presentDays = rows.filter(r => r.checkIn).length;
-    const absentDays = rows.filter(r => !r.checkIn && r.status !== 'Upcoming' && r.status !== 'Exempt').length;
+    const absentDays = rows.filter(r => r.status === 'Absent').length;
     return { workHours, overtimeHours, breakMinutes, lateMinutes, earlyMinutes, presentDays, absentDays };
   }, [rows]);
 
