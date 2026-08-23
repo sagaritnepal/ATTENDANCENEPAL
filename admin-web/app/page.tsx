@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
+import { formatAdDate, localDateKey } from '@/lib/calendar';
+import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { AttendanceLog, CompanyHoliday, Device, Employee, LeaveRequest, Shift } from '@/lib/types';
 import { dateKey, firstCheckIn, isLate, last7Days, presentEmployeeIds, WEEKDAY_LABEL } from '@/lib/metrics';
 import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '@/lib/weekOff';
@@ -34,6 +36,7 @@ type DetailRow = { id: string; primary: string; secondary?: string };
 type DetailKey = 'total' | 'present' | 'late' | 'leave' | 'weekOff' | 'absent' | 'hours' | 'overtime';
 
 export default function DashboardPage() {
+  const { system } = useCalendarSystem();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
@@ -386,7 +389,7 @@ export default function DashboardPage() {
                     {punchTypeLabel(item.punch_type)}
                   </Badge>
                   <div className="mt-1 text-xs text-slate-500">
-                    ({new Date(item.punch_time).toLocaleDateString([], { day: '2-digit', month: 'short' })}{' '}
+                    ({formatAdDate(localDateKey(item.punch_time), system)}{' '}
                     {new Date(item.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
                   </div>
                 </div>
