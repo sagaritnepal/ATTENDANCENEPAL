@@ -8,6 +8,7 @@ import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
 import PhotoCropModal from '@/components/PhotoCropModal';
+import { useConfirm } from '@/components/ConfirmDialog';
 import type { Employee, Shift, Profile, Branch, Department } from '@/lib/types';
 import { resolveShift, formatShiftHours } from '@/lib/shift';
 
@@ -91,6 +92,7 @@ export default function EmployeesPage() {
 }
 
 function EmployeesView() {
+  const confirm = useConfirm();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [rosterEmployeeIds, setRosterEmployeeIds] = useState<Set<string>>(new Set());
@@ -358,7 +360,7 @@ function EmployeesView() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Remove this employee?')) return;
+    if (!(await confirm('Remove this employee?', { title: 'Remove employee?', confirmLabel: 'Remove', tone: 'danger' }))) return;
     const { error } = await supabase.from('employees').delete().eq('id', id);
     if (error) {
       if (error.code === '23503') {
@@ -377,7 +379,7 @@ function EmployeesView() {
   }
 
   async function handleMarkResigned(emp: Employee) {
-    if (!confirm(`Mark ${emp.name} as resigned? They'll be removed from active views but their history is kept.`)) return;
+    if (!(await confirm(`Mark ${emp.name} as resigned? They'll be removed from active views but their history is kept.`, { title: 'Mark as resigned?', confirmLabel: 'Mark resigned', tone: 'danger' }))) return;
     const { error } = await supabase
       .from('employees')
       .update({ status: 'inactive', resigned_at: new Date().toISOString().slice(0, 10) })
@@ -387,7 +389,7 @@ function EmployeesView() {
   }
 
   async function handleRestore(emp: Employee) {
-    if (!confirm(`Restore ${emp.name} to active? They'll show up in active views again.`)) return;
+    if (!(await confirm(`Restore ${emp.name} to active? They'll show up in active views again.`, { title: 'Restore employee?', confirmLabel: 'Restore' }))) return;
     const { error } = await supabase.from('employees').update({ status: 'active', resigned_at: null }).eq('id', emp.id);
     if (error) alert(`Could not update: ${error.message}`);
     reload();

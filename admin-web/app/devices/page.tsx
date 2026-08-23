@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
+import { useConfirm } from '@/components/ConfirmDialog';
 import type { AttendanceLog, Branch, Device, DeviceSyncEvent, Employee } from '@/lib/types';
 
 const EMPTY_FORM = { name: '', branch_id: '', ip_address: '192.168.1.201', port: 4370, serial_number: '' };
@@ -67,6 +68,7 @@ function downloadEnvFile(envFile: string) {
 }
 
 export default function DevicesPage() {
+  const confirm = useConfirm();
   const [devices, setDevices] = useState<Device[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -182,7 +184,14 @@ export default function DevicesPage() {
   }
 
   async function handleRevokeBridge(id: string) {
-    if (!confirm('Revoke this bridge credential? Any machine still using it will stop being able to sync immediately.')) return;
+    if (
+      !(await confirm('Revoke this bridge credential? Any machine still using it will stop being able to sync immediately.', {
+        title: 'Revoke credential?',
+        confirmLabel: 'Revoke',
+        tone: 'danger',
+      }))
+    )
+      return;
     setRevokingBridgeId(id);
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
@@ -251,7 +260,14 @@ export default function DevicesPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Remove this device? Past punches synced from it are kept, but it will stop being polled.')) return;
+    if (
+      !(await confirm('Remove this device? Past punches synced from it are kept, but it will stop being polled.', {
+        title: 'Remove device?',
+        confirmLabel: 'Remove',
+        tone: 'danger',
+      }))
+    )
+      return;
     const { error } = await supabase.from('devices').delete().eq('id', id);
     if (error) alert(`Could not remove: ${error.message}`);
     reload();

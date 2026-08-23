@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Avatar from '@/components/Avatar';
 import RosterModeSwitch from '@/components/RosterModeSwitch';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { buildMonth, monthDateRange, stepAnchor, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { Employee, Shift } from '@/lib/types';
@@ -45,6 +46,7 @@ export default function MonthlyRosterGrid({
   onRosterModeChange: (mode: RosterMode) => void;
 }) {
   const { system } = useCalendarSystem();
+  const confirm = useConfirm();
   const isInactive = rosterMode === 'weekly';
   const [anchor, setAnchor] = useState(todayAnchor);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -147,15 +149,13 @@ export default function MonthlyRosterGrid({
     const sourceValue = currentValue(employeeId, dates[0]);
     if (sourceValue === UNSET) return;
     const emp = employees.find(e => e.id === employeeId);
-    if (
-      !confirm(
-        `Copy ${emp?.name ?? 'this employee'}'s day-1 pick to every other day this month? This overwrites all ${
-          dates.length - 1
-        } remaining days in their row right away.`
-      )
-    ) {
-      return;
-    }
+    const proceed = await confirm(
+      `Copy ${emp?.name ?? 'this employee'}'s day-1 pick to every other day this month? This overwrites all ${
+        dates.length - 1
+      } remaining days in their row right away.`,
+      { title: 'Overwrite this row?', confirmLabel: 'Overwrite', tone: 'danger' }
+    );
+    if (!proceed) return;
     setCopyingRowId(employeeId);
     const shiftId = sourceValue === WEEK_OFF_VALUE ? null : sourceValue;
     const upserts = dates.slice(1).map(date => ({ employee_id: employeeId, work_date: date, shift_id: shiftId }));
@@ -193,7 +193,7 @@ export default function MonthlyRosterGrid({
         `${targetName} already has a shift roster assigned on ${conflictDates.length} of these day` +
         `${conflictDates.length === 1 ? '' : 's'} (${describeDates(conflictDates)}).\n\n` +
         `Paste ${sourceName}'s month anyway and overwrite ${conflictDates.length === 1 ? 'it' : 'them'}?`;
-      if (!confirm(denyMsg)) return;
+      if (!(await confirm(denyMsg, { title: 'Roster already assigned', confirmLabel: 'Overwrite', tone: 'danger' }))) return;
     }
     setPastingEmployeeId(targetId);
     setPasteError(null);
@@ -239,7 +239,7 @@ export default function MonthlyRosterGrid({
         `${conflictingTargetIds.length} of the ${targetIds.length} selected employees already ` +
         `${conflictingTargetIds.length === 1 ? 'has' : 'have'} a shift roster assigned on some of these days: ${names}.\n\n` +
         `Paste ${sourceName}'s month anyway and overwrite ${conflictingTargetIds.length === 1 ? 'that roster' : 'those rosters'}?`;
-      if (!confirm(denyMsg)) return;
+      if (!(await confirm(denyMsg, { title: 'Roster already assigned', confirmLabel: 'Overwrite', tone: 'danger' }))) return;
     }
     setPastingSelected(true);
     setPasteError(null);

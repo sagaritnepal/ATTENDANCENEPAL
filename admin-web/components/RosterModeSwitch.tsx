@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useConfirm } from '@/components/ConfirmDialog';
 import type { RosterMode } from '@/lib/weekOff';
 
 const MODE_COPY: Record<RosterMode, { label: string; confirm: string }> = {
@@ -43,10 +44,11 @@ export default function RosterModeSwitch({
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   async function setMode(next: RosterMode) {
     if (next === mode || saving || !companyId) return;
-    if (!confirm(MODE_COPY[next].confirm)) return;
+    if (!(await confirm(MODE_COPY[next].confirm, { title: 'Switch roster type?', confirmLabel: 'Switch' }))) return;
     setSaving(true);
     setError(null);
     const { error } = await supabase.from('companies').update({ roster_mode: next }).eq('id', companyId);

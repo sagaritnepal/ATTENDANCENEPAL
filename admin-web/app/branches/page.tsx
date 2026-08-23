@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
+import { useConfirm } from '@/components/ConfirmDialog';
 import type { Branch, BranchDepartment, Department } from '@/lib/types';
 
 const EMPTY_FORM = { name: '', branch_code: '', latitude: '', longitude: '', radius_meters: 150 };
@@ -10,6 +11,7 @@ const EMPTY_FORM = { name: '', branch_code: '', latitude: '', longitude: '', rad
 type EmployeeScope = { branch_id: string | null; department: string | null };
 
 export default function BranchesPage() {
+  const confirm = useConfirm();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [branchDepartments, setBranchDepartments] = useState<BranchDepartment[]>([]);
@@ -122,7 +124,7 @@ export default function BranchesPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Remove this branch? Employees/devices assigned to it will need reassigning.')) return;
+    if (!(await confirm('Remove this branch? Employees/devices assigned to it will need reassigning.', { title: 'Remove branch?', confirmLabel: 'Remove', tone: 'danger' }))) return;
     const { error } = await supabase.from('branches').delete().eq('id', id);
     if (error) alert(`Could not remove: ${error.message}`);
     reload();
@@ -146,7 +148,7 @@ export default function BranchesPage() {
   }
 
   async function handleDeleteDepartment(dept: Department) {
-    if (!confirm(`Remove the "${dept.name}" department? It will be unlinked from every branch.`)) return;
+    if (!(await confirm(`Remove the "${dept.name}" department? It will be unlinked from every branch.`, { title: 'Remove department?', confirmLabel: 'Remove', tone: 'danger' }))) return;
     const { error } = await supabase.from('departments').delete().eq('id', dept.id);
     if (error) alert(`Could not remove: ${error.message}`);
     reload();

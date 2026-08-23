@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import DatePicker from '@/components/DatePicker';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { buildMonth, formatAdDate, stepAnchor, todayAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { CompanyHoliday } from '@/lib/types';
@@ -28,6 +29,7 @@ async function notifyWeekOffChange() {
 
 export default function WeekOffPage() {
   const { system } = useCalendarSystem();
+  const confirm = useConfirm();
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -77,7 +79,7 @@ export default function WeekOffPage() {
   }
 
   async function handleDeleteHoliday(id: string) {
-    if (!confirm('Delete this holiday?')) return;
+    if (!(await confirm('Delete this holiday?', { title: 'Delete holiday?', confirmLabel: 'Delete', tone: 'danger' }))) return;
     const { error } = await supabase.from('company_holidays').delete().eq('id', id);
     if (error) alert(`Couldn't delete: ${error.message}`);
     reload();

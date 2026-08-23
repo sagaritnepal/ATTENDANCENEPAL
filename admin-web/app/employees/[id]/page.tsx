@@ -8,6 +8,7 @@ import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
 import PhotoCropModal from '@/components/PhotoCropModal';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { SKILL_CATEGORIES } from '@/lib/skillCategories';
@@ -60,6 +61,7 @@ async function toDataUrl(url: string): Promise<string | null> {
 
 export default function EmployeeCvPage() {
   const { system } = useCalendarSystem();
+  const confirm = useConfirm();
   const params = useParams<{ id: string }>();
   const employeeId = params.id;
 
@@ -312,7 +314,7 @@ export default function EmployeeCvPage() {
   }
 
   async function handleDeleteEducation(id: string) {
-    if (!confirm('Remove this education entry?')) return;
+    if (!(await confirm('Remove this education entry?', { title: 'Remove entry?', confirmLabel: 'Remove', tone: 'danger' }))) return;
     await supabase.from('employee_education').delete().eq('id', id);
     reload();
   }
@@ -339,7 +341,7 @@ export default function EmployeeCvPage() {
   }
 
   async function handleDeleteExperience(id: string) {
-    if (!confirm('Remove this work experience entry?')) return;
+    if (!(await confirm('Remove this work experience entry?', { title: 'Remove entry?', confirmLabel: 'Remove', tone: 'danger' }))) return;
     await supabase.from('employee_work_experience').delete().eq('id', id);
     reload();
   }

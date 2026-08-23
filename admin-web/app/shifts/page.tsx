@@ -9,6 +9,7 @@ import WeeklyRosterGrid from '@/components/WeeklyRosterGrid';
 import WeeklyPatternGrid from '@/components/WeeklyPatternGrid';
 import MonthlyRosterGrid from '@/components/MonthlyRosterGrid';
 import BreakEnabledSwitch from '@/components/BreakEnabledSwitch';
+import { useConfirm } from '@/components/ConfirmDialog';
 import type { Employee, Shift } from '@/lib/types';
 import { resolveShift, formatShiftHours } from '@/lib/shift';
 import { fetchMyCompanyWeekOffConfig, type RosterMode } from '@/lib/weekOff';
@@ -69,6 +70,7 @@ export default function ShiftsPage() {
 }
 
 function ShiftsView() {
+  const confirm = useConfirm();
   const searchParams = useSearchParams();
   const initialTabParam = searchParams.get('tab');
   const initialTab = initialTabParam === 'roster' ? 'roster' : initialTabParam === 'monthly' ? 'monthly' : 'templates';
@@ -178,7 +180,7 @@ function ShiftsView() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Delete this shift?')) return;
+    if (!(await confirm('Delete this shift?', { title: 'Delete shift?', confirmLabel: 'Delete', tone: 'danger' }))) return;
     const { error } = await supabase.from('shifts').delete().eq('id', id);
     if (error) alert(`Couldn't delete: ${error.message}`);
     reload();

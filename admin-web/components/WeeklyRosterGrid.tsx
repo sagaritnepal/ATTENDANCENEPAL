@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import Avatar from '@/components/Avatar';
 import RosterModeSwitch from '@/components/RosterModeSwitch';
 import RosterCellPicker, { type RosterCellOption } from '@/components/RosterCellPicker';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { buildMonth, monthDateRange, stepWeek, weekRange, type CalendarAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import type { Employee, Shift } from '@/lib/types';
@@ -65,6 +66,7 @@ export default function WeeklyRosterGrid({
   onRosterModeChange: (mode: RosterMode) => void;
 }) {
   const { system } = useCalendarSystem();
+  const confirm = useConfirm();
   const [anchor, setAnchor] = useState(todayIso);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -196,7 +198,7 @@ export default function WeeklyRosterGrid({
         `${targetName} already has a shift roster assigned on ${conflictDates.length} of these day` +
         `${conflictDates.length === 1 ? '' : 's'} (${conflictDates.join(', ')}).\n\n` +
         `Paste ${sourceName}'s week anyway and overwrite ${conflictDates.length === 1 ? 'it' : 'them'}?`;
-      if (!confirm(denyMsg)) return;
+      if (!(await confirm(denyMsg, { title: 'Roster already assigned', confirmLabel: 'Overwrite', tone: 'danger' }))) return;
     }
     setPastingEmployeeId(targetId);
     setPasteError(null);
@@ -244,7 +246,7 @@ export default function WeeklyRosterGrid({
         `${conflictingTargetIds.length} of the ${targetIds.length} selected employees already ` +
         `${conflictingTargetIds.length === 1 ? 'has' : 'have'} a shift roster assigned on some of these days: ${names}.\n\n` +
         `Paste ${sourceName}'s week anyway and overwrite ${conflictingTargetIds.length === 1 ? 'that roster' : 'those rosters'}?`;
-      if (!confirm(denyMsg)) return;
+      if (!(await confirm(denyMsg, { title: 'Roster already assigned', confirmLabel: 'Overwrite', tone: 'danger' }))) return;
     }
     setPastingSelected(true);
     setPasteError(null);

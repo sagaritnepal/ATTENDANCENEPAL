@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Avatar from '@/components/Avatar';
 import RosterModeSwitch from '@/components/RosterModeSwitch';
+import { useConfirm } from '@/components/ConfirmDialog';
 import type { Employee, Shift } from '@/lib/types';
 import type { RosterMode } from '@/lib/weekOff';
 
@@ -30,6 +31,7 @@ export default function WeeklyPatternGrid({
   rosterMode: RosterMode;
   onRosterModeChange: (mode: RosterMode) => void;
 }) {
+  const confirm = useConfirm();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [patternRows, setPatternRows] = useState<PatternRow[]>([]);
@@ -91,9 +93,11 @@ export default function WeeklyPatternGrid({
     if (!copiedEmployeeId || copiedEmployeeId === targetId) return;
     const sourceName = employees.find(e => e.id === copiedEmployeeId)?.name ?? 'the copied employee';
     const targetName = employees.find(e => e.id === targetId)?.name ?? 'this employee';
-    if (!confirm(`Paste ${sourceName}'s pattern onto ${targetName}? This overwrites their matching weekdays right away.`)) {
-      return;
-    }
+    const proceed = await confirm(
+      `Paste ${sourceName}'s pattern onto ${targetName}? This overwrites their matching weekdays right away.`,
+      { title: 'Overwrite weekly pattern?', confirmLabel: 'Overwrite', tone: 'danger' }
+    );
+    if (!proceed) return;
     setPastingEmployeeId(targetId);
     setPasteError(null);
     const upserts: { employee_id: string; weekday: number; shift_id: string | null }[] = [];
