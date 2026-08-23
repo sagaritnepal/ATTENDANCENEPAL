@@ -386,7 +386,8 @@ export default function DashboardPage() {
                     {punchTypeLabel(item.punch_type)}
                   </Badge>
                   <div className="mt-1 text-xs text-slate-500">
-                    {new Date(item.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    ({new Date(item.punch_time).toLocaleDateString([], { day: '2-digit', month: 'short' })}{' '}
+                    {new Date(item.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
                   </div>
                 </div>
               </li>
