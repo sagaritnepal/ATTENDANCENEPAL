@@ -410,9 +410,9 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             don't render consistently across printers/PDF viewers and just
             burn ink), matching a normal printed report instead of a dense
             on-screen dashboard. */}
-        <table className="w-full text-left text-xs print:text-base print:border-collapse">
+        <table className="w-full text-left text-xs print:text-lg print:border-collapse">
           <thead>
-            <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 print:static print:bg-white print:text-sm print:text-ink">
+            <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 print:static print:bg-white print:text-xs print:text-ink">
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-2 print:py-1.5">Date</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-2 print:py-1.5">ID</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-2 print:py-1.5">Employee</th>
