@@ -24,39 +24,6 @@ export function downloadExcel(filename: string, headers: string[], rows: (string
   XLSX.writeFile(wb, filename.replace(/\.csv$/i, '') + '.xlsx');
 }
 
-export type ExcelSheet = {
-  name: string;
-  /** Plain text lines (company name, report title, date range) placed above
-   * the header row — each its own row, first cell only. Not part of the
-   * data table itself, so left out of the column-width/data math below. */
-  title?: string[];
-  headers: string[];
-  rows: (string | number)[][];
-};
-
-/** Same idea as downloadExcel(), but for a workbook with more than one
- * sheet — e.g. an Attendance grid plus a separate Hours Summary — and an
- * optional letterhead (company name/report title/period) prepended above
- * each sheet's header row for something a company could actually hand to
- * an auditor, not just a bare data dump. */
-export function downloadExcelWorkbook(filename: string, sheets: ExcelSheet[]) {
-  const wb = XLSX.utils.book_new();
-  for (const sheet of sheets) {
-    const titleRows = (sheet.title ?? []).map(line => [line]);
-    const ws = XLSX.utils.aoa_to_sheet([...titleRows, [], sheet.headers, ...sheet.rows]);
-    ws['!cols'] = sheet.headers.map((h, i) => {
-      const maxLen = Math.max(h.length, ...sheet.rows.map(r => String(r[i] ?? '').length));
-      return { wch: Math.min(Math.max(maxLen + 2, 8), 40) };
-    });
-    // Sheet names can't exceed 31 chars or contain []:*?/\ — every caller
-    // today passes a short plain word, but this keeps a longer/odd one from
-    // throwing instead of silently producing a corrupt workbook.
-    const safeName = sheet.name.replace(/[[\]:*?/\\]/g, '').slice(0, 31) || 'Sheet';
-    XLSX.utils.book_append_sheet(wb, ws, safeName);
-  }
-  XLSX.writeFile(wb, filename.replace(/\.csv$/i, '') + '.xlsx');
-}
-
 /** Print button doubles as "Save as PDF" — every browser's print dialog
  * offers that as a destination, so no PDF-generation library is needed.
  * Pairs with the print:hidden / print:overflow-visible classes on AppShell

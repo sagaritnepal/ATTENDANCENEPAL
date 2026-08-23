@@ -117,13 +117,35 @@ async function fetchEmployeeByFingerprint(fingerprintId) {
   return data;
 }
 
+// node-zklib's own 10s constructor timeout only covers createSocket() — a
+// getAttendances()/getUsers() call that hangs partway through a data pull
+// (device closes the connection uncleanly mid-transfer, no error event ever
+// fires) can leave its promise never settling. That's fatal here specifically
+// because syncDevice() holds a device in busyDeviceIds for the *entire*
+// duration of this call — a promise that never settles means that lock is
+// never released, silently wedging that device's sync forever (every future
+// poll just logs "already being synced" and returns) until the process is
+// manually restarted. Confirmed happening live, twice, in the same session.
+// Wrapping every step in an explicit outer timeout guarantees withDevice()
+// always resolves or rejects within a bounded window regardless of what
+// node-zklib does internally, so the busyDeviceIds lock can never wedge.
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
+  ]);
+}
+
 async function withDevice(device, fn) {
   const zk = new ZKLib(device.ip_address, device.port, 10000, 4000);
-  await zk.createSocket();
+  await withTimeout(zk.createSocket(), 15000, `${device.name}: connect`);
   try {
-    return await fn(zk);
+    return await withTimeout(fn(zk), 30000, `${device.name}: operation`);
   } finally {
-    await zk.disconnect();
+    // Best-effort and separately capped — a hung disconnect must never block
+    // releasing the busyDeviceIds lock either. Its own failure is swallowed;
+    // the socket gets cleaned up by the OS/device on its own either way.
+    await withTimeout(zk.disconnect(), 5000, `${device.name}: disconnect`).catch(() => {});
   }
 }
 
@@ -221,7 +243,12 @@ async function syncDevice(device) {
   busyDeviceIds.add(device.id);
   try {
     const rawLogs = await pullDeviceLogs(device);
-    const count = await upsertLogs(device, rawLogs);
+    // upsertLogs() makes its own per-row Supabase calls (fetchEmployeeByFingerprint
+    // for each punch, then the upsert itself) with no timeout of their own — a
+    // stalled connection here (this machine's network has been observed dropping
+    // out for stretches) would wedge busyDeviceIds exactly like the unbounded ZK
+    // call did before withDevice() got its own timeout. Same fix, same reason.
+    const count = await withTimeout(upsertLogs(device, rawLogs), 30000, `${device.name}: upsertLogs`);
     if (count > 0) console.log(`[${device.name}] synced ${count} new punch(es)`);
     failureCounts.set(device.id, 0);
     nextRetryAt.delete(device.id);
@@ -275,11 +302,11 @@ async function processSyncEvent(event) {
     let summary;
     if (event.sync_type === 'users') {
       const rawUsers = await pullDeviceUsers(device);
-      const { total, added } = await upsertUsers(device, rawUsers);
+      const { total, added } = await withTimeout(upsertUsers(device, rawUsers), 30000, `${device.name}: upsertUsers`);
       summary = `${total} user(s) on device, ${added} new employee(s) added`;
     } else {
       const rawLogs = await pullDeviceLogs(device);
-      const count = await upsertLogs(device, rawLogs);
+      const count = await withTimeout(upsertLogs(device, rawLogs), 30000, `${device.name}: upsertLogs`);
       summary = `${rawLogs.length} record(s) on device, ${count} matched to an employee`;
     }
     console.log(`[${device.name}] ${event.sync_type} sync: ${summary}`);

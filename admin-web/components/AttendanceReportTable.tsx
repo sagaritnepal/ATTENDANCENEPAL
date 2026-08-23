@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Badge from '@/components/Badge';
 import DateRangePicker from '@/components/DateRangePicker';
-import TableExportBar, { downloadExcelWorkbook } from '@/components/TableExportBar';
+import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import {
@@ -15,7 +15,6 @@ import {
   isWeekOff,
   nepalTodayIso,
   resolveShiftForDate,
-  shiftDurationHours,
   type DailyShiftByDate,
 } from '@/lib/shift';
 import { fetchMyCompanyWeekOffConfig, leaveDatesByEmployee, weekOffDatesInRange } from '@/lib/weekOff';
@@ -24,15 +23,10 @@ import type { AttendanceLog, CompanyHoliday, Device, Employee, LeaveRequest, Pay
 type Row = {
   key: string;
   date: string;
-  employeeId: string;
   enrollId: string;
   employeeName: string;
   device: string;
   shiftLabel: string;
-  /** Hours the resolved shift actually spans (0 for Week Off) — used to
-   * total up "expected hours" per employee for the Hours Summary export,
-   * independent of whether they actually showed up that day. */
-  shiftHours: number;
   checkIn: string | null;
   checkOut: string | null;
   hours: number;
@@ -48,54 +42,6 @@ type Row = {
    * here are computed live client-side from the raw punches (same math,
    * see lib/shift.ts) rather than left blank until that job runs. */
   pending?: boolean;
-};
-
-/** Compact per-cell code for the Attendance matrix (employees as rows, dates
- * as columns) — '' means Upcoming, rendered as a blank cell since the day
- * simply hasn't happened yet, not a status worth a code of its own. */
-type StatusCode = 'P' | 'LT' | 'A' | 'WO' | 'L' | 'EX' | '';
-const STATUS_CODE: Record<Row['status'], StatusCode> = {
-  Present: 'P',
-  Late: 'LT',
-  Absent: 'A',
-  'Week Off': 'WO',
-  Leave: 'L',
-  Exempt: 'EX',
-  Upcoming: '',
-};
-const STATUS_CODE_LABEL: Record<StatusCode, string> = {
-  P: 'Present',
-  LT: 'Late',
-  A: 'Absent',
-  WO: 'Week Off',
-  L: 'Leave',
-  EX: 'Exempt',
-  '': '',
-};
-
-type MatrixEmployeeRow = {
-  employeeId: string;
-  enrollId: string;
-  employeeName: string;
-  cellsByDate: Map<string, StatusCode>;
-  counts: Record<Exclude<StatusCode, ''>, number>;
-};
-
-type HoursSummaryRow = {
-  employeeId: string;
-  enrollId: string;
-  employeeName: string;
-  /** Present + Late days — days they actually punched. */
-  daysWorked: number;
-  /** Present + Late + Absent — days they were actually expected to work,
-   * excluding Week Off/Leave and an exempt employee's unpunched days. */
-  workingDays: number;
-  hoursWorked: number;
-  expectedHours: number;
-  overtimeHours: number;
-  /** Completed-break minutes, Present + Late days only — paid, already
-   * included in hoursWorked, purely a display stat. */
-  breakMinutes: number;
 };
 
 /** Decimal hours -> "Xh Ym". */
@@ -134,15 +80,13 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ employee_id: string; weekday: number; shift_id: string | null }[]>([]);
-  const [companyName, setCompanyName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     supabase.from('employees').select('*').eq('status', 'active').order('name').then(({ data }) => setEmployees(data ?? []));
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
     supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
-    fetchMyCompanyWeekOffConfig().then(({ companyName, weeklyOffDay, rosterMode }) => {
-      setCompanyName(companyName);
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
       setWeeklyOffDay(weeklyOffDay);
       // Not date-scoped (a pattern applies to every week), and only ever
       // relevant in 'weekly' roster_mode — see resolveShiftForDate().
@@ -195,26 +139,16 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
   const leaveByEmployee = useMemo(() => leaveDatesByEmployee(leaveRequests), [leaveRequests]);
   const weeklyPattern = useMemo(() => buildWeeklyPatternByEmployee(weeklyPatternRows), [weeklyPatternRows]);
 
-  // Every date in the picked range — hoisted out of the row-building memo
-  // below so the Attendance-grid export/print view can lay dates out as
-  // columns without recomputing (or drifting from) the same list.
-  const days: string[] = useMemo(() => {
-    const out: string[] = [];
+  const rows: Row[] = useMemo(() => {
+    const deviceName = (id: string | null) => devices.find(d => d.id === id)?.name ?? 'Mobile / QR / Selfie';
+    const days: string[] = [];
     const cur = new Date(from + 'T00:00:00Z');
     const end = new Date(to + 'T00:00:00Z');
     while (cur <= end) {
-      out.push(cur.toISOString().slice(0, 10));
+      days.push(cur.toISOString().slice(0, 10));
       cur.setUTCDate(cur.getUTCDate() + 1);
     }
-    return out;
-  }, [from, to]);
 
-  // Unfiltered, one row per employee×date — the on-screen detailed table
-  // below (`rows`) filters/sorts this for display, but the Attendance-grid
-  // export and its Hours Summary sheet need every day regardless of the
-  // Status filter, so they read from this instead.
-  const allRows: Row[] = useMemo(() => {
-    const deviceName = (id: string | null) => devices.find(d => d.id === id)?.name ?? 'Mobile / QR / Selfie';
     const today = nepalTodayIso();
 
     // Per-employee: raw same-date bucketing, corrected for any day whose
@@ -249,18 +183,14 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
           ? 'Week Off'
           : `${resolved.name} (${resolved.start_time.slice(0, 5)}–${resolved.end_time.slice(0, 5)})`;
 
-        const shiftHours = shiftDurationHours(resolved);
-
         if (summary) {
           out.push({
             key: `${emp.id}-${day}`,
             date: day,
-            employeeId: emp.id,
             enrollId: emp.fingerprint_id ?? '—',
             employeeName: emp.name,
             device: deviceName(dayLogs[0]?.device_id ?? null),
             shiftLabel,
-            shiftHours,
             checkIn: summary.check_in,
             checkOut: summary.check_out,
             hours: summary.total_hours,
@@ -280,12 +210,10 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
           out.push({
             key: `${emp.id}-${day}`,
             date: day,
-            employeeId: emp.id,
             enrollId: emp.fingerprint_id ?? '—',
             employeeName: emp.name,
             device: deviceName(dayLogs[0].device_id ?? null),
             shiftLabel,
-            shiftHours,
             checkIn: live.checkIn.punch_time,
             checkOut: live.checkOut?.punch_time ?? null,
             hours: live.totalMinutes / 60,
@@ -315,12 +243,10 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
           out.push({
             key: `${emp.id}-${day}`,
             date: day,
-            employeeId: emp.id,
             enrollId: emp.fingerprint_id ?? '—',
             employeeName: emp.name,
             device: 'N/A',
             shiftLabel,
-            shiftHours,
             checkIn: null,
             checkOut: null,
             hours: 0,
@@ -344,26 +270,17 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
         }
       }
     }
-    return out;
-  }, [scopedEmployees, summaries, logs, devices, shifts, days, dailyShiftByDate, weekOffDateSet, leaveByEmployee, weeklyPattern]);
-
-  // The on-screen detailed log applies the Status filter and the ID sort —
-  // the Attendance-grid export/print view below reads allRows directly
-  // instead, since it always needs every day regardless of that filter.
-  const rows: Row[] = useMemo(
-    () =>
-      allRows
-        .filter(r => status === 'All' || (status === 'Early' ? r.earlyMinutes > 0 : r.status === status))
-        .sort((a, b) => {
-          const aId = a.enrollId ?? '';
-          const bId = b.enrollId ?? '';
-          if (!aId && !bId) return 0;
-          if (!aId) return 1;
-          if (!bId) return -1;
-          return aId.localeCompare(bId, undefined, { numeric: true, sensitivity: 'base' });
-        }),
-    [allRows, status]
-  );
+    return out
+      .filter(r => status === 'All' || (status === 'Early' ? r.earlyMinutes > 0 : r.status === status))
+      .sort((a, b) => {
+        const aId = a.enrollId ?? '';
+        const bId = b.enrollId ?? '';
+        if (!aId && !bId) return 0;
+        if (!aId) return 1;
+        if (!bId) return -1;
+        return aId.localeCompare(bId, undefined, { numeric: true, sensitivity: 'base' });
+      });
+  }, [scopedEmployees, summaries, logs, devices, shifts, from, to, status, dailyShiftByDate, weekOffDateSet, leaveByEmployee, weeklyPattern]);
 
   const totals = useMemo(() => {
     const workHours = rows.reduce((sum, r) => sum + r.hours, 0);
@@ -376,107 +293,45 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
     return { workHours, overtimeHours, breakMinutes, lateMinutes, earlyMinutes, presentDays, absentDays };
   }, [rows]);
 
-  // Matrix export/print view: employees as rows, every date in range as its
-  // own column, then running Present/Late/Absent/Week Off/Leave/Exempt
-  // totals — built from allRows (not the Status-filtered/sorted `rows`),
-  // since the export always wants the whole picture regardless of that
-  // on-screen filter.
-  const matrix = useMemo<MatrixEmployeeRow[]>(() => {
-    const byEmployee = new Map<string, MatrixEmployeeRow>();
-    for (const emp of scopedEmployees) {
-      byEmployee.set(emp.id, {
-        employeeId: emp.id,
-        enrollId: emp.fingerprint_id ?? '—',
-        employeeName: emp.name,
-        cellsByDate: new Map(),
-        counts: { P: 0, LT: 0, A: 0, WO: 0, L: 0, EX: 0 },
-      });
-    }
-    for (const r of allRows) {
-      const row = byEmployee.get(r.employeeId);
-      if (!row) continue;
-      const code = STATUS_CODE[r.status];
-      row.cellsByDate.set(r.date, code);
-      if (code) row.counts[code]++;
-    }
-    return Array.from(byEmployee.values());
-  }, [scopedEmployees, allRows]);
-
-  // Hours Summary: "expected hours" only counts a day the employee was
-  // actually meant to work (Present/Late/Absent — not Week Off/Leave, and
-  // not a day an exempt employee simply didn't punch), so an employee with
-  // more Week Off/Leave days correctly ends up with fewer expected hours,
-  // not "short" by comparison to someone who had none.
-  const hoursSummary = useMemo<HoursSummaryRow[]>(() => {
-    const byEmployee = new Map<string, HoursSummaryRow>();
-    for (const emp of scopedEmployees) {
-      byEmployee.set(emp.id, {
-        employeeId: emp.id,
-        enrollId: emp.fingerprint_id ?? '—',
-        employeeName: emp.name,
-        daysWorked: 0,
-        workingDays: 0,
-        hoursWorked: 0,
-        expectedHours: 0,
-        overtimeHours: 0,
-        breakMinutes: 0,
-      });
-    }
-    for (const r of allRows) {
-      const row = byEmployee.get(r.employeeId);
-      if (!row) continue;
-      if (r.status === 'Present' || r.status === 'Late' || r.status === 'Absent') {
-        row.workingDays++;
-        row.expectedHours += r.shiftHours;
-      }
-      if (r.status === 'Present' || r.status === 'Late') {
-        row.daysWorked++;
-        row.hoursWorked += r.hours;
-        row.overtimeHours += r.overtime;
-        row.breakMinutes += r.breakMinutes;
-      }
-    }
-    return Array.from(byEmployee.values());
-  }, [scopedEmployees, allRows]);
-
-  function exportWorkbook() {
-    const periodLabel = from === to ? formatAdDate(from, system) : `${formatAdDate(from, system)} – ${formatAdDate(to, system)}`;
-    const title = [companyName ?? 'Attendance Report', 'Monthly Attendance Report', periodLabel];
-
-    const attendanceHeaders = ['Employee', 'ID', ...days.map(d => formatAdDate(d, system)), 'Present', 'Late', 'Absent', 'Week Off', 'Leave', 'Exempt'];
-    const attendanceRows = matrix.map(m => [
-      m.employeeName,
-      m.enrollId,
-      ...days.map(d => STATUS_CODE_LABEL[m.cellsByDate.get(d) ?? ''] ?? ''),
-      m.counts.P,
-      m.counts.LT,
-      m.counts.A,
-      m.counts.WO,
-      m.counts.L,
-      m.counts.EX,
+  function exportCsv() {
+    const header = [
+      'Date',
+      'ID',
+      'Employee',
+      'Shift',
+      'Check-In',
+      'Check-Out',
+      'Late By (min)',
+      'Early Out (min)',
+      'Total Work Hours',
+      'Overtime',
+      'Break',
+      'Status',
+      'Device',
+    ];
+    const lines = rows.map(r => [
+      r.date,
+      r.enrollId,
+      r.employeeName,
+      r.shiftLabel,
+      r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour12: false }) : '',
+      r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour12: false }) : '',
+      r.lateMinutes || '',
+      r.earlyMinutes || '',
+      r.hours.toFixed(1),
+      r.overtime.toFixed(1),
+      r.breakMinutes ? formatHoursMinutes(r.breakMinutes) : '',
+      r.status,
+      r.device,
     ]);
-
-    const hoursHeaders = ['Employee', 'ID', 'Days Worked', 'Working Days', 'Hours Worked', 'Expected Hours', 'Overtime', 'Break', 'Difference'];
-    const hoursRows = hoursSummary.map(h => [
-      h.employeeName,
-      h.enrollId,
-      h.daysWorked,
-      h.workingDays,
-      h.hoursWorked.toFixed(1),
-      h.expectedHours.toFixed(1),
-      h.overtimeHours.toFixed(1),
-      h.breakMinutes ? formatHoursMinutes(h.breakMinutes) : '',
-      (h.hoursWorked - h.expectedHours).toFixed(1),
-    ]);
-
-    downloadExcelWorkbook(`attendance_${from}_to_${to}.xlsx`, [
-      { name: 'Attendance', title, headers: attendanceHeaders, rows: attendanceRows },
-      { name: 'Hours Summary', title, headers: hoursHeaders, rows: hoursRows },
-    ]);
+    downloadExcel(`attendance_${from}_to_${to}.csv`, header, lines);
   }
 
   return (
     <>
+      <h1 className="mb-3 hidden text-2xl font-bold text-ink print:block">
+        Attendance Report — {from} to {to}
+      </h1>
       <div className="mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm print:hidden">
         <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
           <div>
@@ -538,69 +393,77 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             </div>
           </div>
 
-          <TableExportBar onExportCsv={exportWorkbook} />
+          <TableExportBar onExportCsv={exportCsv} />
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white shadow-sm print:hidden">
+      <div className="rounded-lg border border-slate-200 bg-white shadow-sm print:border-0 print:shadow-none">
         {/* Same left-to-right table on every screen size, including phones —
             horizontal scroll instead of a condensed/truncated mobile layout,
             so it always matches the desktop web view exactly. Print gets the
             full table instead of just the scrolled-into-view slice. */}
         <div className="max-h-[65vh] overflow-auto rounded-lg print:max-h-none print:overflow-visible">
-        <table className="w-full text-left text-xs">
+        {/* print:-prefixed classes below only take effect inside the browser's
+            print/Save-as-PDF preview — the on-screen table (colors, compact
+            10-12px sizing) is untouched. Print gets larger text, a plain
+            black-and-white grid (no colored badges/backgrounds — those often
+            don't render consistently across printers/PDF viewers and just
+            burn ink), matching a normal printed report instead of a dense
+            on-screen dashboard. */}
+        <table className="w-full text-left text-xs print:text-lg print:border-collapse">
           <thead>
-            <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Date</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium">ID</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Employee</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Shift</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium">In / Out</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Late / Early</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Work Hours</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Overtime</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Break</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Status</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium">Device</th>
+            <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 print:static print:bg-white print:text-[9px] print:text-ink">
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Date</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">ID</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Employee</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Shift</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">In / Out</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Late / Early</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Work Hours</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Overtime</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Break</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:w-16 print:border print:border-slate-400 print:px-1 print:py-1">Status</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Device</th>
             </tr>
           </thead>
           <tbody>
             {rows.map(r => (
-              <tr key={r.key} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                <td className="whitespace-nowrap px-2 py-1 text-slate-600">{formatAdDate(r.date, system)}</td>
-                <td className="whitespace-nowrap px-2 py-1 text-slate-600">{r.enrollId}</td>
-                <td className="whitespace-nowrap px-2 py-1 font-medium text-ink">{r.employeeName}</td>
-                <td className="px-2 py-1 whitespace-nowrap text-slate-600">{r.shiftLabel}</td>
-                <td className="whitespace-nowrap px-2 py-1 text-slate-600">
+              <tr key={r.key} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 print:hover:bg-transparent">
+                <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">{formatAdDate(r.date, system)}</td>
+                <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">{r.enrollId}</td>
+                <td className="whitespace-nowrap px-2 py-1 font-medium text-ink print:border print:border-slate-400 print:px-2 print:py-1">{r.employeeName}</td>
+                <td className="px-2 py-1 whitespace-nowrap text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">{r.shiftLabel}</td>
+                <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">
                   {r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
                   {' – '}
                   {r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
                 </td>
-                <td className="whitespace-nowrap px-2 py-1">
-                  {r.lateMinutes === 0 && r.earlyMinutes === 0 && <span className="text-slate-400">—</span>}
+                <td className="whitespace-nowrap px-2 py-1 print:border print:border-slate-400 print:px-2 print:py-1">
+                  {r.lateMinutes === 0 && r.earlyMinutes === 0 && <span className="text-slate-400 print:text-ink">—</span>}
                   {r.lateMinutes > 0 && (
-                    <span className="font-medium text-warning-text">L {formatHoursMinutes(r.lateMinutes)}</span>
+                    <span className="font-medium text-warning-text print:text-ink">L {formatHoursMinutes(r.lateMinutes)}</span>
                   )}
                   {r.lateMinutes > 0 && r.earlyMinutes > 0 && ' · '}
                   {r.earlyMinutes > 0 && (
-                    <span className="font-medium text-critical-text">E {formatHoursMinutes(r.earlyMinutes)}</span>
+                    <span className="font-medium text-critical-text print:text-ink">E {formatHoursMinutes(r.earlyMinutes)}</span>
                   )}
                 </td>
-                <td className="whitespace-nowrap px-2 py-1 text-slate-600">
+                <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">
                   {fmtHrs(r.hours)}
-                  {r.pending && <span className="ml-1 text-[9px] text-slate-400">(live)</span>}
+                  {r.pending && <span className="ml-1 text-[9px] text-slate-400 print:text-sm print:text-ink">(live)</span>}
                 </td>
-                <td className="whitespace-nowrap px-2 py-1 text-slate-600">
+                <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">
                   {fmtHrs(r.overtime)}
-                  {r.pending && <span className="ml-1 text-[9px] text-slate-400">(live)</span>}
+                  {r.pending && <span className="ml-1 text-[9px] text-slate-400 print:text-sm print:text-ink">(live)</span>}
                 </td>
-                <td className="whitespace-nowrap px-2 py-1 text-slate-600">
-                  {r.breakMinutes > 0 ? formatHoursMinutes(r.breakMinutes) : <span className="text-slate-400">—</span>}
+                <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">
+                  {r.breakMinutes > 0 ? formatHoursMinutes(r.breakMinutes) : <span className="text-slate-400 print:text-ink">—</span>}
                 </td>
-                <td className="whitespace-nowrap px-2 py-1">
-                  {statusBadge(r)}
+                <td className="whitespace-nowrap px-2 py-1 print:w-20 print:border print:border-slate-400 print:px-1 print:py-1">
+                  <span className="print:hidden">{statusBadge(r)}</span>
+                  <span className="hidden print:inline print:text-ink">{r.status}</span>
                 </td>
-                <td className="whitespace-nowrap px-2 py-1 text-slate-600">{r.device}</td>
+                <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">{r.device}</td>
               </tr>
             ))}
             {rows.length === 0 && (
@@ -613,128 +476,41 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
           </tbody>
           {rows.length > 0 && (
             <tfoot>
-              <tr className="sticky bottom-0 border-t-2 border-slate-200 bg-slate-50 text-xs font-bold text-ink">
-                <td colSpan={4} className="whitespace-nowrap px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              <tr className="sticky bottom-0 border-t-2 border-slate-200 bg-slate-50 text-xs font-bold text-ink print:static print:bg-white print:text-base">
+                <td colSpan={4} className="whitespace-nowrap px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-500 print:border print:border-slate-400 print:px-2 print:text-base print:text-ink">
                   Total
                 </td>
-                <td />
-                <td className="whitespace-nowrap px-2 py-1.5 text-[10px]">
-                  {totals.lateMinutes > 0 && <span className="text-warning-text">L {formatHoursMinutes(totals.lateMinutes)}</span>}
+                <td className="print:border print:border-slate-400" />
+                <td className="whitespace-nowrap px-2 py-1.5 text-[10px] print:border print:border-slate-400 print:px-2 print:text-base">
+                  {totals.lateMinutes > 0 && <span className="text-warning-text print:text-ink">L {formatHoursMinutes(totals.lateMinutes)}</span>}
                   {totals.lateMinutes > 0 && totals.earlyMinutes > 0 && ' · '}
-                  {totals.earlyMinutes > 0 && <span className="text-critical-text">E {formatHoursMinutes(totals.earlyMinutes)}</span>}
+                  {totals.earlyMinutes > 0 && <span className="text-critical-text print:text-ink">E {formatHoursMinutes(totals.earlyMinutes)}</span>}
                   {totals.lateMinutes === 0 && totals.earlyMinutes === 0 && '—'}
                 </td>
-                <td className="whitespace-nowrap px-2 py-1.5">{fmtHrs(totals.workHours)}</td>
-                <td className="whitespace-nowrap px-2 py-1.5">{fmtHrs(totals.overtimeHours)}</td>
-                <td className="whitespace-nowrap px-2 py-1.5">{totals.breakMinutes > 0 ? formatHoursMinutes(totals.breakMinutes) : '—'}</td>
-                <td className="whitespace-nowrap px-2 py-1.5 text-[10px] font-semibold">
-                  <span className="text-good-text">{totals.presentDays} present</span>
-                  {' · '}
-                  <span className="text-critical-text">{totals.absentDays} absent</span>
+                <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2">{fmtHrs(totals.workHours)}</td>
+                <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2">{fmtHrs(totals.overtimeHours)}</td>
+                <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2">{totals.breakMinutes > 0 ? formatHoursMinutes(totals.breakMinutes) : '—'}</td>
+                <td className="whitespace-nowrap px-2 py-1.5 text-[10px] font-semibold print:w-20 print:whitespace-normal print:border print:border-slate-400 print:px-1 print:text-base">
+                  {/* On-screen: one line, colored, joined by " · " — unchanged.
+                      Print: stacked on two lines instead, so this cell doesn't
+                      force the totals row (and the columns before it) wider
+                      than they need to be. */}
+                  <span className="print:hidden">
+                    <span className="text-good-text">{totals.presentDays} present</span>
+                    {' · '}
+                    <span className="text-critical-text">{totals.absentDays} absent</span>
+                  </span>
+                  <span className="hidden print:flex print:flex-col print:text-ink">
+                    <span>{totals.presentDays} present</span>
+                    <span>{totals.absentDays} absent</span>
+                  </span>
                 </td>
-                <td />
+                <td className="print:border print:border-slate-400" />
               </tr>
             </tfoot>
           )}
         </table>
         </div>
-      </div>
-
-      {/* Print/PDF-only view — employees as rows, dates as columns, running
-          totals, plus a separate Hours Summary. Hidden on screen; the
-          detailed punch-by-punch log above is print:hidden instead, so
-          only one of the two ever actually prints. */}
-      <div className="hidden print:block">
-        <div className="mb-4 border-b border-slate-300 pb-3 text-center">
-          <div className="text-lg font-bold text-ink">{companyName ?? 'Attendance Report'}</div>
-          <div className="mx-auto my-2 h-px w-9 bg-ink" />
-          <div className="text-sm font-semibold text-ink">Monthly Attendance Report</div>
-          <div className="text-xs font-semibold text-accent">
-            {from === to ? formatAdDate(from, system) : `${formatAdDate(from, system)} – ${formatAdDate(to, system)}`}
-          </div>
-        </div>
-
-        <div className="mb-3 flex flex-wrap gap-3 text-[10px] text-slate-600">
-          <span><b>P</b> Present</span>
-          <span><b>LT</b> Late</span>
-          <span><b>A</b> Absent</span>
-          <span><b>WO</b> Week Off</span>
-          <span><b>L</b> Leave</span>
-          <span><b>EX</b> Exempt</span>
-        </div>
-
-        <table className="w-full border-collapse text-left text-[9px]">
-          <thead>
-            <tr className="border-b border-slate-400">
-              <th className="whitespace-nowrap border-r border-slate-300 px-1.5 py-1 font-semibold">Employee</th>
-              {days.map(d => (
-                <th key={d} className="whitespace-nowrap px-1 py-1 text-center font-medium">
-                  {formatAdDate(d, system)}
-                </th>
-              ))}
-              <th className="whitespace-nowrap border-l border-slate-300 px-1.5 py-1 text-center font-semibold">P</th>
-              <th className="whitespace-nowrap px-1.5 py-1 text-center font-semibold">LT</th>
-              <th className="whitespace-nowrap px-1.5 py-1 text-center font-semibold">A</th>
-              <th className="whitespace-nowrap px-1.5 py-1 text-center font-semibold">WO</th>
-              <th className="whitespace-nowrap px-1.5 py-1 text-center font-semibold">L</th>
-              <th className="whitespace-nowrap px-1.5 py-1 text-center font-semibold">EX</th>
-            </tr>
-          </thead>
-          <tbody>
-            {matrix.map(m => (
-              <tr key={m.employeeId} className="border-b border-slate-200">
-                <td className="whitespace-nowrap border-r border-slate-300 px-1.5 py-1 font-medium">
-                  {m.employeeName} <span className="text-slate-400">#{m.enrollId}</span>
-                </td>
-                {days.map(d => (
-                  <td key={d} className="whitespace-nowrap px-1 py-1 text-center">
-                    {m.cellsByDate.get(d) || '–'}
-                  </td>
-                ))}
-                <td className="border-l border-slate-300 px-1.5 py-1 text-center font-semibold">{m.counts.P}</td>
-                <td className="px-1.5 py-1 text-center font-semibold">{m.counts.LT}</td>
-                <td className="px-1.5 py-1 text-center font-semibold">{m.counts.A}</td>
-                <td className="px-1.5 py-1 text-center font-semibold">{m.counts.WO}</td>
-                <td className="px-1.5 py-1 text-center font-semibold">{m.counts.L}</td>
-                <td className="px-1.5 py-1 text-center font-semibold">{m.counts.EX}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        <div className="mb-2 mt-8 text-sm font-semibold text-ink">Hours Summary</div>
-        <table className="w-full border-collapse text-left text-[10px]">
-          <thead>
-            <tr className="border-b border-slate-400">
-              <th className="px-1.5 py-1 font-semibold">Employee</th>
-              <th className="px-1.5 py-1 text-right font-semibold">Days Worked</th>
-              <th className="px-1.5 py-1 text-right font-semibold">Hours Worked</th>
-              <th className="px-1.5 py-1 text-right font-semibold">Expected Hours</th>
-              <th className="px-1.5 py-1 text-right font-semibold">Overtime</th>
-              <th className="px-1.5 py-1 text-right font-semibold">Difference</th>
-            </tr>
-          </thead>
-          <tbody>
-            {hoursSummary.map(h => {
-              const diff = h.hoursWorked - h.expectedHours;
-              return (
-                <tr key={h.employeeId} className="border-b border-slate-200">
-                  <td className="px-1.5 py-1 font-medium">{h.employeeName}</td>
-                  <td className="px-1.5 py-1 text-right">
-                    {h.daysWorked} / {h.workingDays}
-                  </td>
-                  <td className="px-1.5 py-1 text-right">{h.hoursWorked.toFixed(1)}</td>
-                  <td className="px-1.5 py-1 text-right">{h.expectedHours.toFixed(1)}</td>
-                  <td className="px-1.5 py-1 text-right">{h.overtimeHours.toFixed(1)}</td>
-                  <td className={`px-1.5 py-1 text-right font-semibold ${diff < 0 ? 'text-critical-text' : 'text-good-text'}`}>
-                    {diff >= 0 ? '+' : ''}
-                    {diff.toFixed(1)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
       </div>
     </>
   );
