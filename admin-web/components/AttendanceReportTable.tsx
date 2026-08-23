@@ -410,9 +410,9 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             don't render consistently across printers/PDF viewers and just
             burn ink), matching a normal printed report instead of a dense
             on-screen dashboard. */}
-        <table className="w-full text-left text-2xl print:text-lg print:border-collapse">
+        <table className="w-full text-left text-xs print:text-lg print:border-collapse">
           <thead>
-            <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xl uppercase tracking-wide text-slate-500 print:static print:bg-white print:text-[9px] print:text-ink">
+            <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 print:static print:bg-white print:text-[9px] print:text-ink">
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Date</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">ID</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Employee</th>
@@ -450,11 +450,11 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                 </td>
                 <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">
                   {fmtHrs(r.hours)}
-                  {r.pending && <span className="ml-1 text-sm text-slate-400 print:text-sm print:text-ink">(live)</span>}
+                  {r.pending && <span className="ml-1 text-[9px] text-slate-400 print:text-sm print:text-ink">(live)</span>}
                 </td>
                 <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">
                   {fmtHrs(r.overtime)}
-                  {r.pending && <span className="ml-1 text-sm text-slate-400 print:text-sm print:text-ink">(live)</span>}
+                  {r.pending && <span className="ml-1 text-[9px] text-slate-400 print:text-sm print:text-ink">(live)</span>}
                 </td>
                 <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">
                   {r.breakMinutes > 0 ? formatHoursMinutes(r.breakMinutes) : <span className="text-slate-400 print:text-ink">—</span>}
@@ -476,12 +476,12 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
           </tbody>
           {rows.length > 0 && (
             <tfoot>
-              <tr className="sticky bottom-0 border-t-2 border-slate-200 bg-slate-50 text-2xl font-bold text-ink print:static print:bg-white print:text-base">
-                <td colSpan={4} className="whitespace-nowrap px-2 py-1.5 text-right text-xl font-semibold uppercase tracking-wide text-slate-500 print:border print:border-slate-400 print:px-2 print:text-base print:text-ink">
+              <tr className="sticky bottom-0 border-t-2 border-slate-200 bg-slate-50 text-xs font-bold text-ink print:static print:bg-white print:text-base">
+                <td colSpan={4} className="whitespace-nowrap px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wide text-slate-500 print:border print:border-slate-400 print:px-2 print:text-base print:text-ink">
                   Total
                 </td>
                 <td className="print:border print:border-slate-400" />
-                <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2 print:text-base">
+                <td className="whitespace-nowrap px-2 py-1.5 text-[10px] print:border print:border-slate-400 print:px-2 print:text-base">
                   {totals.lateMinutes > 0 && <span className="text-warning-text print:text-ink">L {formatHoursMinutes(totals.lateMinutes)}</span>}
                   {totals.lateMinutes > 0 && totals.earlyMinutes > 0 && ' · '}
                   {totals.earlyMinutes > 0 && <span className="text-critical-text print:text-ink">E {formatHoursMinutes(totals.earlyMinutes)}</span>}
@@ -490,7 +490,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                 <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2">{fmtHrs(totals.workHours)}</td>
                 <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2">{fmtHrs(totals.overtimeHours)}</td>
                 <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2">{totals.breakMinutes > 0 ? formatHoursMinutes(totals.breakMinutes) : '—'}</td>
-                <td className="whitespace-nowrap px-2 py-1.5 font-semibold print:w-20 print:whitespace-normal print:border print:border-slate-400 print:px-1 print:text-base">
+                <td className="whitespace-nowrap px-2 py-1.5 text-[10px] font-semibold print:w-20 print:whitespace-normal print:border print:border-slate-400 print:px-1 print:text-base">
                   {/* On-screen: one line, colored, joined by " · " — unchanged.
                       Print: stacked on two lines instead, so this cell doesn't
                       force the totals row (and the columns before it) wider
