@@ -412,18 +412,18 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             on-screen dashboard. */}
         <table className="w-full text-left text-xs print:text-lg print:border-collapse">
           <thead>
-            <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 print:static print:bg-white print:text-xs print:text-ink">
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-2 print:py-1.5">Date</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-2 print:py-1.5">ID</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-2 print:py-1.5">Employee</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-2 print:py-1.5">Shift</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-2 print:py-1.5">In / Out</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-2 print:py-1.5">Late / Early</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-2 print:py-1.5">Work Hours</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-2 print:py-1.5">Overtime</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-2 print:py-1.5">Break</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:w-20 print:border print:border-slate-400 print:px-1 print:py-1.5">Status</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-2 print:py-1.5">Device</th>
+            <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 print:static print:bg-white print:text-[9px] print:text-ink">
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Date</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">ID</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Employee</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Shift</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">In / Out</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Late / Early</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Work Hours</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Overtime</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Break</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:w-16 print:border print:border-slate-400 print:px-1 print:py-1">Status</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Device</th>
             </tr>
           </thead>
           <tbody>
