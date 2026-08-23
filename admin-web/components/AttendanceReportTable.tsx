@@ -490,10 +490,20 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                 <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2">{fmtHrs(totals.workHours)}</td>
                 <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2">{fmtHrs(totals.overtimeHours)}</td>
                 <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2">{totals.breakMinutes > 0 ? formatHoursMinutes(totals.breakMinutes) : '—'}</td>
-                <td className="whitespace-nowrap px-2 py-1.5 text-[10px] font-semibold print:border print:border-slate-400 print:px-2 print:text-base">
-                  <span className="text-good-text print:text-ink">{totals.presentDays} present</span>
-                  {' · '}
-                  <span className="text-critical-text print:text-ink">{totals.absentDays} absent</span>
+                <td className="whitespace-nowrap px-2 py-1.5 text-[10px] font-semibold print:w-20 print:whitespace-normal print:border print:border-slate-400 print:px-1 print:text-base">
+                  {/* On-screen: one line, colored, joined by " · " — unchanged.
+                      Print: stacked on two lines instead, so this cell doesn't
+                      force the totals row (and the columns before it) wider
+                      than they need to be. */}
+                  <span className="print:hidden">
+                    <span className="text-good-text">{totals.presentDays} present</span>
+                    {' · '}
+                    <span className="text-critical-text">{totals.absentDays} absent</span>
+                  </span>
+                  <span className="hidden print:flex print:flex-col print:text-ink">
+                    <span>{totals.presentDays} present</span>
+                    <span>{totals.absentDays} absent</span>
+                  </span>
                 </td>
                 <td className="print:border print:border-slate-400" />
               </tr>
