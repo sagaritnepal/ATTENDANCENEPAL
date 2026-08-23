@@ -7,11 +7,18 @@ import DatePicker from '@/components/DatePicker';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { buildMonth, formatAdDate, stepAnchor, todayAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
+import { nepalTodayIso } from '@/lib/shift';
+import { datesInRange, upcomingHolidays } from '@/lib/nepalHolidays';
 import type { CompanyHoliday } from '@/lib/types';
 
 const WEEKDAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-const EMPTY_FORM = { holiday_date: '', name: '' };
+// holiday_end_date only travels with the form while a predefined multi-day
+// pick (Dashain, Tihar, ...) is active — it's what makes handleAddHoliday
+// write one row per day in the range instead of just holiday_date. It's
+// blanked back out the moment the date is hand-edited away from that pick's
+// start day, or the name no longer matches a predefined entry at all.
+const EMPTY_FORM = { holiday_date: '', holiday_end_date: '', name: '' };
 
 // Best-effort: the Edge Function that actually sends push notifications is
 // separate infrastructure (needs an Expo/EAS project + `supabase functions
@@ -57,16 +64,47 @@ export default function WeekOffPage() {
 
   const month = useMemo(() => buildMonth(system, anchor), [system, anchor]);
 
+  // "Today" for the predefined-holiday suggestions, re-checked once a day
+  // rather than only read once at mount — an admin panel left open for
+  // multiple days would otherwise keep suggesting a holiday that already
+  // passed until the page is manually reloaded. This same daily recheck is
+  // also what carries the suggestions over to a new BS year automatically
+  // once one starts (upcomingHolidays() resolves the BS year from `today`
+  // itself, see lib/nepalHolidays.ts) — no separate year-rollover logic
+  // needed here.
+  const [today, setToday] = useState(nepalTodayIso);
+  useEffect(() => {
+    const id = setInterval(() => setToday(nepalTodayIso()), 24 * 60 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Suggestions for the Name field's datalist — every predefined Nepal
+  // public holiday whose last day hasn't passed yet, soonest first.
+  const upcoming = useMemo(() => upcomingHolidays(today), [today]);
+  const predefinedByName = useMemo(() => new Map(upcoming.map(h => [h.name, h])), [upcoming]);
+
   async function handleAddHoliday(e: React.FormEvent) {
     e.preventDefault();
     if (!form.holiday_date || !form.name.trim()) return;
     setSaving(true);
-    // Clicking an already-marked day in the calendar pre-fills its date —
-    // upsert instead of insert so re-submitting that day renames it instead
-    // of hitting the (company_id, holiday_date) unique constraint.
+    const name = form.name.trim();
+    // A predefined multi-day pick (Dashain, Tihar, ...) writes one row per
+    // day in its range, all sharing the same name — a plain single-day pick
+    // (custom name, or a predefined one-day holiday) is just the one row,
+    // same as before. Upsert instead of insert either way: clicking an
+    // already-marked calendar day pre-fills its date, so re-submitting that
+    // day renames it instead of hitting the (company_id, holiday_date)
+    // unique constraint.
+    const dates =
+      form.holiday_end_date && form.holiday_end_date > form.holiday_date
+        ? datesInRange(form.holiday_date, form.holiday_end_date)
+        : [form.holiday_date];
     const { error } = await supabase
       .from('company_holidays')
-      .upsert({ holiday_date: form.holiday_date, name: form.name.trim() }, { onConflict: 'company_id,holiday_date' });
+      .upsert(
+        dates.map(holiday_date => ({ holiday_date, name })),
+        { onConflict: 'company_id,holiday_date' }
+      );
     setSaving(false);
     if (error) {
       alert(`Could not save: ${error.message}`);
@@ -126,7 +164,7 @@ export default function WeekOffPage() {
                   disabled={!cell.inMonth}
                   title={holiday?.name}
                   onClick={() => {
-                    setForm({ holiday_date: cell.adKey, name: holiday?.name ?? '' });
+                    setForm({ holiday_date: cell.adKey, holiday_end_date: '', name: holiday?.name ?? '' });
                     setShowForm(true);
                   }}
                   className={`flex h-9 w-9 flex-col items-center justify-center rounded-lg text-xs transition-colors ${
@@ -200,18 +238,55 @@ export default function WeekOffPage() {
           <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4">
             <form onSubmit={handleAddHoliday} className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
               <h3 className="mb-4 text-lg font-semibold text-ink">{editingExisting ? 'Edit Holiday' : 'New Holiday'}</h3>
-              <label className="mb-1 block text-xs font-medium text-slate-600">Date</label>
-              <div className="mb-3">
-                <DatePicker value={form.holiday_date} onChange={v => setForm(f => ({ ...f, holiday_date: v }))} />
-              </div>
               <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
               <input
                 required
+                list="predefined-holidays-2083"
                 placeholder="e.g. Dashain"
                 value={form.name}
-                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                onChange={e => {
+                  const name = e.target.value;
+                  const predefined = predefinedByName.get(name);
+                  setForm(f => ({
+                    ...f,
+                    name,
+                    holiday_date: predefined ? predefined.start : f.holiday_date,
+                    holiday_end_date: predefined ? predefined.end : '',
+                  }));
+                }}
+                className="mb-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
               />
+              {/* Suggestions are this year's (BS 2083) government-gazetted public
+                  holidays, soonest first — picking one fills in its date (and, for
+                  a multi-day festival like Dashain/Tihar, its whole span) below. */}
+              <datalist id="predefined-holidays-2083">
+                {upcoming.map(h => (
+                  <option key={h.name} value={h.name} />
+                ))}
+              </datalist>
+              <p className="mb-3 text-[11px] text-slate-400">Pick a suggestion for this year&apos;s government holidays, or type your own.</p>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Date</label>
+              <div className="mb-1">
+                <DatePicker
+                  value={form.holiday_date}
+                  onChange={v =>
+                    setForm(f => ({
+                      ...f,
+                      holiday_date: v,
+                      // Hand-editing the date breaks the link to whatever
+                      // predefined range was picked — falls back to a plain
+                      // single day instead of silently keeping a stale range.
+                      holiday_end_date: predefinedByName.get(f.name)?.start === v ? f.holiday_end_date : '',
+                    }))
+                  }
+                />
+              </div>
+              {form.holiday_end_date && form.holiday_end_date > form.holiday_date && (
+                <p className="mb-3 text-xs font-medium text-accent">
+                  Spans {datesInRange(form.holiday_date, form.holiday_end_date).length} days: {formatAdDate(form.holiday_date, system)} –{' '}
+                  {formatAdDate(form.holiday_end_date, system)}
+                </p>
+              )}
               {editingExisting && <p className="mb-3 text-xs text-slate-400">This date already has a holiday — saving will rename it.</p>}
               <div className="mt-4 flex justify-end gap-2">
                 <button
