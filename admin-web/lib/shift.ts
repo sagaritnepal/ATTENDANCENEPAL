@@ -104,19 +104,6 @@ export function formatShiftHours(shift: Pick<Shift, 'start_time' | 'end_time'>) 
   return `${shift.start_time.slice(0, 5)}–${shift.end_time.slice(0, 5)} (${hh(shift.start_time)}-${hh(shift.end_time)})`;
 }
 
-/** How many hours a resolved shift actually spans — 0 for WEEK_OFF, same
- * overnight-safe math computeDayStatus() uses internally for its own
- * shiftDurationMin, exposed here so a "how many hours was this employee
- * expected to work" total (e.g. a payroll/attendance export's hours
- * summary) doesn't have to recompute or duplicate that logic. */
-export function shiftDurationHours(resolved: ResolvedShift): number {
-  if (isWeekOff(resolved)) return 0;
-  const startMin = toMinutes(resolved.start_time);
-  const endMin = toMinutes(resolved.end_time);
-  const durationMin = endMin > startMin ? endMin - startMin : 24 * 60 - startMin + endMin;
-  return durationMin / 60;
-}
-
 export type DayStatus = {
   hasIn: boolean;
   hasOut: boolean;
