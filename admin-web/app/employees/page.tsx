@@ -12,7 +12,7 @@ import { useConfirm } from '@/components/ConfirmDialog';
 import type { Employee, Shift, Profile, Branch, Department } from '@/lib/types';
 import { resolveShift, formatShiftHours } from '@/lib/shift';
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 10;
 
 const EMPTY_FORM = {
   employee_code: '',
