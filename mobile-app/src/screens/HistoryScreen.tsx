@@ -91,7 +91,13 @@ export default function HistoryScreen() {
 
   useEffect(() => {
     if (isAdmin) {
-      supabase.from('employees').select('*').eq('status', 'active').order('name').then(({ data }) => setEmployees((data as Employee[]) ?? []));
+      supabase
+        .from('employees')
+        .select('*')
+        .eq('status', 'active')
+        .then(({ data }) =>
+          setEmployees(((data as Employee[]) ?? []).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })))
+        );
       supabase.from('devices').select('*').then(({ data }) => setDevices((data as Device[]) ?? []));
     }
     supabase.from('shifts').select('*').then(({ data }) => setShifts((data as Shift[]) ?? []));

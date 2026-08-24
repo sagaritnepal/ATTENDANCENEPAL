@@ -13,7 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const [companyRes, profilesRes, employeesRes, devicesRes, syncEventsRes] = await Promise.all([
     admin.from('companies').select('id, name, created_at').eq('id', params.id).maybeSingle(),
     admin.from('profiles').select('id, full_name, role, employee_id').eq('company_id', params.id),
-    admin.from('employees').select('id, employee_code, name, department, designation, status, date_of_joining').eq('company_id', params.id).order('name'),
+    admin.from('employees').select('id, employee_code, name, department, designation, status, date_of_joining').eq('company_id', params.id),
     admin.from('devices').select('id, name, ip_address, status, last_sync').eq('company_id', params.id).order('name'),
     admin
       .from('device_sync_events')
@@ -81,7 +81,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json({
     company: { id: companyRes.data.id, name: companyRes.data.name, createdAt: companyRes.data.created_at },
     users,
-    employees: employeesRes.data ?? [],
+    employees: (employeesRes.data ?? []).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
     devices,
   });
 }

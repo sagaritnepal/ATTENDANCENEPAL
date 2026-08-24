@@ -57,11 +57,11 @@ export default function WeeklyPatternGrid({
   function reload() {
     setLoading(true);
     Promise.all([
-      supabase.from('employees').select('*').eq('status', 'active').order('name'),
+      supabase.from('employees').select('*').eq('status', 'active'),
       supabase.from('shifts').select('*'),
       supabase.from('employee_weekly_pattern').select('employee_id, weekday, shift_id'),
     ]).then(([empRes, shiftsRes, patternRes]) => {
-      setEmployees(empRes.data ?? []);
+      setEmployees((empRes.data ?? []).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })));
       setShifts(shiftsRes.data ?? []);
       setPatternRows(patternRes.data ?? []);
       setLoading(false);

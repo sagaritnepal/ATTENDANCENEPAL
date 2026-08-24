@@ -108,11 +108,11 @@ export default function MonthlyRosterGrid({
     const start = dates[0];
     const end = dates[dates.length - 1];
     Promise.all([
-      supabase.from('employees').select('*').eq('status', 'active').order('name'),
+      supabase.from('employees').select('*').eq('status', 'active'),
       supabase.from('shifts').select('*'),
       supabase.from('employee_daily_shifts').select('employee_id, work_date, shift_id').gte('work_date', start).lte('work_date', end),
     ]).then(([empRes, shiftsRes, rosterRes]) => {
-      setEmployees(empRes.data ?? []);
+      setEmployees((empRes.data ?? []).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })));
       setShifts(shiftsRes.data ?? []);
       setRosterRows(rosterRes.data ?? []);
       setLoading(false);

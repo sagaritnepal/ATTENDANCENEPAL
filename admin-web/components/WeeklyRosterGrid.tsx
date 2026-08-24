@@ -137,7 +137,7 @@ export default function WeeklyRosterGrid({
   function reload() {
     setLoading(true);
     Promise.all([
-      supabase.from('employees').select('*').eq('status', 'active').order('name'),
+      supabase.from('employees').select('*').eq('status', 'active'),
       supabase.from('shifts').select('*'),
       supabase
         .from('employee_daily_shifts')
@@ -145,7 +145,7 @@ export default function WeeklyRosterGrid({
         .gte('work_date', week.start)
         .lte('work_date', week.end),
     ]).then(([empRes, shiftsRes, rosterRes]) => {
-      setEmployees(empRes.data ?? []);
+      setEmployees((empRes.data ?? []).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })));
       setShifts(shiftsRes.data ?? []);
       setRosterRows(rosterRes.data ?? []);
       setLoading(false);

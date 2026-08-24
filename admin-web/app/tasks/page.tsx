@@ -52,10 +52,10 @@ export default function TasksPage() {
       .from('employees')
       .select('*')
       .eq('status', 'active')
-      .order('name')
       .then(({ data }) => {
-        setEmployees(data ?? []);
-        if (data && data.length > 0) setHoursEmployeeId(prev => prev || data[0].id);
+        const sorted = (data ?? []).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+        setEmployees(sorted);
+        if (sorted.length > 0) setHoursEmployeeId(prev => prev || sorted[0].id);
       });
     supabase
       .from('point_redemptions')

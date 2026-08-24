@@ -83,7 +83,11 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.from('employees').select('*').eq('status', 'active').order('name').then(({ data }) => setEmployees(data ?? []));
+    supabase
+      .from('employees')
+      .select('*')
+      .eq('status', 'active')
+      .then(({ data }) => setEmployees((data ?? []).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))));
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
     supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
     fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
