@@ -8,10 +8,15 @@ const STORAGE_KEY = 'attendance-nepal-calendar-system';
 const CalendarSystemContext = createContext<{
   system: CalendarSystem;
   setSystem: (system: CalendarSystem) => void;
-}>({ system: 'AD', setSystem: () => {} });
+}>({ system: 'BS', setSystem: () => {} });
 
 export function CalendarSystemProvider({ children }: { children: React.ReactNode }) {
-  const [system, setSystemState] = useState<CalendarSystem>('AD');
+  // BS (Nepali calendar) is the default for a first-time visitor — AD stays
+  // fully available via the switch, this only changes what's selected
+  // before anyone's ever touched it. Anyone who already picked AD before
+  // (or picks it going forward) keeps that choice via localStorage below,
+  // same as always.
+  const [system, setSystemState] = useState<CalendarSystem>('BS');
 
   useEffect(() => {
     const stored = window.localStorage.getItem(STORAGE_KEY);
