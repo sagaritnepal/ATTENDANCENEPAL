@@ -56,7 +56,14 @@ export default function ComboBox({
       <button
         type="button"
         tabIndex={-1}
-        onClick={() => setOpen(o => !o)}
+        onClick={() => {
+          // Opening (not closing) with something already picked/typed —
+          // clear it first so the full suggestion list shows again instead
+          // of staying filtered down to whatever's still in the box, and
+          // the field is ready to take a fresh entry right away.
+          if (!open && value) onChange('');
+          setOpen(o => !o);
+        }}
         aria-label="Show suggestions"
         className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-accent"
       >
