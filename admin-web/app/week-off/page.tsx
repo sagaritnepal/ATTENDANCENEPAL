@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import DatePicker from '@/components/DatePicker';
+import ComboBox from '@/components/ComboBox';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { buildMonth, formatAdDate, stepAnchor, todayAnchor } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
@@ -242,31 +243,30 @@ export default function WeekOffPage() {
             <form onSubmit={handleAddHoliday} className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg">
               <h3 className="mb-4 text-lg font-semibold text-ink">{editingExisting ? 'Edit Holiday' : 'New Holiday'}</h3>
               <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
-              <input
-                required
-                list="predefined-holidays-2083"
-                placeholder="e.g. Dashain"
-                value={form.name}
-                onChange={e => {
-                  const name = e.target.value;
-                  const predefined = predefinedByName.get(name);
-                  setForm(f => ({
-                    ...f,
-                    name,
-                    holiday_date: predefined ? predefined.start : f.holiday_date,
-                    holiday_end_date: predefined ? predefined.end : '',
-                  }));
-                }}
-                className="mb-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              />
-              {/* Suggestions are this year's (BS 2083) government-gazetted public
-                  holidays, soonest first — picking one fills in its date (and, for
-                  a multi-day festival like Dashain/Tihar, its whole span) below. */}
-              <datalist id="predefined-holidays-2083">
-                {upcoming.map(h => (
-                  <option key={h.name} value={h.name} />
-                ))}
-              </datalist>
+              <div className="mb-1">
+                <ComboBox
+                  value={form.name}
+                  placeholder="e.g. Dashain"
+                  onChange={name => {
+                    const predefined = predefinedByName.get(name);
+                    setForm(f => ({
+                      ...f,
+                      name,
+                      holiday_date: predefined ? predefined.start : f.holiday_date,
+                      holiday_end_date: predefined ? predefined.end : '',
+                    }));
+                  }}
+                  options={upcoming.map(h => ({
+                    label: h.name,
+                    sub: h.start === h.end ? formatAdDate(h.start, system) : `${formatAdDate(h.start, system)} – ${formatAdDate(h.end, system)}`,
+                  }))}
+                />
+              </div>
+              {/* Suggestions are this year's government-gazetted public
+                  holidays (kept fresh by a daily scrape, see
+                  lib/nepalHolidays.ts), soonest first — picking one fills in
+                  its date (and, for a multi-day festival like Dashain/Tihar,
+                  its whole span) below. */}
               <p className="mb-3 text-[11px] text-slate-400">Pick a suggestion for this year&apos;s government holidays, or type your own.</p>
               <label className="mb-1 block text-xs font-medium text-slate-600">Date</label>
               <div className="mb-1">
