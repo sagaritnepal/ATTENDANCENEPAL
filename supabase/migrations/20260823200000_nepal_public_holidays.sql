@@ -71,31 +71,9 @@ insert into nepal_public_holidays (bs_year, name, start_date, end_date) values
   (2083, 'Ghode Jatra', '2027-04-06', '2027-04-06')
 on conflict (bs_year, start_date) do nothing;
 
--- Runs sync-nepal-holidays daily at 23:15 UTC = 05:00 Asia/Kathmandu (Nepal
--- is a fixed UTC+5:45 offset, no DST). Uses Supabase's standard pg_cron +
--- pg_net pattern for calling an Edge Function on a schedule — both
--- extensions and the app.settings.* GUCs they read are already provided on
--- hosted Supabase, no secrets hardcoded into this file. This only starts
--- actually running once the Edge Function itself is deployed (a one-time
--- manual step needing real Supabase CLI credentials — see
--- supabase/functions/sync-nepal-holidays/README.md); until then the cron
--- job fires and gets a harmless 404, and the seed data above keeps serving.
-create extension if not exists pg_cron with schema extensions;
-create extension if not exists pg_net with schema extensions;
-
-select cron.unschedule(jobid) from cron.job where jobname = 'sync-nepal-holidays-daily';
-
-select cron.schedule(
-  'sync-nepal-holidays-daily',
-  '15 23 * * *',
-  $$
-  select net.http_post(
-    url := current_setting('app.settings.supabase_url') || '/functions/v1/sync-nepal-holidays',
-    headers := jsonb_build_object(
-      'Content-Type', 'application/json',
-      'Authorization', 'Bearer ' || current_setting('app.settings.service_role_key')
-    ),
-    body := '{}'::jsonb
-  );
-  $$
-);
+-- The pg_cron schedule that actually invokes the daily scrape lives in its
+-- own migration (20260823210000_nepal_public_holidays_cron.sql), not here —
+-- deliberately kept separate so that if pg_cron/pg_net aren't available on
+-- this project (both need enabling per-project and aren't guaranteed), that
+-- failure can't roll back this file's table/seed and leave the New Holiday
+-- form's suggestions broken along with it.
