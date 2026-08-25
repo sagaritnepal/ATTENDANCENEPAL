@@ -52,11 +52,15 @@ export default function PayrollPage() {
   const [pendingSalary, setPendingSalary] = useState<Record<string, string>>({});
   const [savingRowId, setSavingRowId] = useState<string | null>(null);
   const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
-  // Overtime pay isn't tracked anywhere as an hourly rate — derived from the
-  // monthly Salary against an assumed standard workday, both editable since
-  // "8 hours" and "1.5x" are defaults, not a stored policy.
+  // Overtime pay is derived from the monthly Salary against an assumed
+  // standard workday — both editable per-view here, seeded from (and
+  // savable back to) the company's own saved default (companies.
+  // ot_hours_per_day/ot_multiplier) rather than a hardcoded 8h/1.5x.
+  const [companyId, setCompanyId] = useState<string | null>(null);
   const [otHoursPerDay, setOtHoursPerDay] = useState(8);
   const [otMultiplier, setOtMultiplier] = useState(1.5);
+  const [otDefaultsDirty, setOtDefaultsDirty] = useState(false);
+  const [savingOtDefaults, setSavingOtDefaults] = useState(false);
   const [dataRange, setDataRange] = useState<{ earliest: Date; latest: Date } | null>(null);
   // Overtime pay is optional per employee (some employees just aren't paid
   // extra for it) — on by default, toggled off per row.
@@ -84,8 +88,11 @@ export default function PayrollPage() {
   // The oldest/newest punch on record — bounds the period dropdown to
   // months that actually have data instead of listing years of empty ones.
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+    fetchMyCompanyWeekOffConfig().then(({ companyId, weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier }) => {
+      setCompanyId(companyId);
       setWeeklyOffDay(weeklyOffDay);
+      setOtHoursPerDay(otHoursPerDay);
+      setOtMultiplier(otMultiplier);
       // Not date-scoped (a pattern applies to every week), and only ever
       // relevant in 'weekly' roster_mode — see resolveShiftForDate().
       if (rosterMode === 'weekly') {
@@ -96,6 +103,17 @@ export default function PayrollPage() {
       }
     });
   }, []);
+
+  async function saveOtDefaults() {
+    if (!companyId) return;
+    setSavingOtDefaults(true);
+    const { error } = await supabase
+      .from('companies')
+      .update({ ot_hours_per_day: otHoursPerDay, ot_multiplier: otMultiplier })
+      .eq('id', companyId);
+    setSavingOtDefaults(false);
+    if (!error) setOtDefaultsDirty(false);
+  }
 
   useEffect(() => {
     Promise.all([
@@ -515,7 +533,10 @@ export default function PayrollPage() {
               min="0"
               step="0.5"
               value={otHoursPerDay}
-              onChange={e => setOtHoursPerDay(Number(e.target.value) || 0)}
+              onChange={e => {
+                setOtHoursPerDay(Number(e.target.value) || 0);
+                setOtDefaultsDirty(true);
+              }}
               title="Standard hours per day"
               className="w-10 rounded border border-warning/30 bg-white px-1 py-0.5 text-center text-warning-text"
             />
@@ -525,12 +546,25 @@ export default function PayrollPage() {
               min="0"
               step="0.1"
               value={otMultiplier}
-              onChange={e => setOtMultiplier(Number(e.target.value) || 0)}
+              onChange={e => {
+                setOtMultiplier(Number(e.target.value) || 0);
+                setOtDefaultsDirty(true);
+              }}
               title="Overtime rate multiplier"
               className="w-10 rounded border border-warning/30 bg-white px-1 py-0.5 text-center text-warning-text"
             />
             x
           </div>
+          {otDefaultsDirty && (
+            <button
+              type="button"
+              onClick={saveOtDefaults}
+              disabled={savingOtDefaults || !companyId}
+              className="mt-1 text-[11px] font-medium text-warning-text underline decoration-dotted hover:text-warning-text/80 disabled:opacity-50"
+            >
+              {savingOtDefaults ? 'Saving…' : 'Save as company default'}
+            </button>
+          )}
         </div>
         <div className="rounded-xl bg-good-bg p-3 shadow-sm ring-1 ring-inset ring-good/10">
           <span className="text-xs font-medium text-good-text/80">Total Salary Payable</span>

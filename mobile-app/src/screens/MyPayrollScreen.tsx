@@ -11,9 +11,6 @@ import { colors } from '../theme';
 import { ChevronIcon } from '../components/icons';
 import SimpleLineChart from '../components/SimpleLineChart';
 
-const OT_HOURS_PER_DAY = 8;
-const OT_MULTIPLIER = 1.5;
-
 function fmtHrs(hours: number) {
   return formatHoursMinutes(Math.round(hours * 60));
 }
@@ -50,10 +47,17 @@ export default function MyPayrollScreen() {
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ weekday: number; shift_id: string | null }[]>([]);
+  // Loaded from the company's saved default (companies.ot_hours_per_day/
+  // ot_multiplier, set on the admin Payroll screen) rather than a hardcoded
+  // 8h/1.5x, so this figure actually matches what the admin sees.
+  const [otHoursPerDay, setOtHoursPerDay] = useState(8);
+  const [otMultiplier, setOtMultiplier] = useState(1.5);
 
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier }) => {
       setWeeklyOffDay(weeklyOffDay);
+      setOtHoursPerDay(otHoursPerDay);
+      setOtMultiplier(otMultiplier);
       if (rosterMode === 'weekly' && employeeId) {
         supabase
           .from('employee_weekly_pattern')
@@ -196,7 +200,7 @@ export default function MyPayrollScreen() {
       const [y, m] = key.split('-').map(Number);
       const daysInMonth = new Date(y, m, 0).getDate();
       for (const row of rows) {
-        const earning = dailySalaryEarning(row, employee.salary, daysInMonth, OT_HOURS_PER_DAY, OT_MULTIPLIER, true);
+        const earning = dailySalaryEarning(row, employee.salary, daysInMonth, otHoursPerDay, otMultiplier, true);
         if (earning) total += earning.total;
       }
     }
@@ -212,7 +216,7 @@ export default function MyPayrollScreen() {
     let baseEarning = 0;
     let overtimeEarning = 0;
     for (const r of dayRows) {
-      const earning = dailySalaryEarning(r, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true);
+      const earning = dailySalaryEarning(r, employee?.salary ?? null, daysInRange, otHoursPerDay, otMultiplier, true);
       if (earning) {
         baseEarning += earning.base;
         overtimeEarning += earning.overtime;
@@ -319,7 +323,7 @@ export default function MyPayrollScreen() {
         }
         renderItem={({ item: row, index }) => {
           const earning =
-            row.checkIn || row.paidOff ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true) : null;
+            row.checkIn || row.paidOff ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, otHoursPerDay, otMultiplier, true) : null;
           return (
             <View style={[styles.tr, index % 2 === 1 && styles.trAlt]}>
               <Text style={[styles.td, { flex: 0.11 }]}>{formatDdMmYyyy(row.date, system).slice(0, 5)}</Text>
@@ -365,7 +369,7 @@ export default function MyPayrollScreen() {
                   data={dayRows.map(row => {
                     const earning =
                       row.checkIn || row.paidOff
-                        ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true)
+                        ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, otHoursPerDay, otMultiplier, true)
                         : null;
                     return { label: formatDdMmYyyy(row.date, system).slice(0, 2), value: earning ? Math.round(earning.total) : 0 };
                   })}

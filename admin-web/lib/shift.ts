@@ -8,12 +8,22 @@ const DEFAULT_SHIFT: Pick<Shift, 'id' | 'name' | 'start_time' | 'end_time' | 'gr
   grace_minutes: 10,
 };
 
+// Lowest `id` among matches, not just the first one the array happens to
+// list first — shifts are fetched with no `.order()` anywhere, so array
+// order isn't guaranteed. If an admin ever creates two shift templates for
+// the same employee or department (nothing stops that), this needs to pick
+// the SAME one every time and agree with the server's own tiebreak
+// (`order by s.id limit 1` in find_employee_shift, supabase/payroll.sql).
+function lowestId<T extends { id: string }>(candidates: T[]): T | undefined {
+  return candidates.reduce<T | undefined>((min, s) => (!min || s.id < min.id ? s : min), undefined);
+}
+
 // Mirrors find_employee_shift() in supabase/payroll.sql: employee's own shift,
 // else their department's, else the default.
 export function resolveShift(employee: Employee, shifts: Shift[]) {
-  const own = shifts.find(s => s.employee_id === employee.id);
+  const own = lowestId(shifts.filter(s => s.employee_id === employee.id));
   if (own) return own;
-  const dept = shifts.find(s => s.employee_id === null && s.department === employee.department);
+  const dept = lowestId(shifts.filter(s => s.employee_id === null && s.department === employee.department));
   if (dept) return dept;
   return DEFAULT_SHIFT;
 }

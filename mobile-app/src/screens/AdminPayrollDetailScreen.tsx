@@ -10,8 +10,6 @@ import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSumm
 import { colors } from '../theme';
 import { ChevronIcon } from '../components/icons';
 
-const OT_HOURS_PER_DAY = 8;
-const OT_MULTIPLIER = 1.5;
 const MONTH_LABEL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 function fmtHrs(hours: number) {
@@ -40,10 +38,17 @@ export default function AdminPayrollDetailScreen({ route }: any) {
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ weekday: number; shift_id: string | null }[]>([]);
+  // Read-only here (the save control lives on the admin Payroll list
+  // screen) — loaded from the company's saved default rather than a
+  // hardcoded 8h/1.5x.
+  const [otHoursPerDay, setOtHoursPerDay] = useState(8);
+  const [otMultiplier, setOtMultiplier] = useState(1.5);
 
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier }) => {
       setWeeklyOffDay(weeklyOffDay);
+      setOtHoursPerDay(otHoursPerDay);
+      setOtMultiplier(otMultiplier);
       if (rosterMode === 'weekly') {
         supabase
           .from('employee_weekly_pattern')
@@ -130,7 +135,7 @@ export default function AdminPayrollDetailScreen({ route }: any) {
     let baseEarning = 0;
     let overtimeEarning = 0;
     for (const r of dayRows) {
-      const earning = dailySalaryEarning(r, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true);
+      const earning = dailySalaryEarning(r, employee?.salary ?? null, daysInRange, otHoursPerDay, otMultiplier, true);
       if (earning) {
         baseEarning += earning.base;
         overtimeEarning += earning.overtime;
@@ -226,7 +231,7 @@ export default function AdminPayrollDetailScreen({ route }: any) {
         }
         renderItem={({ item: row, index }) => {
           const earning =
-            row.checkIn || row.paidOff ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true) : null;
+            row.checkIn || row.paidOff ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, otHoursPerDay, otMultiplier, true) : null;
           return (
             <View style={[styles.tr, index % 2 === 1 && styles.trAlt]}>
               <Text style={[styles.td, { flex: 0.14 }]}>{formatDdMmYyyy(row.date, system).slice(0, 5)}</Text>

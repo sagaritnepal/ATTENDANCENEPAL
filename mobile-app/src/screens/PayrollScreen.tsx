@@ -57,8 +57,14 @@ export default function PayrollScreen({ navigation }: any) {
   const [pendingSalary, setPendingSalary] = useState<Record<string, string>>({});
   const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
   const [savingRowId, setSavingRowId] = useState<string | null>(null);
+  // Seeded from (and savable back to) the company's own saved default
+  // (companies.ot_hours_per_day/ot_multiplier) rather than a hardcoded
+  // 8h/1.5x, so a chosen OT policy actually sticks between sessions.
+  const [companyId, setCompanyId] = useState<string | null>(null);
   const [otHoursPerDay, setOtHoursPerDay] = useState('8');
   const [otMultiplier, setOtMultiplier] = useState('1.5');
+  const [otDefaultsDirty, setOtDefaultsDirty] = useState(false);
+  const [savingOtDefaults, setSavingOtDefaults] = useState(false);
   const [overtimeEnabled, setOvertimeEnabled] = useState<Record<string, boolean>>({});
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
@@ -67,8 +73,11 @@ export default function PayrollScreen({ navigation }: any) {
   const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ employee_id: string; weekday: number; shift_id: string | null }[]>([]);
 
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+    fetchMyCompanyWeekOffConfig().then(({ companyId, weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier }) => {
+      setCompanyId(companyId);
       setWeeklyOffDay(weeklyOffDay);
+      setOtHoursPerDay(String(otHoursPerDay));
+      setOtMultiplier(String(otMultiplier));
       // Not date-scoped (a pattern applies to every week), and only ever
       // relevant in 'weekly' roster_mode — see resolveShiftForDate().
       if (rosterMode === 'weekly') {
@@ -79,6 +88,17 @@ export default function PayrollScreen({ navigation }: any) {
       }
     });
   }, []);
+
+  async function saveOtDefaults() {
+    if (!companyId) return;
+    setSavingOtDefaults(true);
+    const { error } = await supabase
+      .from('companies')
+      .update({ ot_hours_per_day: Number(otHoursPerDay) || 0, ot_multiplier: Number(otMultiplier) || 0 })
+      .eq('id', companyId);
+    setSavingOtDefaults(false);
+    if (!error) setOtDefaultsDirty(false);
+  }
 
   function reload() {
     setLoading(true);
@@ -270,11 +290,34 @@ export default function PayrollScreen({ navigation }: any) {
             <Text style={[styles.statLabel, { color: colors.warningText }]}>Overtime Salary</Text>
             <Text style={[styles.statValue, { color: colors.warningText }]}>{Math.round(totals.totalOvertimeSalary).toLocaleString()}</Text>
             <View style={styles.otInputsRow}>
-              <TextInput style={styles.otInput} value={otHoursPerDay} onChangeText={setOtHoursPerDay} keyboardType="numeric" />
+              <TextInput
+                style={styles.otInput}
+                value={otHoursPerDay}
+                onChangeText={v => {
+                  setOtHoursPerDay(v);
+                  setOtDefaultsDirty(true);
+                }}
+                keyboardType="numeric"
+              />
               <Text style={styles.otInputLabel}>h/day ×</Text>
-              <TextInput style={styles.otInput} value={otMultiplier} onChangeText={setOtMultiplier} keyboardType="numeric" />
+              <TextInput
+                style={styles.otInput}
+                value={otMultiplier}
+                onChangeText={v => {
+                  setOtMultiplier(v);
+                  setOtDefaultsDirty(true);
+                }}
+                keyboardType="numeric"
+              />
               <Text style={styles.otInputLabel}>x</Text>
             </View>
+            {otDefaultsDirty && (
+              <TouchableOpacity onPress={saveOtDefaults} disabled={savingOtDefaults || !companyId}>
+                <Text style={[styles.otInputLabel, { textDecorationLine: 'underline', marginTop: 4, opacity: savingOtDefaults ? 0.5 : 1 }]}>
+                  {savingOtDefaults ? 'Saving…' : 'Save as company default'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
           <View style={[styles.statCard, { backgroundColor: colors.goodBg }]}>
             <Text style={[styles.statLabel, { color: colors.goodText }]}>Total Salary Payable</Text>

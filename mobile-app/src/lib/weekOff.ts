@@ -21,21 +21,36 @@ export type CompanyWeekOffConfig = {
    * Break/End Break buttons show up on the self-checkin screen. Defaults to
    * false when there's no company yet, same as every other flag here. */
   breakEnabled: boolean;
+  /** Overtime policy (companies.ot_hours_per_day/ot_multiplier) — the
+   * admin-set default a "standard day" and OT pay rate use everywhere
+   * overtime pay is calculated. Defaults to 8h/1.5x, same as the column
+   * defaults, when there's no company yet. */
+  otHoursPerDay: number;
+  otMultiplier: number;
+};
+
+const DEFAULT_CONFIG: CompanyWeekOffConfig = {
+  companyId: null,
+  weeklyOffDay: null,
+  rosterMode: 'monthly',
+  breakEnabled: false,
+  otHoursPerDay: 8,
+  otMultiplier: 1.5,
 };
 
 /** The current user's own company_id + weekly_off_day + roster_mode +
- * break_enabled. `companies` has no RLS of its own, so this goes through
- * `profiles` (RLS-scoped to the caller's own row) first rather than trusting
- * an unfiltered select. */
+ * break_enabled + overtime policy. Reads go through `profiles` first
+ * (RLS-scoped to the caller's own row) to find company_id, then `companies`
+ * itself (RLS-scoped to id = my_company_id()). */
 export async function fetchMyCompanyWeekOffConfig(): Promise<CompanyWeekOffConfig> {
   const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return { companyId: null, weeklyOffDay: null, rosterMode: 'monthly', breakEnabled: false };
+  if (!auth.user) return DEFAULT_CONFIG;
   const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', auth.user.id).single();
   const companyId = profile?.company_id ?? null;
-  if (!companyId) return { companyId: null, weeklyOffDay: null, rosterMode: 'monthly', breakEnabled: false };
+  if (!companyId) return DEFAULT_CONFIG;
   const { data: company } = await supabase
     .from('companies')
-    .select('weekly_off_day, roster_mode, break_enabled')
+    .select('weekly_off_day, roster_mode, break_enabled, ot_hours_per_day, ot_multiplier')
     .eq('id', companyId)
     .single();
   return {
@@ -43,6 +58,8 @@ export async function fetchMyCompanyWeekOffConfig(): Promise<CompanyWeekOffConfi
     weeklyOffDay: company?.weekly_off_day ?? null,
     rosterMode: (company?.roster_mode as RosterMode) ?? 'monthly',
     breakEnabled: company?.break_enabled ?? false,
+    otHoursPerDay: company?.ot_hours_per_day ?? DEFAULT_CONFIG.otHoursPerDay,
+    otMultiplier: company?.ot_multiplier ?? DEFAULT_CONFIG.otMultiplier,
   };
 }
 

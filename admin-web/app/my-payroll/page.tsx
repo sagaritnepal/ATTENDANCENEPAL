@@ -16,13 +16,6 @@ function fmtHrs(hours: number) {
 }
 import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
 
-// No otHoursPerDay/otMultiplier/otOn controls on this page (those are an
-// admin-only setting on the Payroll page) — same defaults the admin side
-// starts with, so an employee's own "Received" figure matches what they'd
-// see on their detail page unless an admin has changed those.
-const OT_HOURS_PER_DAY = 8;
-const OT_MULTIPLIER = 1.5;
-
 export default function MyPayrollPage() {
   const { system } = useCalendarSystem();
   const [employeeId, setEmployeeId] = useState<string | null>(null);
@@ -43,12 +36,21 @@ export default function MyPayrollPage() {
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ weekday: number; shift_id: string | null }[]>([]);
+  // No otHoursPerDay/otMultiplier controls on this page (those are an
+  // admin-only setting on the Payroll page) — loaded from the same
+  // company-saved default the admin side reads/writes, so this employee's
+  // own "Received" figure actually matches what they'd see on their detail
+  // page, not just a hardcoded guess at what an admin might have set.
+  const [otHoursPerDay, setOtHoursPerDay] = useState(8);
+  const [otMultiplier, setOtMultiplier] = useState(1.5);
 
   const { start, end } = period;
 
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier }) => {
       setWeeklyOffDay(weeklyOffDay);
+      setOtHoursPerDay(otHoursPerDay);
+      setOtMultiplier(otMultiplier);
       // Not date-scoped (a pattern applies to every week), and only ever
       // relevant in 'weekly' roster_mode — see resolveShiftForDate().
       if (rosterMode === 'weekly' && employeeId) {
@@ -259,7 +261,7 @@ export default function MyPayrollPage() {
       const [y, m] = key.split('-').map(Number);
       const daysInMonth = new Date(y, m, 0).getDate();
       for (const row of rows) {
-        const earning = dailySalaryEarning(row, employee.salary, daysInMonth, OT_HOURS_PER_DAY, OT_MULTIPLIER, true);
+        const earning = dailySalaryEarning(row, employee.salary, daysInMonth, otHoursPerDay, otMultiplier, true);
         if (earning) total += earning.total;
       }
     }
@@ -277,7 +279,7 @@ export default function MyPayrollPage() {
     let baseEarning = 0;
     let overtimeEarning = 0;
     for (const r of dayRows) {
-      const earning = dailySalaryEarning(r, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true);
+      const earning = dailySalaryEarning(r, employee?.salary ?? null, daysInRange, otHoursPerDay, otMultiplier, true);
       if (earning) {
         baseEarning += earning.base;
         overtimeEarning += earning.overtime;
@@ -320,7 +322,7 @@ export default function MyPayrollPage() {
     () =>
       dayRows.map(r => {
         const earning =
-          r.checkIn || r.paidOff ? dailySalaryEarning(r, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true) : null;
+          r.checkIn || r.paidOff ? dailySalaryEarning(r, employee?.salary ?? null, daysInRange, otHoursPerDay, otMultiplier, true) : null;
         return {
           label: formatDdMmYyyy(r.date, system).slice(0, 2),
           earning: earning ? Math.round(earning.total) : 0,
@@ -405,7 +407,7 @@ export default function MyPayrollPage() {
                   {dayRows.map((row, i) => {
                     const earning =
                       row.checkIn || row.paidOff
-                        ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, OT_HOURS_PER_DAY, OT_MULTIPLIER, true)
+                        ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, otHoursPerDay, otMultiplier, true)
                         : null;
                     return (
                       <tr key={row.date} className={`border-b border-slate-100 last:border-0 ${i % 2 === 1 ? 'bg-slate-50/60' : ''}`}>
