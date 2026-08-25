@@ -50,13 +50,8 @@ html, body {
   }
   th, td {
     border: 1px solid #cbd5e1 !important;
-    padding: 2px 3px !important;
+    padding: 1px 2px !important;
     white-space: nowrap !important;
-    vertical-align: middle !important;
-  }
-  thead th {
-    background: #f1f5f9 !important;
-    font-weight: 700 !important;
   }
   /* Opt-out for the rare column (e.g. Device, whose real-world names run
      longer than any other cell) whose forced nowrap above is exactly what
@@ -69,10 +64,16 @@ html, body {
   /* Column headers are the widest text relative to their data (e.g. "Late
      By (min)", "Calculated Salary") — letting them wrap to two lines saves
      far more horizontal room than the data cells below them would if they
-     wrapped instead. */
+     wrapped instead. word-break stays `normal` (not `break-word`) here on
+     purpose — a single-word header with no space to wrap at (e.g. "BREAK",
+     "DEVICE") would otherwise get chopped mid-letter into "BRE/AK" whenever
+     a wide report leaves that column narrow; `normal` instead lets the
+     table's auto layout give that one column the little extra width it
+     needs and take it back from a column with an actual space to wrap at. */
   th {
     white-space: normal !important;
-    word-break: break-word;
+    word-break: normal;
+    overflow-wrap: normal;
     line-height: 1.15;
   }
   /* Row striping/hover states rely on screen-only inline JS state or take
