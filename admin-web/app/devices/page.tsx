@@ -7,7 +7,7 @@ import Badge from '@/components/Badge';
 import { useConfirm } from '@/components/ConfirmDialog';
 import type { AttendanceLog, Branch, Device, DeviceSyncEvent, Employee } from '@/lib/types';
 
-const EMPTY_FORM = { name: '', branch_id: '', ip_address: '192.168.1.201', port: 4370, serial_number: '' };
+const EMPTY_FORM = { name: '', branch_id: '', ip_address: '', port: 4370, serial_number: '' };
 
 function deviceErrorMessage(error: { code?: string; message: string }): string {
   if (error.code === '23505') return 'That serial number is already registered to another device.';
@@ -517,7 +517,13 @@ export default function DevicesPage() {
             <div className="mb-3 grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">IP address</label>
-                <input value={form.ip_address} onChange={e => setForm(f => ({ ...f, ip_address: e.target.value }))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                <input
+                  value={form.ip_address}
+                  onChange={e => setForm(f => ({ ...f, ip_address: e.target.value }))}
+                  placeholder="192.168.1.201"
+                  required
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">Port</label>
