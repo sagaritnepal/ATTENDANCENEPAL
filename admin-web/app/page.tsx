@@ -224,9 +224,9 @@ export default function DashboardPage() {
     return onLeave.map(l => ({
       id: l.id,
       primary: byId.get(l.employee_id) ?? 'Unknown',
-      secondary: `${l.leave_type} · until ${l.end_date}`,
+      secondary: `${l.leave_type} · until ${formatAdDate(l.end_date, system)}`,
     }));
-  }, [onLeave, employees]);
+  }, [onLeave, employees, system]);
 
   // todayIsWeekOff only covers the COMPANY-wide off day — an employee can
   // also have their own per-employee roster Week Off for today specifically

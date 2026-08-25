@@ -19,6 +19,8 @@ import {
   type WeeklyPatternByEmployee,
 } from '../lib/shift';
 import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '../lib/weekOff';
+import { formatAdDate } from '../lib/calendar';
+import { useCalendarSystem } from '../lib/CalendarSystemContext';
 
 type EmployeeLite = Pick<Employee, 'name' | 'profile_photo_url'>;
 type DetailRow = { id: string; primary: string; secondary?: string };
@@ -45,6 +47,7 @@ function last7Days(): string[] {
 }
 
 export default function DashboardScreen({ navigation }: any) {
+  const { system } = useCalendarSystem();
   const [feed, setFeed] = useState<AttendanceLog[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [employeeLookup, setEmployeeLookup] = useState<Record<string, EmployeeLite>>({});
@@ -225,9 +228,9 @@ export default function DashboardScreen({ navigation }: any) {
     return onLeave.map(l => ({
       id: l.id,
       primary: byId.get(l.employee_id) ?? 'Unknown',
-      secondary: `${l.leave_type} · until ${l.end_date}`,
+      secondary: `${l.leave_type} · until ${formatAdDate(l.end_date, system)}`,
     }));
-  }, [onLeave, employees]);
+  }, [onLeave, employees, system]);
 
   const todayDayStatus = useMemo(() => {
     const map = new Map<string, ReturnType<typeof computeDayStatusForResolvedShift>>();
