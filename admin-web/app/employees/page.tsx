@@ -121,11 +121,14 @@ function EmployeesView() {
   const [uploadingPhotoId, setUploadingPhotoId] = useState<string | null>(null);
   const [pendingPhotoFile, setPendingPhotoFile] = useState<File | null>(null);
 
-  // Branch edits are staged here rather than saved immediately on change —
-  // a Save/Cancel bar appears above the table once anything's pending, so a
-  // stray click on a dropdown can't silently write to the database. Shift
-  // assignment is handled on the Shifts page instead, not here.
+  // Branch/Department/Designation edits are staged here rather than saved
+  // immediately on change — a Save/Cancel bar appears above the table once
+  // anything's pending, so a stray click on a dropdown can't silently write
+  // to the database. Shift assignment is handled on the Shifts page instead,
+  // not here.
   const [pendingBranch, setPendingBranch] = useState<Record<string, string>>({});
+  const [pendingDepartment, setPendingDepartment] = useState<Record<string, string>>({});
+  const [pendingDesignation, setPendingDesignation] = useState<Record<string, string>>({});
   const [savingPending, setSavingPending] = useState(false);
 
   // Username edits its own row, with its own Save/Cancel (not staged with
@@ -354,11 +357,6 @@ function EmployeesView() {
     reload();
   }
 
-  async function applyBranchChange(employeeId: string, branchId: string) {
-    const { error } = await supabase.from('employees').update({ branch_id: branchId || null }).eq('id', employeeId);
-    return error;
-  }
-
   async function handleDelete(id: string) {
     if (!(await confirm('Remove this employee?', { title: 'Remove employee?', confirmLabel: 'Remove', tone: 'danger' }))) return;
     const { error } = await supabase.from('employees').delete().eq('id', id);
@@ -501,21 +499,35 @@ function EmployeesView() {
     reload();
   }
 
-  const pendingCount = Object.keys(pendingBranch).length;
+  const pendingCount =
+    Object.keys(pendingBranch).length + Object.keys(pendingDepartment).length + Object.keys(pendingDesignation).length;
 
   function handleCancelPending() {
     setPendingBranch({});
+    setPendingDepartment({});
+    setPendingDesignation({});
   }
 
   async function handleSavePending() {
     setSavingPending(true);
+    const employeeIds = new Set([
+      ...Object.keys(pendingBranch),
+      ...Object.keys(pendingDepartment),
+      ...Object.keys(pendingDesignation),
+    ]);
     const errors: string[] = [];
-    for (const [employeeId, branchId] of Object.entries(pendingBranch)) {
-      const error = await applyBranchChange(employeeId, branchId);
-      if (error) errors.push(`Branch: ${error.message}`);
+    for (const employeeId of employeeIds) {
+      const updates: Record<string, string | null> = {};
+      if (employeeId in pendingBranch) updates.branch_id = pendingBranch[employeeId] || null;
+      if (employeeId in pendingDepartment) updates.department = pendingDepartment[employeeId] || null;
+      if (employeeId in pendingDesignation) updates.designation = pendingDesignation[employeeId] || null;
+      const { error } = await supabase.from('employees').update(updates).eq('id', employeeId);
+      if (error) errors.push(error.message);
     }
     setSavingPending(false);
     setPendingBranch({});
+    setPendingDepartment({});
+    setPendingDesignation({});
     if (errors.length > 0) alert(`Some changes could not be saved:\n${errors.join('\n')}`);
     reload();
   }
@@ -749,9 +761,6 @@ function EmployeesView() {
                     </Link>
                     <div className="mt-0.5 truncate text-xs text-slate-400">{emp.phone ?? '—'}</div>
                     {emp.email && <div className="truncate text-xs text-slate-400">{emp.email}</div>}
-                    <div className="truncate text-xs text-slate-400">
-                      {emp.designation ?? '—'} {emp.department && <>· {emp.department}</>}
-                    </div>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     <Badge tone={emp.fingerprint_id ? 'good' : 'neutral'}>{emp.fingerprint_id ? 'Bio Enrolled' : 'Not Enrolled'}</Badge>
@@ -853,6 +862,38 @@ function EmployeesView() {
                       </select>
                     </dd>
                   </div>
+                  <div>
+                    <dt className="text-xs text-slate-400">Department</dt>
+                    <dd>
+                      <select
+                        value={pendingDepartment[emp.id] ?? (emp.department ?? '')}
+                        onChange={e => setPendingDepartment(p => ({ ...p, [emp.id]: e.target.value }))}
+                        className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                      >
+                        <option value="">No department</option>
+                        {departmentOptions.map(d => (
+                          <option key={d.id} value={d.name}>
+                            {d.name}
+                          </option>
+                        ))}
+                        {emp.department && !departmentOptions.some(d => d.name === emp.department) && (
+                          <option value={emp.department}>{emp.department}</option>
+                        )}
+                      </select>
+                    </dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-xs text-slate-400">Designation</dt>
+                    <dd>
+                      <input
+                        type="text"
+                        placeholder="—"
+                        value={pendingDesignation[emp.id] ?? (emp.designation ?? '')}
+                        onChange={e => setPendingDesignation(p => ({ ...p, [emp.id]: e.target.value }))}
+                        className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600"
+                      />
+                    </dd>
+                  </div>
                 </dl>
 
                 <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3">
@@ -904,6 +945,8 @@ function EmployeesView() {
                 <th className="px-3 py-3 text-center font-medium">Employee Name</th>
                 <th className="px-2 py-3 text-center font-medium">Username</th>
                 <th className="w-28 px-2 py-3 text-center font-medium">Branch</th>
+                <th className="w-32 px-2 py-3 text-center font-medium">Department</th>
+                <th className="w-28 px-2 py-3 text-center font-medium">Designation</th>
                 <th className="w-32 px-2 py-3 text-center font-medium">Shift</th>
                 <th className="px-3 py-3 text-center font-medium">Bio Enrollment</th>
                 <th className="px-3 py-3 text-center font-medium">Actions</th>
@@ -940,9 +983,6 @@ function EmployeesView() {
                           </div>
                           <div className="truncate text-xs text-slate-400">{emp.phone ?? '—'}</div>
                           {emp.email && <div className="truncate text-xs text-slate-400">{emp.email}</div>}
-                          <div className="truncate text-xs text-slate-400">
-                            {emp.designation ?? '—'} {emp.department && <>· {emp.department}</>}
-                          </div>
                         </div>
                       </div>
                     </td>
@@ -1009,6 +1049,32 @@ function EmployeesView() {
                           </option>
                         ))}
                       </select>
+                    </td>
+                    <td className="w-32 px-2 py-3">
+                      <select
+                        value={pendingDepartment[emp.id] ?? (emp.department ?? '')}
+                        onChange={e => setPendingDepartment(p => ({ ...p, [emp.id]: e.target.value }))}
+                        className="w-full max-w-[8rem] rounded-md border border-slate-200 px-1.5 py-1 text-xs text-slate-600"
+                      >
+                        <option value="">No department</option>
+                        {departmentOptions.map(d => (
+                          <option key={d.id} value={d.name}>
+                            {d.name}
+                          </option>
+                        ))}
+                        {emp.department && !departmentOptions.some(d => d.name === emp.department) && (
+                          <option value={emp.department}>{emp.department}</option>
+                        )}
+                      </select>
+                    </td>
+                    <td className="w-28 px-2 py-3">
+                      <input
+                        type="text"
+                        placeholder="—"
+                        value={pendingDesignation[emp.id] ?? (emp.designation ?? '')}
+                        onChange={e => setPendingDesignation(p => ({ ...p, [emp.id]: e.target.value }))}
+                        className="w-full max-w-[7rem] rounded-md border border-slate-200 px-1.5 py-1 text-xs text-slate-600"
+                      />
                     </td>
                     <td className="w-32 px-2 py-3 text-center">
                       {rosterEmployeeIds.has(emp.id) ? (
@@ -1090,7 +1156,7 @@ function EmployeesView() {
               })}
               {pageItems.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-slate-400">
+                  <td colSpan={9} className="px-3 py-8 text-center text-slate-400">
                     No employees match this filter.
                   </td>
                 </tr>
