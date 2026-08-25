@@ -566,58 +566,58 @@ export default function EmployeeCvPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-slate-100 pt-4 text-sm sm:grid-cols-3">
-            <div>
+          <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 text-sm sm:grid-cols-3">
+            <div className="bg-white p-3">
               <span className="block text-xs text-slate-400">Employee code</span>
               <span className="text-ink">{employee.employee_code}</span>
             </div>
-            <div>
+            <div className="bg-white p-3">
               <span className="block text-xs text-slate-400">Username</span>
               <span className="text-ink">{employee.username || '—'}</span>
             </div>
-            <div>
+            <div className="bg-white p-3">
               <span className="block text-xs text-slate-400">Biometric / Registration ID</span>
               <span className="text-ink">{employee.fingerprint_id ?? '—'}</span>
             </div>
-            <div>
+            <div className="bg-white p-3">
               <span className="block text-xs text-slate-400">Date of joining</span>
               <span className="text-ink">{formatAdDate(employee.date_of_joining, system)}</span>
             </div>
-            <div>
+            <div className="bg-white p-3">
               <span className="block text-xs text-slate-400">{employee.resigned_at ? 'Days worked' : 'Days with company'}</span>
               <span className="text-ink">{days !== null ? `${days} days` : '—'}</span>
             </div>
             {employee.resigned_at && (
-              <div>
+              <div className="bg-white p-3">
                 <span className="block text-xs text-slate-400">Resigned</span>
                 <span className="text-ink">{formatAdDate(employee.resigned_at, system)}</span>
               </div>
             )}
-            <div>
+            <div className="bg-white p-3">
               <span className="block text-xs text-slate-400">PAN No.</span>
               <span className="text-ink">{employee.pan_no || '—'}</span>
             </div>
-            <div>
+            <div className="bg-white p-3">
               <span className="block text-xs text-slate-400">SSF No.</span>
               <span className="text-ink">{employee.ssf_no || '—'}</span>
             </div>
-            <div>
+            <div className="bg-white p-3">
               <span className="block text-xs text-slate-400">Allowance</span>
               <span className="text-ink">{employee.allowance != null ? employee.allowance.toLocaleString() : '—'}</span>
             </div>
-            <div>
+            <div className="bg-white p-3">
               <span className="block text-xs text-slate-400">PF / SSF / TDS Rate</span>
               <span className="text-ink">
                 {employee.pf_rate ?? '—'}% / {employee.ssf_rate ?? '—'}% / {employee.tds_rate ?? '—'}%
               </span>
             </div>
-            <div className="col-span-2 sm:col-span-3">
+            <div className="col-span-2 bg-white p-3 sm:col-span-3">
               <span className="block text-xs text-slate-400">Address</span>
               <span className="text-ink">{employee.address || '—'}</span>
             </div>
           </div>
 
-          <div className="mt-4 border-t border-slate-100 pt-4 text-sm">
+          <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3 text-sm">
             <span className="mb-1 block text-xs text-slate-400">Emergency contact</span>
             {employee.emergency_contact_name || employee.emergency_contact_phone ? (
               <span className="text-ink">
