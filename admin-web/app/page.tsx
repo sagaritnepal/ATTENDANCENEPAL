@@ -253,6 +253,19 @@ export default function DashboardPage() {
   );
   const absentCount = absentRows.length;
 
+  // Week-off Today should reflect how many employees actually have a day off
+  // today — whether from the company-wide recurring/holiday off-day or from
+  // their own per-employee roster Week Off — not just whether a company-wide
+  // off-day is in effect.
+  const weekOffRows = useMemo<DetailRow[]>(
+    () =>
+      activeEmployees
+        .filter(emp => isWeekOff(resolveShiftForDate(emp, shifts, today, dailyShiftByDate, companyWeekOffDates, weeklyPattern)))
+        .map(emp => ({ id: emp.id, primary: emp.name, secondary: emp.department ?? undefined })),
+    [activeEmployees, shifts, today, dailyShiftByDate, companyWeekOffDates, weeklyPattern]
+  );
+  const weekOffCount = weekOffRows.length;
+
   // payroll_summaries only gets a row for a date once the nightly job (or a
   // manual "Recalculate month") has processed it — for TODAY that row never
   // exists yet, so Total Work Hours/Overtime must be computed live from raw
@@ -306,10 +319,8 @@ export default function DashboardPage() {
     leave: { title: 'On Leave Today', rows: leaveRows, emptyText: 'Nobody is on approved leave today.' },
     weekOff: {
       title: 'Week-off Today',
-      rows: todayIsWeekOff
-        ? [{ id: 'week-off', primary: todayHoliday?.name ?? 'Recurring weekly off day', secondary: 'No one is expected to work today.' }]
-        : [],
-      emptyText: 'Today is not a company-wide Week-off. Manage this under Attendance → Week-off.',
+      rows: weekOffRows,
+      emptyText: 'No employees have a Week-off today.',
     },
     absent: {
       title: 'Absent Today',
@@ -368,8 +379,8 @@ export default function DashboardPage() {
         <StatCard label="On Leave" value={String(onLeaveIds.size)} hint="Approved today" onClick={() => setDetailKey('leave')} />
         <StatCard
           label="Week-off Today"
-          value={todayIsWeekOff ? 'Yes' : 'No'}
-          hint={todayHoliday?.name ?? (todayIsWeekOff ? 'Recurring weekly day' : 'Not a company off-day')}
+          value={String(weekOffCount)}
+          hint={todayIsWeekOff ? (todayHoliday?.name ?? 'Recurring weekly day') : 'Employees off today'}
           onClick={() => setDetailKey('weekOff')}
         />
         <StatCard label="Absent Today" value={String(absentCount)} hint="No punch, not on leave" onClick={() => setDetailKey('absent')} />
