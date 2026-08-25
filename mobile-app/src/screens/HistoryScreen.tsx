@@ -11,6 +11,7 @@ import {
   computeDayStatusForResolvedShift,
   formatHoursMinutes,
   isWeekOff,
+  nepalDateKey,
   nepalTodayIso,
   resolveShiftForDate,
   type DailyShiftByDate,
@@ -177,7 +178,7 @@ export default function HistoryScreen() {
       const empLogs = logs.filter(l => l.employee_id === emp.id);
       const byDate = new Map<string, AttendanceLog[]>();
       for (const day of days) {
-        const dayLogs = empLogs.filter(l => l.punch_time.slice(0, 10) === day);
+        const dayLogs = empLogs.filter(l => nepalDateKey(l.punch_time) === day);
         if (dayLogs.length > 0) byDate.set(day, dayLogs);
       }
       applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, undefined, weeklyPattern);

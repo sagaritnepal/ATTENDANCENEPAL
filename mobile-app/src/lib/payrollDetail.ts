@@ -3,6 +3,7 @@ import {
   applyOvernightShiftCorrection,
   computeDayStatusForResolvedShift,
   isWeekOff,
+  nepalDateKey,
   nepalTodayIso,
   resolveShiftForDate,
   type DailyShiftByDate,
@@ -54,7 +55,7 @@ export function buildEmployeeDayRows(
   const employeeLogs = logs.filter(l => l.employee_id === employee.id);
   const byDate = new Map<string, AttendanceLog[]>();
   for (const day of days) {
-    const dayLogs = employeeLogs.filter(l => l.punch_time.slice(0, 10) === day);
+    const dayLogs = employeeLogs.filter(l => nepalDateKey(l.punch_time) === day);
     if (dayLogs.length > 0) byDate.set(day, dayLogs);
   }
   applyOvernightShiftCorrection(byDate, employeeLogs, employee, shifts, dailyShiftByDate, paidOffDates, weeklyPattern);
@@ -70,9 +71,9 @@ export function buildEmployeeDayRows(
         hours: Number(summary.total_hours),
         overtime: Number(summary.overtime_hours),
         breakMinutes: summary.break_minutes,
-        lateMinutes: summary.is_late ? summary.late_minutes : 0,
-        earlyMinutes: summary.is_early_departure ? summary.early_departure_minutes : 0,
-        status: summary.is_late ? ('Late' as const) : ('Present' as const),
+        lateMinutes: summary.is_late && !employee.attendance_exempt ? summary.late_minutes : 0,
+        earlyMinutes: summary.is_early_departure && !employee.attendance_exempt ? summary.early_departure_minutes : 0,
+        status: summary.is_late && !employee.attendance_exempt ? ('Late' as const) : ('Present' as const),
       };
     }
     const dayLogs = (byDate.get(day) ?? []).sort((a, b) => a.punch_time.localeCompare(b.punch_time));
@@ -96,9 +97,9 @@ export function buildEmployeeDayRows(
       hours: live.totalMinutes / 60,
       overtime: live.overtimeMinutes / 60,
       breakMinutes: live.breakMinutes,
-      lateMinutes: live.lateMinutes,
-      earlyMinutes: live.earlyMinutes,
-      status: live.isLate ? ('Late' as const) : ('Present' as const),
+      lateMinutes: employee.attendance_exempt ? 0 : live.lateMinutes,
+      earlyMinutes: employee.attendance_exempt ? 0 : live.earlyMinutes,
+      status: live.isLate && !employee.attendance_exempt ? ('Late' as const) : ('Present' as const),
       pending: true,
     };
   });

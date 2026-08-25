@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, Modal } from 'react-native';
 import * as Location from 'expo-location';
 import { supabase } from '../lib/supabase';
-import { punchTypeLabel, selectDayPunches } from '../lib/shift';
+import { nepalDateKey, nepalDateTimeToUtcMs, punchTypeLabel, selectDayPunches } from '../lib/shift';
 import type { AttendanceGpsRequest, AttendanceLog, CorrectionRequest } from '../types';
 import { colors } from '../theme';
 import Badge from '../components/Badge';
@@ -119,7 +119,7 @@ export default function CheckInScreen({ navigation }: any) {
   const acceptedPunchIds = useMemo(() => {
     const byDate = new Map<string, AttendanceLog[]>();
     for (const log of history) {
-      const key = log.punch_time.slice(0, 10);
+      const key = nepalDateKey(log.punch_time);
       const list = byDate.get(key);
       if (list) list.push(log);
       else byDate.set(key, [log]);
@@ -214,8 +214,8 @@ export default function CheckInScreen({ navigation }: any) {
     const { error } = await supabase.from('attendance_correction_requests').insert({
       employee_id: employeeId,
       work_date: workDate,
-      requested_check_in: checkInTime ? new Date(`${workDate}T${checkInTime}:00`).toISOString() : null,
-      requested_check_out: checkOutTime ? new Date(`${workDate}T${checkOutTime}:00`).toISOString() : null,
+      requested_check_in: checkInTime ? new Date(nepalDateTimeToUtcMs(workDate, checkInTime)).toISOString() : null,
+      requested_check_out: checkOutTime ? new Date(nepalDateTimeToUtcMs(workDate, checkOutTime)).toISOString() : null,
       reason: reason || null,
       lat: coords?.lat ?? null,
       lng: coords?.lng ?? null,

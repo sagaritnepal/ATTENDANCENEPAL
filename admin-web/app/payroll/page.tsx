@@ -21,6 +21,7 @@ import {
   computeDayStatusForResolvedShift,
   formatHoursMinutes,
   isWeekOff,
+  nepalDateKey,
   nepalTodayIso,
   resolveShiftForDate,
   type DailyShiftByDate,
@@ -249,7 +250,7 @@ export default function PayrollPage() {
       const empLogs = logs.filter(l => l.employee_id === emp.id);
       const byDate = new Map<string, AttendanceLog[]>();
       for (const day of days) {
-        const dayLogs = empLogs.filter(l => l.punch_time.slice(0, 10) === day);
+        const dayLogs = empLogs.filter(l => nepalDateKey(l.punch_time) === day);
         if (dayLogs.length > 0) byDate.set(day, dayLogs);
       }
       applyOvernightShiftCorrection(byDate, empLogs, emp, shifts, dailyShiftByDate, weekOffDateSet, weeklyPattern);
@@ -297,8 +298,8 @@ export default function PayrollPage() {
         row.hours += live.totalMinutes / 60;
         row.overtime += live.overtimeMinutes / 60;
         row.breakMinutes += live.breakMinutes;
-        if (live.isLate) row.lateDays += 1;
-        if (live.isEarly) row.earlyDays += 1;
+        if (live.isLate && !emp.attendance_exempt) row.lateDays += 1;
+        if (live.isEarly && !emp.attendance_exempt) row.earlyDays += 1;
       }
     }
     return Array.from(map.values()).sort((a, b) => a.enrollId.localeCompare(b.enrollId, undefined, { numeric: true, sensitivity: 'base' }));

@@ -1,9 +1,18 @@
 import type { AttendanceLog, Employee, Shift } from './types';
-import { isWeekOff, punchMinuteOfDay, resolveShiftForDate, type DailyShiftByDate, type WeeklyPatternByEmployee } from './shift';
+import {
+  isWeekOff,
+  nepalDateKey,
+  nepalTodayIso,
+  punchMinuteOfDay,
+  resolveShiftForDate,
+  type DailyShiftByDate,
+  type WeeklyPatternByEmployee,
+} from './shift';
 
-export function dateKey(iso: string) {
-  return iso.slice(0, 10);
-}
+// Nepal-local, not a raw UTC slice — a punch between Nepal midnight and
+// 5:44 AM is still the previous UTC calendar date, so `iso.slice(0, 10)`
+// bucketed those punches under the wrong day.
+export const dateKey = nepalDateKey;
 
 function toMinutes(hhmm: string) {
   const [h, m] = hhmm.slice(0, 5).split(':').map(Number);
@@ -49,11 +58,16 @@ export function presentEmployeeIds(logs: AttendanceLog[], day: string) {
 }
 
 export function last7Days(): string[] {
+  // Anchored on Nepal-local "today", not a raw UTC Date — for roughly six
+  // hours a day (Nepal midnight through 5:44 AM is still the previous UTC
+  // calendar date), a UTC anchor would generate the wrong 7-day window
+  // relative to what's actually "today" in Nepal.
+  const today = nepalTodayIso();
+  const [y, m, d] = today.split('-').map(Number);
   const days: string[] = [];
   for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setUTCDate(d.getUTCDate() - i);
-    days.push(d.toISOString().slice(0, 10));
+    const day = new Date(Date.UTC(y, m - 1, d - i));
+    days.push(day.toISOString().slice(0, 10));
   }
   return days;
 }

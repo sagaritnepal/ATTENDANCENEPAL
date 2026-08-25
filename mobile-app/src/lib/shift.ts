@@ -99,7 +99,16 @@ export function formatHoursMinutes(minutes: number) {
 const NEPAL_OFFSET_MINUTES = 5 * 60 + 45;
 
 export function nepalTodayIso() {
-  const d = new Date(Date.now() + NEPAL_OFFSET_MINUTES * 60000);
+  return nepalDateKey(new Date().toISOString());
+}
+
+/** Which Nepal-local calendar date (YYYY-MM-DD) a punch's real UTC instant
+ * falls on — NOT `iso.slice(0, 10)`, which reads the UTC date. Nepal is
+ * UTC+5:45, so any punch between 00:00-05:44 Nepal time is still the
+ * PREVIOUS UTC calendar date; a raw slice silently bucketed those punches
+ * under the wrong day everywhere it was used instead of this. */
+export function nepalDateKey(iso: string) {
+  const d = new Date(new Date(iso).getTime() + NEPAL_OFFSET_MINUTES * 60000);
   return d.toISOString().slice(0, 10);
 }
 
@@ -248,7 +257,7 @@ function isOvernightShift(shift: Pick<Shift, 'start_time' | 'end_time'>) {
   return toMinutes(shift.end_time) <= toMinutes(shift.start_time);
 }
 
-function nepalDateTimeToUtcMs(dateKey: string, time: string): number {
+export function nepalDateTimeToUtcMs(dateKey: string, time: string): number {
   const [y, m, d] = dateKey.split('-').map(Number);
   const [hh, mm] = time.slice(0, 5).split(':').map(Number);
   return Date.UTC(y, m - 1, d, hh, mm) - NEPAL_OFFSET_MINUTES * 60000;

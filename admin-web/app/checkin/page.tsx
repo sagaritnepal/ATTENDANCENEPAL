@@ -7,7 +7,7 @@ import Badge from '@/components/Badge';
 import DatePicker from '@/components/DatePicker';
 import { formatAdDate, localDateKey } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { punchTypeLabel, selectDayPunches } from '@/lib/shift';
+import { nepalDateTimeToUtcMs, punchTypeLabel, selectDayPunches } from '@/lib/shift';
 import { fetchMyCompanyWeekOffConfig } from '@/lib/weekOff';
 import type { AttendanceGpsRequest, AttendanceLog, CorrectionRequest, LeaveRequest, LeaveType } from '@/lib/types';
 
@@ -28,9 +28,15 @@ const EMPTY_CORRECTION_FORM = { work_date: '', check_in_time: '', check_out_time
 const LEAVE_TYPES: LeaveType[] = ['casual', 'sick', 'annual', 'unpaid'];
 const EMPTY_LEAVE_FORM = { leave_type: 'casual' as LeaveType, start_date: '', end_date: '', reason: '' };
 
+// Built from the fixed Nepal (UTC+5:45) offset, not the browser's own
+// timezone — new Date(`${date}T${time}:00`).toISOString() only produced a
+// correct instant when the device happened to be set to Nepal time; anyone
+// traveling, on a VPN, or with a misconfigured clock got a correction that
+// was off by however many hours their device's offset differed from +5:45,
+// and that wrong instant flowed straight into payroll once approved.
 function toTimestamp(date: string, time: string) {
   if (!date || !time) return null;
-  return new Date(`${date}T${time}:00`).toISOString();
+  return new Date(nepalDateTimeToUtcMs(date, time)).toISOString();
 }
 
 function formatTime(value: string | null) {

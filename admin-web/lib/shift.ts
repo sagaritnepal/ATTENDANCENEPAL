@@ -165,7 +165,16 @@ const NEPAL_OFFSET_MINUTES = 5 * 60 + 45;
  * given work_date can still change (the day isn't over yet in Nepal, so more
  * punches — like a checkout — can still land after that row was computed). */
 export function nepalTodayIso() {
-  const d = new Date(Date.now() + NEPAL_OFFSET_MINUTES * 60000);
+  return nepalDateKey(new Date().toISOString());
+}
+
+/** Which Nepal-local calendar date (YYYY-MM-DD) a punch's real UTC instant
+ * falls on — NOT `iso.slice(0, 10)`, which reads the UTC date. Nepal is
+ * UTC+5:45, so any punch between 00:00-05:44 Nepal time is still the
+ * PREVIOUS UTC calendar date; a raw slice silently bucketed those punches
+ * under the wrong day everywhere it was used instead of this. */
+export function nepalDateKey(iso: string) {
+  const d = new Date(new Date(iso).getTime() + NEPAL_OFFSET_MINUTES * 60000);
   return d.toISOString().slice(0, 10);
 }
 
@@ -302,7 +311,7 @@ export function computeDayStatusForResolvedShift(logs: AttendanceLog[], resolved
 
 /** The UTC instant for `time` (HH:MM) on `dateKey` (YYYY-MM-DD), read as
  * Nepal local time — the inverse of punchMinuteOfDay()'s conversion. */
-function nepalDateTimeToUtcMs(dateKey: string, time: string): number {
+export function nepalDateTimeToUtcMs(dateKey: string, time: string): number {
   const [y, m, d] = dateKey.split('-').map(Number);
   const [hh, mm] = time.slice(0, 5).split(':').map(Number);
   return Date.UTC(y, m - 1, d, hh, mm) - NEPAL_OFFSET_MINUTES * 60000;

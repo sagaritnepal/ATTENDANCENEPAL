@@ -6,7 +6,7 @@ import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { punchTypeLabel } from '@/lib/shift';
+import { nepalDateKey, punchTypeLabel } from '@/lib/shift';
 import type { Employee, CorrectionRequest, AttendanceGpsRequest } from '@/lib/types';
 
 function formatTime(value: string | null) {
@@ -139,7 +139,7 @@ export default function CorrectionsPage() {
                       {item.kind === 'correction' ? 'Missed Punch' : punchTypeLabel(item.data.punch_type)} ·{' '}
                       {item.kind === 'correction'
                         ? formatAdDate(item.data.work_date, system)
-                        : formatAdDate(item.data.punch_time.slice(0, 10), system)}
+                        : formatAdDate(nepalDateKey(item.data.punch_time), system)}
                     </div>
                   </div>
                   <Badge tone={item.status === 'approved' ? 'good' : item.status === 'rejected' ? 'critical' : 'warning'}>
@@ -215,7 +215,7 @@ export default function CorrectionsPage() {
                   <td className="px-5 py-3 text-slate-600">
                     {item.kind === 'correction'
                       ? formatAdDate(item.data.work_date, system)
-                      : formatAdDate(item.data.punch_time.slice(0, 10), system)}
+                      : formatAdDate(nepalDateKey(item.data.punch_time), system)}
                   </td>
                   <td className="px-5 py-3 text-slate-600">
                     {item.kind === 'correction'
