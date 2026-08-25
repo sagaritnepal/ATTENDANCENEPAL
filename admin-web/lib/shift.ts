@@ -179,7 +179,7 @@ export function nepalTodayIso() {
  * finalized rows (computed server-side with the fixed Asia/Kathmandu
  * conversion) were correct. Must keep agreeing with that server-side
  * conversion for live and finalized numbers to match. */
-function punchMinuteOfDay(iso: string) {
+export function punchMinuteOfDay(iso: string) {
   const d = new Date(iso);
   const utcMinutes = d.getUTCHours() * 60 + d.getUTCMinutes();
   return (((utcMinutes + NEPAL_OFFSET_MINUTES) % 1440) + 1440) % 1440;

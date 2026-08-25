@@ -1,13 +1,8 @@
 import type { AttendanceLog, Employee, Shift } from './types';
-import { isWeekOff, resolveShiftForDate, type DailyShiftByDate, type WeeklyPatternByEmployee } from './shift';
+import { isWeekOff, punchMinuteOfDay, resolveShiftForDate, type DailyShiftByDate, type WeeklyPatternByEmployee } from './shift';
 
 export function dateKey(iso: string) {
   return iso.slice(0, 10);
-}
-
-function minutesOfDayUTC(iso: string) {
-  const d = new Date(iso);
-  return d.getUTCHours() * 60 + d.getUTCMinutes();
 }
 
 function toMinutes(hhmm: string) {
@@ -42,7 +37,7 @@ export function isLate(
   // Week Off: nothing scheduled, so there's no start time to be late against.
   if (isWeekOff(shift)) return false;
   const startMin = toMinutes(shift.start_time);
-  return minutesOfDayUTC(checkIn.punch_time) > startMin + shift.grace_minutes;
+  return punchMinuteOfDay(checkIn.punch_time) > startMin + shift.grace_minutes;
 }
 
 export function presentEmployeeIds(logs: AttendanceLog[], day: string) {
