@@ -357,7 +357,10 @@ export default function DevicesPage() {
               <p className="text-sm text-slate-600">
                 🔄 Last sync: {d.last_sync ? new Date(d.last_sync).toLocaleString() : 'never'}
               </p>
-              <p className="text-sm text-slate-600">👥 Registered: {registered} staff</p>
+              {/* Employees link to a branch, not a specific device, so this
+                  is the same number on every device at this branch — not
+                  this device's own enrollment count. */}
+              <p className="text-sm text-slate-600">👥 Registered at this branch: {registered} staff</p>
 
               <div className="mt-3 flex gap-2">
                 <div className="flex flex-1 items-center gap-1">

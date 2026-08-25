@@ -169,11 +169,19 @@ export default function TasksPage() {
   async function reviewRedemption(id: string, status: 'approved' | 'rejected') {
     setBusyRedemptionId(id);
     setRedemptionError(null);
-    const { data } = await supabase.auth.getUser();
-    const { error } = await supabase
-      .from('point_redemptions')
-      .update({ status, reviewed_by: data.user?.id, reviewed_at: new Date().toISOString() })
-      .eq('id', id);
+    let error;
+    if (status === 'approved') {
+      // Re-checks the employee's current points balance atomically at
+      // approval time — a plain update here could drive the balance
+      // negative if e.g. two pending requests together exceed it.
+      ({ error } = await supabase.rpc('approve_point_redemption', { p_redemption_id: id }));
+    } else {
+      const { data } = await supabase.auth.getUser();
+      ({ error } = await supabase
+        .from('point_redemptions')
+        .update({ status, reviewed_by: data.user?.id, reviewed_at: new Date().toISOString() })
+        .eq('id', id));
+    }
     setBusyRedemptionId(null);
     if (error) {
       setRedemptionError(error.message);
