@@ -424,8 +424,23 @@ function EmployeesView() {
     const rows = parseCsv(text);
     if (rows.length === 0) return;
 
+    // Map columns by header name, not position — a positional mapping
+    // silently wrote values into the wrong fields for any CSV whose column
+    // order didn't exactly match CSV_COLUMNS (e.g. a different HR export).
+    // A header row identifying every required column is now mandatory,
+    // rather than optionally skipped, since there's no safe way to guess
+    // column order without it.
     const header = rows[0].map(h => h.trim().toLowerCase());
-    const dataRows = header[0] === 'employee_code' ? rows.slice(1) : rows;
+    const missingColumns = CSV_COLUMNS.filter(col => !header.includes(col));
+    if (missingColumns.length > 0) {
+      setImportResult({
+        inserted: 0,
+        failed: [{ row: 1, error: `CSV must have a header row including: ${CSV_COLUMNS.join(', ')} (missing: ${missingColumns.join(', ')})` }],
+      });
+      return;
+    }
+    const colIndex = Object.fromEntries(CSV_COLUMNS.map(col => [col, header.indexOf(col)])) as Record<(typeof CSV_COLUMNS)[number], number>;
+    const dataRows = rows.slice(1);
 
     setImporting(true);
     setImportResult(null);
@@ -435,8 +450,8 @@ function EmployeesView() {
     for (let i = 0; i < dataRows.length; i++) {
       const cols = dataRows[i];
       const record: Record<string, string | null> = {};
-      CSV_COLUMNS.forEach((col, idx) => {
-        const value = cols[idx]?.trim();
+      CSV_COLUMNS.forEach(col => {
+        const value = cols[colIndex[col]]?.trim();
         record[col] = value || null;
       });
       if (!record.employee_code || !record.name) {
