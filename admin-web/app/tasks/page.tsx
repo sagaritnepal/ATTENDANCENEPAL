@@ -36,6 +36,7 @@ export default function TasksPage() {
   const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
   const [pointsDraft, setPointsDraft] = useState<Record<string, number>>({});
   const [reviewingTask, setReviewingTask] = useState<Task | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const [titleSuggestionsOpen, setTitleSuggestionsOpen] = useState(false);
   const titleBoxRef = useRef<HTMLDivElement>(null);
 
@@ -45,17 +46,22 @@ export default function TasksPage() {
   const [redemptions, setRedemptions] = useState<PointRedemption[]>([]);
   const [redemptionFilter, setRedemptionFilter] = useState<'pending' | 'approved' | 'rejected' | 'All'>('pending');
   const [busyRedemptionId, setBusyRedemptionId] = useState<string | null>(null);
+  const [redemptionError, setRedemptionError] = useState<string | null>(null);
 
   function reload() {
     supabase.from('tasks').select('*').order('created_at', { ascending: false }).then(({ data }) => setTasks(data ?? []));
+    // Fetches every employee, not just active ones — a resigned employee's
+    // historical tasks still need their name resolved (employeeName()
+    // below), not "Unknown". Assigning a NEW task is restricted to active
+    // employees separately, via activeEmployees.
     supabase
       .from('employees')
       .select('*')
-      .eq('status', 'active')
       .then(({ data }) => {
         const sorted = (data ?? []).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
         setEmployees(sorted);
-        if (sorted.length > 0) setHoursEmployeeId(prev => prev || sorted[0].id);
+        const firstActive = sorted.find(e => e.status === 'active');
+        if (firstActive) setHoursEmployeeId(prev => prev || firstActive.id);
       });
     supabase
       .from('point_redemptions')
@@ -75,6 +81,7 @@ export default function TasksPage() {
   }, [hoursEmployeeId]);
 
   const employeeName = (id: string) => employees.find(e => e.id === id)?.name ?? 'Unknown';
+  const activeEmployees = useMemo(() => employees.filter(e => e.status === 'active'), [employees]);
   const hoursTaskTotals = useMemo(() => totalsByTask(hoursLogs), [hoursLogs]);
   const employeeTasks = useMemo(() => tasks.filter(t => t.assigned_to === hoursEmployeeId), [tasks, hoursEmployeeId]);
 
@@ -133,8 +140,9 @@ export default function TasksPage() {
 
   async function review(task: Task, status: 'approved' | 'rejected') {
     setBusyId(task.id);
+    setReviewError(null);
     const { data } = await supabase.auth.getUser();
-    await supabase
+    const { error } = await supabase
       .from('tasks')
       .update({
         status,
@@ -145,6 +153,10 @@ export default function TasksPage() {
       })
       .eq('id', task.id);
     setBusyId(null);
+    if (error) {
+      setReviewError(error.message);
+      return;
+    }
     setReviewingTask(null);
     reload();
   }
@@ -156,12 +168,17 @@ export default function TasksPage() {
 
   async function reviewRedemption(id: string, status: 'approved' | 'rejected') {
     setBusyRedemptionId(id);
+    setRedemptionError(null);
     const { data } = await supabase.auth.getUser();
-    await supabase
+    const { error } = await supabase
       .from('point_redemptions')
       .update({ status, reviewed_by: data.user?.id, reviewed_at: new Date().toISOString() })
       .eq('id', id);
     setBusyRedemptionId(null);
+    if (error) {
+      setRedemptionError(error.message);
+      return;
+    }
     reload();
   }
 
@@ -223,7 +240,10 @@ export default function TasksPage() {
                 </div>
                 {t.status === 'submitted' ? (
                   <button
-                    onClick={() => setReviewingTask(t)}
+                    onClick={() => {
+                      setReviewingTask(t);
+                      setReviewError(null);
+                    }}
                     className="mt-3 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent/90"
                   >
                     Review
@@ -283,7 +303,10 @@ export default function TasksPage() {
                   <td className="px-5 py-3">
                     {t.status === 'submitted' ? (
                       <button
-                        onClick={() => setReviewingTask(t)}
+                        onClick={() => {
+                      setReviewingTask(t);
+                      setReviewError(null);
+                    }}
                         className="rounded-md bg-accent px-3 py-1 text-xs font-semibold text-white hover:bg-accent/90"
                       >
                         Review
@@ -353,6 +376,7 @@ export default function TasksPage() {
 
       <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-ink">Point Redemptions</h2>
+        {redemptionError && <p className="mb-3 text-sm text-critical">{redemptionError}</p>}
         <div className="mb-4 flex flex-wrap gap-2">
           {(['pending', 'approved', 'rejected', 'All'] as const).map(f => (
             <button
@@ -419,7 +443,7 @@ export default function TasksPage() {
               <option value="" disabled>
                 Select employee…
               </option>
-              {employees.map(emp => (
+              {activeEmployees.map(emp => (
                 <option key={emp.id} value={emp.id}>
                   {emp.name}
                 </option>
@@ -528,6 +552,7 @@ export default function TasksPage() {
                 <span className="font-medium">Employee note:</span> {reviewingTask.work_notes}
               </p>
             )}
+            {reviewError && <p className="mb-3 text-sm text-critical">{reviewError}</p>}
 
             <label className="mb-1 block text-xs font-medium text-slate-600">Points to award</label>
             <input

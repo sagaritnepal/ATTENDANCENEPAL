@@ -14,6 +14,7 @@ export default function LeavePage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [filter, setFilter] = useState<'All' | 'pending' | 'approved' | 'rejected'>('pending');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   function reload() {
     supabase.from('leave_requests').select('*').order('created_at', { ascending: false }).then(({ data }) => setRequests(data ?? []));
@@ -30,12 +31,17 @@ export default function LeavePage() {
 
   async function review(id: string, status: 'approved' | 'rejected') {
     setBusyId(id);
+    setError(null);
     const { data } = await supabase.auth.getUser();
-    await supabase
+    const { error: updateError } = await supabase
       .from('leave_requests')
       .update({ status, reviewed_by: data.user?.id, reviewed_at: new Date().toISOString() })
       .eq('id', id);
     setBusyId(null);
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
     reload();
   }
 
@@ -45,6 +51,7 @@ export default function LeavePage() {
 
   return (
     <AppShell title="Leave Requests">
+      {error && <p className="mb-4 text-sm text-critical">{error}</p>}
       <div className="mb-5 flex flex-wrap gap-2">
         {(['pending', 'approved', 'rejected', 'All'] as const).map(f => (
           <button
