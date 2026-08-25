@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseConfigured } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
@@ -36,7 +37,14 @@ type DetailRow = { id: string; primary: string; secondary?: string };
 type DetailKey = 'total' | 'present' | 'late' | 'leave' | 'weekOff' | 'absent' | 'hours' | 'overtime';
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { system } = useCalendarSystem();
+  // Superadmins never see this tenant dashboard — any account listed in the
+  // server-side SUPERADMIN_EMAILS allowlist gets bounced straight to
+  // /superadmin instead, same gate /api/superadmin/* itself uses (see
+  // app/superadmin/layout.tsx), so this stays in sync automatically for
+  // every account entrusted with the role, not just one hardcoded email.
+  const [checkingSuperadmin, setCheckingSuperadmin] = useState(true);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
@@ -50,6 +58,34 @@ export default function DashboardPage() {
   const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ employee_id: string; weekday: number; shift_id: string | null }[]>([]);
 
   useEffect(() => {
+    if (!supabaseConfigured) {
+      setCheckingSuperadmin(false);
+      return;
+    }
+    let active = true;
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (!active) return;
+      const token = data.session?.access_token;
+      if (!token) {
+        setCheckingSuperadmin(false);
+        return;
+      }
+      const res = await fetch('/api/superadmin/me', { headers: { Authorization: `Bearer ${token}` } });
+      const body = await res.json().catch(() => ({ isSuperadmin: false }));
+      if (!active) return;
+      if (body.isSuperadmin) {
+        router.replace('/superadmin');
+        return;
+      }
+      setCheckingSuperadmin(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (checkingSuperadmin) return;
     const since = new Date();
     since.setUTCDate(since.getUTCDate() - 7);
 
@@ -99,7 +135,7 @@ export default function DashboardPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [checkingSuperadmin]);
 
   useEffect(() => {
     if (employees.length === 0) return;
@@ -318,6 +354,10 @@ export default function DashboardPage() {
       color: DEPT_COLORS[name] ?? OTHER_COLOR,
     }));
   }, [activeEmployees]);
+
+  if (checkingSuperadmin) {
+    return <div className="flex h-screen items-center justify-center text-slate-400">Loading…</div>;
+  }
 
   return (
     <AppShell title="Dashboard">
