@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSuperadmin } from '@/lib/superadmin';
+import { listAllUsers } from '@/lib/supabase-admin';
 
 export const runtime = 'nodejs';
 
@@ -27,8 +28,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({ error: 'Company not found.' }, { status: 404 });
   }
 
-  const { data: usersPage } = await admin.auth.admin.listUsers({ perPage: 1000 });
-  const emailById = new Map((usersPage?.users ?? []).map(u => [u.id, u.email ?? '']));
+  const { users: authUsers } = await listAllUsers(admin);
+  const emailById = new Map(authUsers.map(u => [u.id, u.email ?? '']));
 
   // Employee-role logins are created via /api/create-login, which links
   // employee_id but never sets profiles.full_name (the real name lives on

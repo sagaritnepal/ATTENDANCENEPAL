@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSuperadmin } from '@/lib/superadmin';
+import { listAllUsers } from '@/lib/supabase-admin';
 
 export const runtime = 'nodejs';
 
@@ -43,10 +44,9 @@ export async function GET(req: NextRequest) {
   }
 
   // profiles has no email column (email lives on auth.users) — resolve it
-  // via listUsers() once and join in JS. Known v1 limit: only the first 1000
-  // users are covered; paginate here if the platform ever exceeds that.
-  const { data: usersPage } = await admin.auth.admin.listUsers({ perPage: 1000 });
-  const emailById = new Map((usersPage?.users ?? []).map(u => [u.id, u.email ?? '']));
+  // via listAllUsers(), paginated across the whole platform.
+  const { users } = await listAllUsers(admin);
+  const emailById = new Map(users.map(u => [u.id, u.email ?? '']));
 
   const userCounts = countByCompany(allProfilesRes.data ?? []);
   const employeeCounts = countByCompany(employeesRes.data ?? []);
