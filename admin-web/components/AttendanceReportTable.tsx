@@ -409,14 +409,17 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
         <div className="max-h-[65vh] overflow-auto rounded-lg print:max-h-none print:overflow-visible">
         {/* print:-prefixed classes below only take effect inside the browser's
             print/Save-as-PDF preview — the on-screen table (colors, compact
-            10-12px sizing) is untouched. Print gets larger text, a plain
-            black-and-white grid (no colored badges/backgrounds — those often
-            don't render consistently across printers/PDF viewers and just
-            burn ink), matching a normal printed report instead of a dense
-            on-screen dashboard. */}
-        <table className="w-full text-left text-xs print:text-lg print:border-collapse">
+            10-12px sizing) is untouched. Print gets a plain black-and-white
+            grid (no colored badges/backgrounds — those often don't render
+            consistently across printers/PDF viewers and just burn ink),
+            matching a normal printed report instead of a dense on-screen
+            dashboard. Font size and border-collapse for print are set
+            globally in globals.css (not here) so there's one source of
+            truth — see the comment there for why border-collapse is
+            `separate`, not `collapse`. */}
+        <table className="w-full text-left text-xs">
           <thead>
-            <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 print:static print:bg-white print:text-[9px] print:text-ink">
+            <tr className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500 print:static print:text-ink">
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Date</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">ID</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Employee</th>

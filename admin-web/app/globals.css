@@ -31,17 +31,32 @@ html, body {
      keeps the widest report (Attendance Report, 11 columns) inside one A4
      Portrait page's width; table-layout: auto (not fixed) still lets short
      columns like ID/Break stay narrow so that budget goes to columns that
-     actually need it (Shift, In/Out). */
+     actually need it (Shift, In/Out).
+
+     border-collapse: separate (not collapse) is deliberate — Chromium has a
+     long-standing print bug where a `border-collapse: collapse` table whose
+     rows use `break-inside: avoid` mis-measures row height across page
+     breaks, occasionally rendering one row stretched to fill the rest of a
+     page (a near-empty "giant row") and inflating the page count by 5-10x.
+     `separate` with `border-spacing: 0` avoids that entirely; the only
+     trade-off is adjoining cell borders sit side-by-side instead of fusing
+     into one hairline, which at 1px is not visually distinguishable. */
   table {
-    border-collapse: collapse !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
     font-size: 9px !important;
     width: 100% !important;
     table-layout: auto !important;
   }
   th, td {
     border: 1px solid #cbd5e1 !important;
-    padding: 1px 2px !important;
+    padding: 2px 3px !important;
     white-space: nowrap !important;
+    vertical-align: middle !important;
+  }
+  thead th {
+    background: #f1f5f9 !important;
+    font-weight: 700 !important;
   }
   /* Opt-out for the rare column (e.g. Device, whose real-world names run
      longer than any other cell) whose forced nowrap above is exactly what
