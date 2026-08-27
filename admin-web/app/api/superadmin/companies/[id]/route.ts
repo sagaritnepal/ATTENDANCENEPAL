@@ -4,15 +4,21 @@ import { listAllUsers } from '@/lib/supabase-admin';
 
 export const runtime = 'nodejs';
 
-// Read-only, single-company detail — everything scoped to the one
-// company_id in the URL. No writes anywhere in this route.
+// Single-company detail (GET, read-only) plus the two superadmin management
+// actions on a company: PATCH to suspend/reactivate (soft, reversible — bans
+// or unbans every login under the company via the Auth Admin API, same as
+// used elsewhere in this codebase for account lifecycle, e.g.
+// bridge-credentials) and DELETE to permanently destroy it (hard, no undo —
+// see superadmin_delete_company() in
+// 20260827100000_superadmin_company_status_and_delete.sql for why this is a
+// single DB transaction rather than a series of client-side deletes).
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const result = await requireSuperadmin(req);
   if ('response' in result) return result.response;
   const { admin } = result;
 
   const [companyRes, profilesRes, employeesRes, devicesRes, syncEventsRes] = await Promise.all([
-    admin.from('companies').select('id, name, created_at').eq('id', params.id).maybeSingle(),
+    admin.from('companies').select('id, name, created_at, status, suspended_at').eq('id', params.id).maybeSingle(),
     admin.from('profiles').select('id, full_name, role, employee_id').eq('company_id', params.id),
     admin.from('employees').select('id, employee_code, name, department, designation, status, date_of_joining').eq('company_id', params.id),
     admin.from('devices').select('id, name, ip_address, status, last_sync').eq('company_id', params.id).order('name'),
@@ -80,9 +86,127 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   });
 
   return NextResponse.json({
-    company: { id: companyRes.data.id, name: companyRes.data.name, createdAt: companyRes.data.created_at },
+    company: {
+      id: companyRes.data.id,
+      name: companyRes.data.name,
+      createdAt: companyRes.data.created_at,
+      status: companyRes.data.status as 'active' | 'suspended',
+      suspendedAt: companyRes.data.suspended_at,
+    },
     users,
     employees: (employeesRes.data ?? []).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
     devices,
+  });
+}
+
+// 100 years — GoTrue's own documented example of an effectively-permanent
+// ban (there's no literal "forever" value). Reactivate sets it back to
+// 'none' to lift the ban.
+const SUSPEND_BAN_DURATION = '876000h';
+
+// Suspend (ban every login under the company; data untouched, fully
+// reversible) or reactivate (unban). Banning is enforced by Supabase Auth
+// itself at sign-in — a banned user gets a clear rejection there, rather
+// than signing in successfully and hitting a confusing wall of empty data,
+// which is what would happen if this instead tried to enforce suspension
+// through RLS/my_company_id() (that function gates the company's own row
+// too, so a suspended company's admin couldn't even read back *why* they
+// were locked out).
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const result = await requireSuperadmin(req);
+  if ('response' in result) return result.response;
+  const { admin } = result;
+
+  const body = await req.json().catch(() => ({}));
+  const action = body?.action;
+  if (action !== 'suspend' && action !== 'reactivate') {
+    return NextResponse.json({ error: 'action must be "suspend" or "reactivate".' }, { status: 400 });
+  }
+
+  const { data: company } = await admin.from('companies').select('id, name').eq('id', params.id).maybeSingle();
+  if (!company) {
+    return NextResponse.json({ error: 'Company not found.' }, { status: 404 });
+  }
+
+  const { data: profiles, error: profilesError } = await admin.from('profiles').select('id').eq('company_id', params.id);
+  if (profilesError) {
+    return NextResponse.json({ error: profilesError.message }, { status: 500 });
+  }
+
+  const banDuration = action === 'suspend' ? SUSPEND_BAN_DURATION : 'none';
+  const results = await Promise.all(
+    (profiles ?? []).map(p => admin.auth.admin.updateUserById(p.id, { ban_duration: banDuration }))
+  );
+  const failedCount = results.filter(r => r.error).length;
+
+  const { error: updateError } = await admin
+    .from('companies')
+    .update(
+      action === 'suspend' ? { status: 'suspended', suspended_at: new Date().toISOString() } : { status: 'active', suspended_at: null }
+    )
+    .eq('id', params.id);
+  if (updateError) {
+    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    status: action === 'suspend' ? 'suspended' : 'active',
+    accountsUpdated: (profiles ?? []).length - failedCount,
+    accountsFailed: failedCount,
+  });
+}
+
+// Permanent, cascading delete — see the migration this calls for the full
+// reasoning. Requires the caller to already have fetched the company's exact
+// name and echo it back as confirmName; this is a second, server-side
+// verification independent of whatever the client's own confirmation UI
+// does (a client-only check is trivially bypassed by anyone driving the API
+// directly), on top of the client-side "type the company name" step the
+// superadmin panel itself requires before ever sending this request.
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const result = await requireSuperadmin(req);
+  if ('response' in result) return result.response;
+  const { admin } = result;
+
+  const body = await req.json().catch(() => ({}));
+  const confirmName = typeof body?.confirmName === 'string' ? body.confirmName : '';
+
+  const { data: company } = await admin.from('companies').select('id, name').eq('id', params.id).maybeSingle();
+  if (!company) {
+    return NextResponse.json({ error: 'Company not found.' }, { status: 404 });
+  }
+  if (confirmName !== company.name) {
+    return NextResponse.json({ error: 'Confirmation text did not match the company name exactly.' }, { status: 400 });
+  }
+
+  // Collected BEFORE the data cascade — once it commits, these profile rows
+  // (and therefore the join used to look this up) are gone.
+  const { data: profiles, error: profilesError } = await admin.from('profiles').select('id').eq('company_id', params.id);
+  if (profilesError) {
+    return NextResponse.json({ error: profilesError.message }, { status: 500 });
+  }
+  const profileIds = (profiles ?? []).map(p => p.id);
+
+  // Single DB transaction: employees, devices, attendance history, payroll,
+  // everything company-scoped, and the company row itself. Either all of it
+  // goes or none of it does — see the migration for the full table list and
+  // ordering.
+  const { error: rpcError } = await admin.rpc('superadmin_delete_company', { target_company_id: params.id });
+  if (rpcError) {
+    return NextResponse.json({ error: `Delete failed, nothing was removed: ${rpcError.message}` }, { status: 500 });
+  }
+
+  // Best-effort cleanup of the now-orphaned login accounts (no profile, no
+  // company, no employee left for any of them) — the data itself is already
+  // gone regardless of how this part goes, so a partial failure here just
+  // means a few leftover unusable logins, not a half-deleted company.
+  const authResults = await Promise.all(profileIds.map(id => admin.auth.admin.deleteUser(id)));
+  const authFailed = authResults.filter(r => r.error).length;
+
+  return NextResponse.json({
+    ok: true,
+    authAccountsDeleted: profileIds.length - authFailed,
+    authAccountsFailed: authFailed,
   });
 }

@@ -5,12 +5,14 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '@/lib/supabase';
 import StatCard from '@/components/StatCard';
 import CompanyDetailModal from '@/components/CompanyDetailModal';
+import Badge from '@/components/Badge';
 
 type AdminUser = { id: string; name: string; email: string; role: string };
 type Company = {
   id: string;
   name: string;
   createdAt: string;
+  status: 'active' | 'suspended';
   userCount: number;
   employeeCount: number;
   deviceCount: number;
@@ -46,29 +48,27 @@ export default function SuperadminDashboardPage() {
   const [sortBy, setSortBy] = useState<'newest' | 'name' | 'employees'>('newest');
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
 
+  async function loadDashboard() {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}` };
+    const [statsRes, companiesRes] = await Promise.all([
+      fetch('/api/superadmin/stats', { headers }),
+      fetch('/api/superadmin/companies', { headers }),
+    ]);
+    const statsBody = await statsRes.json().catch(() => ({}));
+    const companiesBody = await companiesRes.json().catch(() => ({}));
+    if (!statsRes.ok) {
+      setError(statsBody.error ?? 'Could not load stats.');
+      return;
+    }
+    setStats(statsBody);
+    if (companiesRes.ok) setCompanies(companiesBody.companies);
+  }
+
   useEffect(() => {
-    let active = true;
-    supabase.auth.getSession().then(async ({ data }) => {
-      const token = data.session?.access_token;
-      if (!token) return;
-      const headers = { Authorization: `Bearer ${token}` };
-      const [statsRes, companiesRes] = await Promise.all([
-        fetch('/api/superadmin/stats', { headers }),
-        fetch('/api/superadmin/companies', { headers }),
-      ]);
-      const statsBody = await statsRes.json().catch(() => ({}));
-      const companiesBody = await companiesRes.json().catch(() => ({}));
-      if (!active) return;
-      if (!statsRes.ok) {
-        setError(statsBody.error ?? 'Could not load stats.');
-        return;
-      }
-      setStats(statsBody);
-      if (companiesRes.ok) setCompanies(companiesBody.companies);
-    });
-    return () => {
-      active = false;
-    };
+    loadDashboard();
   }, []);
 
   const filtered = useMemo(() => {
@@ -173,7 +173,10 @@ export default function SuperadminDashboardPage() {
                     {c.name.slice(0, 2).toUpperCase()}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-base font-semibold text-ink">{c.name}</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate text-base font-semibold text-ink">{c.name}</span>
+                      {c.status === 'suspended' && <Badge tone="critical">Suspended</Badge>}
+                    </div>
                     <div className="truncate text-xs text-slate-500">Signed up {new Date(c.createdAt).toLocaleDateString()}</div>
                   </div>
                 </div>
@@ -292,7 +295,17 @@ export default function SuperadminDashboardPage() {
         </div>
       </div>
 
-      {selectedCompanyId && <CompanyDetailModal companyId={selectedCompanyId} onClose={() => setSelectedCompanyId(null)} />}
+      {selectedCompanyId && (
+        <CompanyDetailModal
+          companyId={selectedCompanyId}
+          onClose={() => setSelectedCompanyId(null)}
+          onChanged={loadDashboard}
+          onDeleted={() => {
+            setSelectedCompanyId(null);
+            loadDashboard();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ type CompanyRow = {
   id: string;
   name: string;
   createdAt: string;
+  status: 'active' | 'suspended';
   userCount: number;
   employeeCount: number;
   deviceCount: number;
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
   const { admin } = result;
 
   const [companiesRes, adminHrProfilesRes, allProfilesRes, employeesRes, devicesRes] = await Promise.all([
-    admin.from('companies').select('id, name, created_at').order('created_at', { ascending: false }),
+    admin.from('companies').select('id, name, created_at, status').order('created_at', { ascending: false }),
     admin.from('profiles').select('id, full_name, role, company_id').in('role', ['admin', 'hr']),
     admin.from('profiles').select('company_id'),
     admin.from('employees').select('company_id'),
@@ -64,6 +65,7 @@ export async function GET(req: NextRequest) {
     id: c.id,
     name: c.name,
     createdAt: c.created_at,
+    status: (c.status ?? 'active') as 'active' | 'suspended',
     userCount: userCounts.get(c.id) ?? 0,
     employeeCount: employeeCounts.get(c.id) ?? 0,
     deviceCount: deviceCounts.get(c.id) ?? 0,

@@ -10,6 +10,7 @@ type Company = {
   id: string;
   name: string;
   createdAt: string;
+  status: 'active' | 'suspended';
   userCount: number;
   employeeCount: number;
   deviceCount: number;
@@ -31,23 +32,21 @@ export default function SuperadminCompaniesPage() {
   const [search, setSearch] = useState('');
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
 
+  async function loadCompanies() {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) return;
+    const res = await fetch('/api/superadmin/companies', { headers: { Authorization: `Bearer ${token}` } });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(body.error ?? 'Could not load companies.');
+      return;
+    }
+    setCompanies(body.companies);
+  }
+
   useEffect(() => {
-    let active = true;
-    supabase.auth.getSession().then(async ({ data }) => {
-      const token = data.session?.access_token;
-      if (!token) return;
-      const res = await fetch('/api/superadmin/companies', { headers: { Authorization: `Bearer ${token}` } });
-      const body = await res.json().catch(() => ({}));
-      if (!active) return;
-      if (!res.ok) {
-        setError(body.error ?? 'Could not load companies.');
-        return;
-      }
-      setCompanies(body.companies);
-    });
-    return () => {
-      active = false;
-    };
+    loadCompanies();
   }, []);
 
   const filtered = useMemo(() => {
@@ -99,7 +98,10 @@ export default function SuperadminCompaniesPage() {
                 {c.name.slice(0, 2).toUpperCase()}
               </span>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-base font-semibold text-ink">{c.name}</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-base font-semibold text-ink">{c.name}</span>
+                  {c.status === 'suspended' && <Badge tone="critical">Suspended</Badge>}
+                </div>
                 <div className="truncate text-xs text-slate-500">Signed up {new Date(c.createdAt).toLocaleDateString()}</div>
               </div>
             </div>
@@ -141,7 +143,17 @@ export default function SuperadminCompaniesPage() {
         ))}
       </div>
 
-      {selectedCompanyId && <CompanyDetailModal companyId={selectedCompanyId} onClose={() => setSelectedCompanyId(null)} />}
+      {selectedCompanyId && (
+        <CompanyDetailModal
+          companyId={selectedCompanyId}
+          onClose={() => setSelectedCompanyId(null)}
+          onChanged={loadCompanies}
+          onDeleted={() => {
+            setSelectedCompanyId(null);
+            loadCompanies();
+          }}
+        />
+      )}
     </div>
   );
 }
