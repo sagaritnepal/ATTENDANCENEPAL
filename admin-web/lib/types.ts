@@ -129,6 +129,12 @@ export type AttendanceLog = {
   verification_mode: string | null;
 };
 
+/** Column list for `.from('attendance_logs').select(...)` — exactly the
+ * AttendanceLog fields. The table also has lat/lng/accuracy_m/qr_token_id/
+ * selfie_url/match_score/created_at, which nothing reads; `select('*')` pulled
+ * those on every punch row (a big chunk of egress on the payroll/report pages). */
+export const ATTENDANCE_LOG_COLUMNS = 'id, employee_id, device_id, punch_time, punch_type, method, verification_mode';
+
 export type LeaveType = 'sick' | 'casual' | 'annual' | 'unpaid';
 
 export type LeaveRequest = {
@@ -241,3 +247,9 @@ export type PayrollSummary = {
   overtime_approved: boolean;
   computed_at: string;
 };
+
+/** Column list for `.from('payroll_summaries').select(...)` — exactly the
+ * PayrollSummary fields, so `select(PAYROLL_SUMMARY_COLUMNS)` is identical to
+ * `select('*')` for the code but future-proof against wide columns. */
+export const PAYROLL_SUMMARY_COLUMNS =
+  'id, employee_id, work_date, shift_name, check_in, check_out, total_hours, is_late, late_minutes, is_early_departure, early_departure_minutes, overtime_hours, break_minutes, manually_corrected, overtime_approved, computed_at';

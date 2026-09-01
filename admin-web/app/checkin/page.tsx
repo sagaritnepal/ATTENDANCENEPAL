@@ -10,6 +10,7 @@ import { useCalendarSystem } from '@/lib/calendarSystem';
 import { nepalDateTimeToUtcMs, punchTypeLabel, selectDayPunches } from '@/lib/shift';
 import { fetchMyCompanyWeekOffConfig } from '@/lib/weekOff';
 import type { AttendanceGpsRequest, AttendanceLog, CorrectionRequest, LeaveRequest, LeaveType } from '@/lib/types';
+import { ATTENDANCE_LOG_COLUMNS } from '@/lib/types';
 
 const HISTORY_WINDOW_DAYS = 90;
 type HistoryRange = 'daily' | 'weekly' | 'monthly';
@@ -182,7 +183,7 @@ export default function CheckInPage() {
   function reloadHistory(empId: string) {
     supabase
       .from('attendance_logs')
-      .select('*')
+      .select(ATTENDANCE_LOG_COLUMNS)
       .eq('employee_id', empId)
       .gte('punch_time', new Date(Date.now() - HISTORY_WINDOW_DAYS * 86400000).toISOString())
       .order('punch_time', { ascending: false })

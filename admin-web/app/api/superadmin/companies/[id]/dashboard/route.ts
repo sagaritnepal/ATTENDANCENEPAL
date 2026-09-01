@@ -3,6 +3,7 @@ import { requireSuperadmin } from '@/lib/superadmin';
 import { dateKey, isLate, presentEmployeeIds } from '@/lib/metrics';
 import { nepalTodayIso } from '@/lib/shift';
 import type { AttendanceLog, Employee, Shift } from '@/lib/types';
+import { ATTENDANCE_LOG_COLUMNS } from '@/lib/types';
 
 export const runtime = 'nodejs';
 
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const [employeesRes, shiftsRes, logsRes, leaveRes] = await Promise.all([
     admin.from('employees').select('*').eq('company_id', params.id),
     admin.from('shifts').select('*').eq('company_id', params.id),
-    admin.from('attendance_logs').select('*').eq('company_id', params.id).gte('punch_time', since.toISOString()).order('punch_time', { ascending: false }),
+    admin.from('attendance_logs').select(ATTENDANCE_LOG_COLUMNS).eq('company_id', params.id).gte('punch_time', since.toISOString()).order('punch_time', { ascending: false }),
     admin.from('leave_requests').select('employee_id').eq('company_id', params.id).eq('status', 'approved').lte('start_date', today).gte('end_date', today),
   ]);
 

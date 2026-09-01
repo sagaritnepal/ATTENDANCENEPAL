@@ -115,6 +115,15 @@ export type AttendanceLog = {
   match_score?: number | null;
 };
 
+/** Columns to request for a fetched AttendanceLog. Only these are read from
+ * fetched rows; lat/lng/selfie_url/match_score/accuracy_m/etc. that `select('*')`
+ * also pulled are never read back, just written on insert. */
+export const ATTENDANCE_LOG_COLUMNS = 'id, employee_id, device_id, punch_time, punch_type, method';
+
+/** Columns to request for a fetched PayrollSummary — exactly the type's fields. */
+export const PAYROLL_SUMMARY_COLUMNS =
+  'id, employee_id, work_date, check_in, check_out, total_hours, overtime_hours, break_minutes, is_late, late_minutes, is_early_departure, early_departure_minutes';
+
 export type TaskStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'rejected';
 export type TaskSource = 'assigned' | 'self';
 

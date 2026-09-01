@@ -17,6 +17,7 @@ import {
 } from '@/lib/shift';
 import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '@/lib/weekOff';
 import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
+import { ATTENDANCE_LOG_COLUMNS, PAYROLL_SUMMARY_COLUMNS } from '@/lib/types';
 
 const WINDOW_DAYS = 400;
 
@@ -93,13 +94,13 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
       supabase.from('shifts').select('*'),
       supabase
         .from('attendance_logs')
-        .select('*')
+        .select(ATTENDANCE_LOG_COLUMNS)
         .eq('employee_id', employeeId)
         .gte('punch_time', windowStart.toISOString())
         .order('punch_time', { ascending: true }),
       supabase
         .from('payroll_summaries')
-        .select('*')
+        .select(PAYROLL_SUMMARY_COLUMNS)
         .eq('employee_id', employeeId)
         .gte('work_date', windowStart.toISOString().slice(0, 10)),
       supabase.from('leave_requests').select('*').eq('employee_id', employeeId).eq('status', 'approved'),
@@ -369,7 +370,7 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
     const end = new Date(new Date(start).getTime() + 86400000).toISOString();
     supabase
       .from('attendance_logs')
-      .select('*')
+      .select(ATTENDANCE_LOG_COLUMNS)
       .eq('employee_id', employeeId)
       .gte('punch_time', start)
       .lt('punch_time', end)

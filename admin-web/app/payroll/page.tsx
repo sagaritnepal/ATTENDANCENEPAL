@@ -28,6 +28,7 @@ import {
 } from '@/lib/shift';
 import { fetchMyCompanyWeekOffConfig, leaveDatesByEmployee, weekOffDatesInRange } from '@/lib/weekOff';
 import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
+import { ATTENDANCE_LOG_COLUMNS, PAYROLL_SUMMARY_COLUMNS } from '@/lib/types';
 
 /** Decimal hours (e.g. row.hours, row.overtime) -> "Xh Ym". */
 function fmtHrs(hours: number) {
@@ -158,8 +159,8 @@ export default function PayrollPage() {
   function reload() {
     setLoading(true);
     Promise.all([
-      supabase.from('payroll_summaries').select('*').gte('work_date', start).lte('work_date', end),
-      supabase.from('attendance_logs').select('*').gte('punch_time', `${start}T00:00:00Z`).lte('punch_time', `${end}T23:59:59Z`),
+      supabase.from('payroll_summaries').select(PAYROLL_SUMMARY_COLUMNS).gte('work_date', start).lte('work_date', end),
+      supabase.from('attendance_logs').select(ATTENDANCE_LOG_COLUMNS).gte('punch_time', `${start}T00:00:00Z`).lte('punch_time', `${end}T23:59:59Z`),
       supabase.from('shifts').select('*'),
       supabase.from('employees').select('*').eq('status', 'active'),
       supabase.from('employee_daily_shifts').select('employee_id, work_date, shift_id').gte('work_date', start).lte('work_date', end),

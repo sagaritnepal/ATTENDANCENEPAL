@@ -5,6 +5,7 @@ import * as Sharing from 'expo-sharing';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
 import type { AttendanceLog, Device, Employee, PayrollSummary, Shift } from '../types';
+import { ATTENDANCE_LOG_COLUMNS, PAYROLL_SUMMARY_COLUMNS } from '../types';
 import {
   applyOvernightShiftCorrection,
   buildWeeklyPatternByEmployee,
@@ -115,8 +116,8 @@ export default function HistoryScreen() {
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      supabase.from('payroll_summaries').select('*').gte('work_date', from).lte('work_date', to),
-      supabase.from('attendance_logs').select('*').gte('punch_time', `${from}T00:00:00Z`).lte('punch_time', `${to}T23:59:59Z`),
+      supabase.from('payroll_summaries').select(PAYROLL_SUMMARY_COLUMNS).gte('work_date', from).lte('work_date', to),
+      supabase.from('attendance_logs').select(ATTENDANCE_LOG_COLUMNS).gte('punch_time', `${from}T00:00:00Z`).lte('punch_time', `${to}T23:59:59Z`),
       supabase.from('employee_daily_shifts').select('employee_id, work_date, shift_id').gte('work_date', from).lte('work_date', to),
     ]).then(([summariesRes, logsRes, rosterRes]) => {
       setSummaries((summariesRes.data as PayrollSummary[]) ?? []);

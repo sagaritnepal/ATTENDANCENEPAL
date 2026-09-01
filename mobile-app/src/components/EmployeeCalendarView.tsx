@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { supabase } from '../lib/supabase';
 import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '../types';
+import { ATTENDANCE_LOG_COLUMNS, PAYROLL_SUMMARY_COLUMNS } from '../types';
 import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '../lib/weekOff';
 import {
   applyOvernightShiftCorrection,
@@ -104,14 +105,14 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
     supabase.from('shifts').select('*').then(({ data }) => setShifts((data as Shift[]) ?? []));
     supabase
       .from('attendance_logs')
-      .select('*')
+      .select(ATTENDANCE_LOG_COLUMNS)
       .eq('employee_id', employeeId)
       .gte('punch_time', since)
       .order('punch_time', { ascending: true })
       .then(({ data }) => setLogs((data as AttendanceLog[]) ?? []));
     supabase
       .from('payroll_summaries')
-      .select('*')
+      .select(PAYROLL_SUMMARY_COLUMNS)
       .eq('employee_id', employeeId)
       .gte('work_date', since.slice(0, 10))
       .then(({ data }) => setSummaries((data as PayrollSummary[]) ?? []));
@@ -321,7 +322,7 @@ export default function EmployeeCalendarView({ employeeId }: { employeeId: strin
     const end = new Date(new Date(start).getTime() + 86400000).toISOString();
     supabase
       .from('attendance_logs')
-      .select('*')
+      .select(ATTENDANCE_LOG_COLUMNS)
       .eq('employee_id', employeeId)
       .gte('punch_time', start)
       .lt('punch_time', end)

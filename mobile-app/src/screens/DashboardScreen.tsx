@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, Image, Modal } from 'react-native';
 import { supabase } from '../lib/supabase';
 import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, Shift } from '../types';
+import { ATTENDANCE_LOG_COLUMNS } from '../types';
 import { colors } from '../theme';
 import StatCard from '../components/StatCard';
 import SimpleLineChart from '../components/SimpleLineChart';
@@ -104,7 +105,7 @@ export default function DashboardScreen({ navigation }: any) {
       .then(({ data }) => setTodayRoster(data ?? []));
     supabase
       .from('attendance_logs')
-      .select('*')
+      .select(ATTENDANCE_LOG_COLUMNS)
       .gte('punch_time', since.toISOString())
       .order('punch_time', { ascending: false })
       .then(({ data }) => {

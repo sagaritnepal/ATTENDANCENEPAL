@@ -14,6 +14,7 @@ import { formatHoursMinutes, type DailyShiftByDate, type WeeklyPatternByEmployee
 import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '@/lib/payrollDetail';
 import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '@/lib/weekOff';
 import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
+import { ATTENDANCE_LOG_COLUMNS, PAYROLL_SUMMARY_COLUMNS } from '@/lib/types';
 
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -103,10 +104,10 @@ function PayrollEmployeeDetailView() {
     Promise.all([
       supabase.from('employees').select('*').eq('id', employeeId).single(),
       supabase.from('shifts').select('*'),
-      supabase.from('payroll_summaries').select('*').eq('employee_id', employeeId).gte('work_date', start).lte('work_date', end),
+      supabase.from('payroll_summaries').select(PAYROLL_SUMMARY_COLUMNS).eq('employee_id', employeeId).gte('work_date', start).lte('work_date', end),
       supabase
         .from('attendance_logs')
-        .select('*')
+        .select(ATTENDANCE_LOG_COLUMNS)
         .eq('employee_id', employeeId)
         .gte('punch_time', `${start}T00:00:00Z`)
         .lte('punch_time', `${end}T23:59:59Z`),

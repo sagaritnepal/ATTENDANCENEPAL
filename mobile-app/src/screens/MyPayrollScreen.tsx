@@ -7,6 +7,7 @@ import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '../lib/weekOff
 import { buildPeriodOptions, currentSystemYearMonth, formatDdMmYyyy, systemPeriod, type CalendarPeriod } from '../lib/calendar';
 import { useCalendarSystem } from '../lib/CalendarSystemContext';
 import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '../types';
+import { ATTENDANCE_LOG_COLUMNS, PAYROLL_SUMMARY_COLUMNS } from '../types';
 import { colors } from '../theme';
 import { ChevronIcon } from '../components/icons';
 import SimpleLineChart from '../components/SimpleLineChart';
@@ -114,10 +115,10 @@ export default function MyPayrollScreen() {
 
   useEffect(() => {
     if (!employeeId) return;
-    supabase.from('payroll_summaries').select('*').eq('employee_id', employeeId).gte('work_date', start).lte('work_date', end).then(({ data }) => setSummaries((data as PayrollSummary[]) ?? []));
+    supabase.from('payroll_summaries').select(PAYROLL_SUMMARY_COLUMNS).eq('employee_id', employeeId).gte('work_date', start).lte('work_date', end).then(({ data }) => setSummaries((data as PayrollSummary[]) ?? []));
     supabase
       .from('attendance_logs')
-      .select('*')
+      .select(ATTENDANCE_LOG_COLUMNS)
       .eq('employee_id', employeeId)
       .gte('punch_time', `${start}T00:00:00Z`)
       .lte('punch_time', `${end}T23:59:59Z`)
@@ -128,10 +129,10 @@ export default function MyPayrollScreen() {
     if (!employeeId || !employee?.date_of_joining) return;
     const from = employee.date_of_joining;
     const today = nepalTodayIso();
-    supabase.from('payroll_summaries').select('*').eq('employee_id', employeeId).gte('work_date', from).lte('work_date', today).then(({ data }) => setLifetimeSummaries((data as PayrollSummary[]) ?? []));
+    supabase.from('payroll_summaries').select(PAYROLL_SUMMARY_COLUMNS).eq('employee_id', employeeId).gte('work_date', from).lte('work_date', today).then(({ data }) => setLifetimeSummaries((data as PayrollSummary[]) ?? []));
     supabase
       .from('attendance_logs')
-      .select('*')
+      .select(ATTENDANCE_LOG_COLUMNS)
       .eq('employee_id', employeeId)
       .gte('punch_time', `${from}T00:00:00Z`)
       .then(({ data }) => setLifetimeLogs((data as AttendanceLog[]) ?? []));

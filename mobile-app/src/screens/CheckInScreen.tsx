@@ -4,6 +4,7 @@ import * as Location from 'expo-location';
 import { supabase } from '../lib/supabase';
 import { nepalDateKey, nepalDateTimeToUtcMs, punchTypeLabel, selectDayPunches } from '../lib/shift';
 import type { AttendanceGpsRequest, AttendanceLog, CorrectionRequest } from '../types';
+import { ATTENDANCE_LOG_COLUMNS } from '../types';
 import { colors } from '../theme';
 import Badge from '../components/Badge';
 import { formatAdDate, localDateKey } from '../lib/calendar';
@@ -97,7 +98,7 @@ export default function CheckInScreen({ navigation }: any) {
   function reloadHistory(empId: string) {
     supabase
       .from('attendance_logs')
-      .select('*')
+      .select(ATTENDANCE_LOG_COLUMNS)
       .eq('employee_id', empId)
       .gte('punch_time', new Date(Date.now() - HISTORY_WINDOW_DAYS * 86400000).toISOString())
       .order('punch_time', { ascending: false })

@@ -6,6 +6,7 @@ import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
 import { useConfirm } from '@/components/ConfirmDialog';
 import type { AttendanceLog, Branch, Device, DeviceSyncEvent, Employee } from '@/lib/types';
+import { ATTENDANCE_LOG_COLUMNS } from '@/lib/types';
 
 const EMPTY_FORM = { name: '', branch_id: '', ip_address: '', port: 4370, serial_number: '' };
 
@@ -106,7 +107,7 @@ export default function DevicesPage() {
     supabase.from('devices').select('*').then(({ data }) => setDevices(data ?? []));
     supabase.from('branches').select('*').then(({ data }) => setBranches(data ?? []));
     supabase.from('employees').select('*').then(({ data }) => setEmployees(data ?? []));
-    supabase.from('attendance_logs').select('*').eq('method', 'zkteco').then(({ data }) => setLogs(data ?? []));
+    supabase.from('attendance_logs').select(ATTENDANCE_LOG_COLUMNS).eq('method', 'zkteco').then(({ data }) => setLogs(data ?? []));
     supabase
       .from('device_sync_events')
       .select('*')
@@ -117,11 +118,17 @@ export default function DevicesPage() {
   }
   useEffect(reload, []);
 
-  // While anything is still queued/running, poll every 3s so a click on
-  // "Sync Now" reflects the bridge (desktop app or standalone worker)
-  // picking it up and finishing without the admin having to hit Refresh.
+  // While a RECENT sync is still queued/running, poll every 3s so a click on
+  // "Sync Now" reflects the bridge (desktop app or standalone worker) picking
+  // it up and finishing without the admin having to hit Refresh. The 2-minute
+  // cutoff on requested_at stops the poll from running forever when a sync is
+  // stuck 'pending' because the bridge is offline.
   useEffect(() => {
-    if (!syncEvents.some(e => e.status === 'pending' || e.status === 'running')) return;
+    const cutoff = Date.now() - 2 * 60 * 1000;
+    const active = syncEvents.some(
+      e => (e.status === 'pending' || e.status === 'running') && new Date(e.requested_at).getTime() > cutoff
+    );
+    if (!active) return;
     const id = setInterval(reload, 3000);
     return () => clearInterval(id);
   }, [syncEvents]);
