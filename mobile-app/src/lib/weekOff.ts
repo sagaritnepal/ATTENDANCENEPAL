@@ -27,6 +27,14 @@ export type CompanyWeekOffConfig = {
    * defaults, when there's no company yet. */
   otHoursPerDay: number;
   otMultiplier: number;
+  /** Statutory contribution rates as a percentage of Basic Salary
+   * (companies.pf_rate/ssf_rate/tds_rate) — one figure per company, set on
+   * the admin Salary Structure page, read by every payroll breakdown.
+   * Defaults to the common Nepal figures (PF 10%, SSF 11%, TDS 0%) when
+   * there's no company yet. */
+  pfRate: number;
+  ssfRate: number;
+  tdsRate: number;
 };
 
 const DEFAULT_CONFIG: CompanyWeekOffConfig = {
@@ -36,6 +44,9 @@ const DEFAULT_CONFIG: CompanyWeekOffConfig = {
   breakEnabled: false,
   otHoursPerDay: 8,
   otMultiplier: 1.5,
+  pfRate: 10,
+  ssfRate: 11,
+  tdsRate: 0,
 };
 
 /** The current user's own company_id + weekly_off_day + roster_mode +
@@ -50,7 +61,7 @@ export async function fetchMyCompanyWeekOffConfig(): Promise<CompanyWeekOffConfi
   if (!companyId) return DEFAULT_CONFIG;
   const { data: company } = await supabase
     .from('companies')
-    .select('weekly_off_day, roster_mode, break_enabled, ot_hours_per_day, ot_multiplier')
+    .select('weekly_off_day, roster_mode, break_enabled, ot_hours_per_day, ot_multiplier, pf_rate, ssf_rate, tds_rate')
     .eq('id', companyId)
     .single();
   return {
@@ -60,6 +71,9 @@ export async function fetchMyCompanyWeekOffConfig(): Promise<CompanyWeekOffConfi
     breakEnabled: company?.break_enabled ?? false,
     otHoursPerDay: company?.ot_hours_per_day ?? DEFAULT_CONFIG.otHoursPerDay,
     otMultiplier: company?.ot_multiplier ?? DEFAULT_CONFIG.otMultiplier,
+    pfRate: company?.pf_rate ?? DEFAULT_CONFIG.pfRate,
+    ssfRate: company?.ssf_rate ?? DEFAULT_CONFIG.ssfRate,
+    tdsRate: company?.tds_rate ?? DEFAULT_CONFIG.tdsRate,
   };
 }
 

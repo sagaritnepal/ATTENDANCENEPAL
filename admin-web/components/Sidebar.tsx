@@ -32,7 +32,15 @@ const NAV_ITEMS: NavItem[] = [
       { href: '/employees?filter=Resigned', label: 'Resigned', icon: ResignedIcon, adminOnly: true },
     ],
   },
-  { href: '/payroll', label: 'Payroll', icon: CardIcon, adminOnly: false },
+  {
+    href: '/payroll',
+    label: 'Payroll',
+    icon: CardIcon,
+    adminOnly: false,
+    children: [
+      { href: '/salary-structure', label: 'Salary Structure', icon: StructureIcon, adminOnly: true },
+    ],
+  },
   { href: '/tasks', label: 'Tasks', icon: TaskIcon, adminOnly: false },
   { href: '/devices', label: 'Devices', icon: DeviceIcon, adminOnly: true },
 ];
@@ -254,6 +262,14 @@ function CardIcon({ className }: IconProps) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <rect x="2" y="5" width="20" height="14" rx="2" />
       <path strokeLinecap="round" d="M2 10h20" />
+    </svg>
+  );
+}
+function StructureIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 9h18M9 9v11" />
     </svg>
   );
 }

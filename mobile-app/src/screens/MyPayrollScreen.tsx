@@ -52,12 +52,20 @@ export default function MyPayrollScreen() {
   // 8h/1.5x, so this figure actually matches what the admin sees.
   const [otHoursPerDay, setOtHoursPerDay] = useState(8);
   const [otMultiplier, setOtMultiplier] = useState(1.5);
+  // One company-wide rate each (companies.pf_rate/…), set on the admin
+  // Salary Structure page — so these deduction lines match what the admin sees.
+  const [pfRate, setPfRate] = useState(10);
+  const [ssfRate, setSsfRate] = useState(11);
+  const [tdsRate, setTdsRate] = useState(0);
 
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier }) => {
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier, pfRate, ssfRate, tdsRate }) => {
       setWeeklyOffDay(weeklyOffDay);
       setOtHoursPerDay(otHoursPerDay);
       setOtMultiplier(otMultiplier);
+      setPfRate(pfRate);
+      setSsfRate(ssfRate);
+      setTdsRate(tdsRate);
       if (rosterMode === 'weekly' && employeeId) {
         supabase
           .from('employee_weekly_pattern')
@@ -235,13 +243,13 @@ export default function MyPayrollScreen() {
     const earnedFraction = employee.salary > 0 ? basic / employee.salary : 0;
     const allowance = Math.round((employee.allowance ?? 0) * earnedFraction);
     const total = basic + allowance;
-    const pf = Math.round((basic * (employee.pf_rate ?? 0)) / 100);
-    const ssf = Math.round((basic * (employee.ssf_rate ?? 0)) / 100);
+    const pf = Math.round((basic * pfRate) / 100);
+    const ssf = Math.round((basic * ssfRate) / 100);
     const ot = Math.round(totals.overtimeEarning);
-    const tds = Math.round((basic * (employee.tds_rate ?? 0)) / 100);
+    const tds = Math.round((basic * tdsRate) / 100);
     const totalSalary = total + ot - pf - ssf - tds;
     return { basic, allowance, total, pf, ssf, ot, tds, totalSalary };
-  }, [employee, totals]);
+  }, [employee, totals, pfRate, ssfRate, tdsRate]);
 
   function changePeriod(delta: number) {
     const idx = periodOptions.findIndex(o => o.key === period.key);

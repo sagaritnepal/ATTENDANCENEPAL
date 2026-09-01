@@ -21,9 +21,6 @@ export type Employee = {
   status: 'active' | 'inactive';
   salary: number | null;
   allowance: number | null;
-  pf_rate: number | null;
-  ssf_rate: number | null;
-  tds_rate: number | null;
   profile_photo_url: string | null;
   date_of_joining: string | null;
   resigned_at: string | null;

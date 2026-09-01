@@ -36,9 +36,6 @@ export type Employee = {
   resigned_at: string | null;
   salary: number | null;
   allowance: number | null;
-  pf_rate: number | null;
-  ssf_rate: number | null;
-  tds_rate: number | null;
   emergency_contact_name: string | null;
   emergency_contact_relationship: string | null;
   emergency_contact_phone: string | null;

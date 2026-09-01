@@ -43,14 +43,23 @@ export default function MyPayrollPage() {
   // page, not just a hardcoded guess at what an admin might have set.
   const [otHoursPerDay, setOtHoursPerDay] = useState(8);
   const [otMultiplier, setOtMultiplier] = useState(1.5);
+  // PF/SSF/TDS are one company-wide rate each (companies.pf_rate/…), set on
+  // the admin Salary Structure page — read here so this employee's deduction
+  // lines match what the admin sees.
+  const [pfRate, setPfRate] = useState(10);
+  const [ssfRate, setSsfRate] = useState(11);
+  const [tdsRate, setTdsRate] = useState(0);
 
   const { start, end } = period;
 
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier }) => {
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier, pfRate, ssfRate, tdsRate }) => {
       setWeeklyOffDay(weeklyOffDay);
       setOtHoursPerDay(otHoursPerDay);
       setOtMultiplier(otMultiplier);
+      setPfRate(pfRate);
+      setSsfRate(ssfRate);
+      setTdsRate(tdsRate);
       // Not date-scoped (a pattern applies to every week), and only ever
       // relevant in 'weekly' roster_mode — see resolveShiftForDate().
       if (rosterMode === 'weekly' && employeeId) {
@@ -302,21 +311,21 @@ export default function MyPayrollPage() {
   // attendance-prorated base earning (same figure "Receivable" used to show
   // before OT); Allowance scales by that same attendance fraction so a
   // partial/absent period doesn't pay a full allowance. PF/SSF/TDS are each
-  // a % of Basic Salary (not Allowance) — the common convention, and the
-  // only one we have a rate for per employee.
+  // a % of Basic Salary (not Allowance) — the common convention — at the
+  // company-wide rate set on the admin Salary Structure page.
   const breakdown = useMemo(() => {
     if (employee?.salary == null) return null;
     const basic = Math.round(totals.totalSalary - totals.overtimeEarning);
     const earnedFraction = employee.salary > 0 ? basic / employee.salary : 0;
     const allowance = Math.round((employee.allowance ?? 0) * earnedFraction);
     const total = basic + allowance;
-    const pf = Math.round((basic * (employee.pf_rate ?? 0)) / 100);
-    const ssf = Math.round((basic * (employee.ssf_rate ?? 0)) / 100);
+    const pf = Math.round((basic * pfRate) / 100);
+    const ssf = Math.round((basic * ssfRate) / 100);
     const ot = Math.round(totals.overtimeEarning);
-    const tds = Math.round((basic * (employee.tds_rate ?? 0)) / 100);
+    const tds = Math.round((basic * tdsRate) / 100);
     const totalSalary = total + ot - pf - ssf - tds;
     return { basic, allowance, total, pf, ssf, ot, tds, totalSalary };
-  }, [employee, totals]);
+  }, [employee, totals, pfRate, ssfRate, tdsRate]);
 
   const chartData = useMemo(
     () =>
