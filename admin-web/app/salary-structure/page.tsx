@@ -8,10 +8,10 @@ import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import { fetchMyCompanyWeekOffConfig } from '@/lib/weekOff';
 import type { Employee } from '@/lib/types';
 
-/** One company-wide rate each (companies.pf_rate/ssf_rate/tds_rate) — a
- * percentage of Basic Salary. Basic + Allowance are per employee (Basic on
- * the Payroll page, Allowance on the employee detail page). This page is the
- * one place the three rates are set; the Payroll report only reads them. */
+/** The one place a company's salary structure is set: the three contribution
+ * rates (companies.pf_rate/ssf_rate/tds_rate — one company-wide percentage of
+ * Basic each), plus per-employee Basic and Allowance, editable inline in the
+ * table. The monthly Payroll report only reads these figures. */
 export default function SalaryStructurePage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +28,12 @@ export default function SalaryStructurePage() {
   const [ssfDraft, setSsfDraft] = useState('11');
   const [tdsDraft, setTdsDraft] = useState('0');
   const [saving, setSaving] = useState(false);
+
+  // Inline per-employee Basic / Allowance editing — one cell at a time, same
+  // edit-in-place pattern the Payroll page uses for salary.
+  const [editingCell, setEditingCell] = useState<{ id: string; field: 'salary' | 'allowance' } | null>(null);
+  const [cellDraft, setCellDraft] = useState('');
+  const [savingCell, setSavingCell] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -126,6 +132,81 @@ export default function SalaryStructurePage() {
     setSsfDraft(String(savedRates.ssf));
     setTdsDraft(String(savedRates.tds));
   }
+
+  function startEditCell(id: string, field: 'salary' | 'allowance', current: number | null) {
+    setEditingCell({ id, field });
+    setCellDraft(current != null ? String(current) : '');
+  }
+
+  function cancelEditCell() {
+    setEditingCell(null);
+    setCellDraft('');
+  }
+
+  async function saveCell() {
+    if (!editingCell) return;
+    const { id, field } = editingCell;
+    const trimmed = cellDraft.trim();
+    const value = trimmed === '' ? null : Number(trimmed);
+    if (value != null && (Number.isNaN(value) || value < 0)) {
+      alert('Enter a valid amount (0 or more), or clear it to unset.');
+      return;
+    }
+    setSavingCell(true);
+    const { error } = await supabase.from('employees').update({ [field]: value }).eq('id', id);
+    setSavingCell(false);
+    if (error) {
+      alert(`Could not save: ${error.message}`);
+      return;
+    }
+    setEmployees(prev => prev.map(e => (e.id === id ? { ...e, [field]: value } : e)));
+    cancelEditCell();
+  }
+
+  // Plain function returning a <td>, not a nested component — see rateHeader.
+  const amountCell = (id: string, field: 'salary' | 'allowance', value: number | null) => {
+    if (editingCell?.id === id && editingCell.field === field) {
+      return (
+        <td className="whitespace-nowrap px-3 py-2 text-right align-top">
+          <input
+            autoFocus
+            type="number"
+            min="0"
+            step="0.01"
+            value={cellDraft}
+            onChange={e => setCellDraft(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') saveCell();
+              if (e.key === 'Escape') cancelEditCell();
+            }}
+            className="w-24 rounded-md border border-slate-200 px-2 py-1 text-right text-xs tabular-nums text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+          />
+          <div className="mt-1 flex justify-end gap-2">
+            <button onClick={cancelEditCell} disabled={savingCell} className="text-[11px] font-medium text-slate-500 hover:underline disabled:opacity-60">
+              Cancel
+            </button>
+            <button onClick={saveCell} disabled={savingCell} className="text-[11px] font-semibold text-accent hover:underline disabled:opacity-60">
+              {savingCell ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </td>
+      );
+    }
+    return (
+      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-600">
+        <span className="inline-flex items-center gap-1.5">
+          <span className={value == null ? 'text-slate-300' : undefined}>{value != null ? value.toLocaleString() : '—'}</span>
+          <button
+            onClick={() => startEditCell(id, field, value)}
+            title={field === 'salary' ? 'Edit basic salary' : 'Edit allowance'}
+            className="text-slate-300 hover:text-accent"
+          >
+            <EditIcon className="h-3.5 w-3.5" />
+          </button>
+        </span>
+      </td>
+    );
+  };
 
   function exportCsv() {
     const header = ['Employee', 'Designation', 'Basic', 'Allowance', 'Gross', `PF (${pf}%)`, `SSF (${ssf}%)`, `TDS (${tds}%)`, 'Net Payable'];
@@ -261,7 +342,7 @@ export default function SalaryStructurePage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ e, basic, allowance, gross, pfAmt, ssfAmt, tdsAmt, net }) => (
+              {rows.map(({ e, gross, pfAmt, ssfAmt, tdsAmt, net }) => (
                 <tr key={e.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                   <td className="whitespace-nowrap px-3 py-2 font-medium text-ink">
                     <span className="flex items-center gap-2.5">
@@ -270,21 +351,23 @@ export default function SalaryStructurePage() {
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-slate-500">{e.designation || '—'}</td>
-                  {basic == null ? (
-                    <td className="px-3 py-2 text-slate-400" colSpan={7}>
-                      No Basic Salary set — add it on the Payroll page
-                    </td>
-                  ) : (
-                    <>
-                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-600">{basic.toLocaleString()}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-600">{allowance.toLocaleString()}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums text-ink">{gross!.toLocaleString()}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">{pfAmt!.toLocaleString()}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">{ssfAmt!.toLocaleString()}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">{tdsAmt!.toLocaleString()}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right font-bold tabular-nums text-good-text">{net!.toLocaleString()}</td>
-                    </>
-                  )}
+                  {amountCell(e.id, 'salary', e.salary)}
+                  {amountCell(e.id, 'allowance', e.allowance)}
+                  <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums text-ink">
+                    {gross != null ? gross.toLocaleString() : '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">
+                    {pfAmt != null ? pfAmt.toLocaleString() : '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">
+                    {ssfAmt != null ? ssfAmt.toLocaleString() : '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">
+                    {tdsAmt != null ? tdsAmt.toLocaleString() : '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right font-bold tabular-nums text-good-text">
+                    {net != null ? net.toLocaleString() : '—'}
+                  </td>
                 </tr>
               ))}
               {rows.length === 0 && (
@@ -316,8 +399,9 @@ export default function SalaryStructurePage() {
       </div>
 
       <p className="mt-3 text-xs text-slate-400">
-        Net Payable = Basic + Allowance − PF − SSF − TDS. The three rates are company-wide; the monthly Payroll report reads
-        these figures and is not edited here. Overtime, where earned, is added on top on the Payroll report.
+        Net Payable = Basic + Allowance − PF − SSF − TDS. Click a Basic or Allowance figure to edit it for that employee; the
+        PF / SSF / TDS rates are company-wide. The monthly Payroll report reads these figures and is not edited there.
+        Overtime, where earned, is added on top on the Payroll report.
       </p>
     </AppShell>
   );
@@ -337,6 +421,14 @@ function SearchIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <circle cx="11" cy="11" r="7" />
       <path strokeLinecap="round" d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+function EditIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
     </svg>
   );
 }
