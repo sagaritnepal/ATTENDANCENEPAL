@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
@@ -65,6 +65,24 @@ export default function PayrollPage() {
   const [dataRange, setDataRange] = useState<{ earliest: Date; latest: Date } | null>(null);
   const [employeeId, setEmployeeId] = useState('all');
   const [loading, setLoading] = useState(true);
+  // Optional columns the admin can hide from the report (the cog menu in
+  // the report header). A hidden column is dropped from the table AND from
+  // the printed / PDF copy — it's simply not rendered, not print:hidden.
+  const [visibleCols, setVisibleCols] = useState({ workedDays: true, totalHours: true, overtime: true });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    function onDown(e: MouseEvent) {
+      if (settingsRef.current?.contains(e.target as Node)) return;
+      setSettingsOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [settingsOpen]);
+
+  const hiddenColCount = [visibleCols.workedDays, visibleCols.totalHours, visibleCols.overtime].filter(v => !v).length;
 
   const { start, end } = period;
 
@@ -234,7 +252,6 @@ export default function PayrollPage() {
         days: number;
         hours: number;
         overtime: number;
-        breakMinutes: number;
         lateDays: number;
         earlyDays: number;
         paidOffDays: number;
@@ -249,7 +266,6 @@ export default function PayrollPage() {
         days: 0,
         hours: 0,
         overtime: 0,
-        breakMinutes: 0,
         lateDays: 0,
         earlyDays: 0,
         paidOffDays: 0,
@@ -286,7 +302,6 @@ export default function PayrollPage() {
           row.days += 1;
           row.hours += Number(summary.total_hours);
           row.overtime += Number(summary.overtime_hours);
-          row.breakMinutes += summary.break_minutes;
           if (summary.is_late) row.lateDays += 1;
           if (summary.is_early_departure) row.earlyDays += 1;
           continue;
@@ -313,7 +328,6 @@ export default function PayrollPage() {
         row.days += 1;
         row.hours += live.totalMinutes / 60;
         row.overtime += live.overtimeMinutes / 60;
-        row.breakMinutes += live.breakMinutes;
         if (live.isLate && !emp.attendance_exempt) row.lateDays += 1;
         if (live.isEarly && !emp.attendance_exempt) row.earlyDays += 1;
       }
@@ -324,7 +338,6 @@ export default function PayrollPage() {
   const totals = useMemo(() => {
     const totalHours = byEmployee.reduce((s, r) => s + r.hours, 0);
     const overtimeHours = byEmployee.reduce((s, r) => s + r.overtime, 0);
-    const breakMinutes = byEmployee.reduce((s, r) => s + r.breakMinutes, 0);
     const workedDays = byEmployee.reduce((s, r) => s + r.days, 0);
     const paidOffDays = byEmployee.reduce((s, r) => s + r.paidOffDays, 0);
     const lateDays = byEmployee.reduce((s, r) => s + r.lateDays, 0);
@@ -342,7 +355,6 @@ export default function PayrollPage() {
     return {
       totalHours,
       overtimeHours,
-      breakMinutes,
       workedDays,
       paidOffDays,
       absentDays,
@@ -387,14 +399,13 @@ export default function PayrollPage() {
   }
 
   function exportCsv() {
-    const header = ['ID', 'Employee', 'Worked Days', 'Total Hours', 'Overtime', 'Break', 'Late Days', 'Early Days', 'Salary', 'Calculated Salary', 'Overtime Salary', 'Total Salary'];
+    const header = ['ID', 'Employee', 'Worked Days', 'Total Hours', 'Overtime', 'Late Days', 'Early Days', 'Salary', 'Calculated Salary', 'Overtime Salary', 'Total Salary'];
     const lines = byEmployee.map(row => [
       row.enrollId,
       row.name,
       row.days,
       fmtHrs(row.hours),
       fmtHrs(row.overtime),
-      row.breakMinutes ? formatHoursMinutes(row.breakMinutes) : '',
       row.lateDays,
       row.earlyDays,
       row.salary ?? '',
@@ -493,6 +504,60 @@ export default function PayrollPage() {
       </div>
     );
   }
+
+  const COLUMN_OPTIONS = [
+    ['workedDays', 'Worked Days'],
+    ['totalHours', 'Total Hours'],
+    ['overtime', 'Overtime'],
+  ] as const;
+
+  const columnSettings = (
+    <div className="relative print:hidden" ref={settingsRef}>
+      <button
+        type="button"
+        onClick={() => setSettingsOpen(v => !v)}
+        title="Report settings"
+        className="flex h-[30px] w-[30px] items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100"
+      >
+        <CogIcon className="h-[18px] w-[18px]" />
+      </button>
+      {settingsOpen && (
+        <div className="absolute right-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+          <div className="flex items-center gap-2 border-b border-slate-100 bg-gradient-to-br from-accent/10 via-accent/5 to-transparent px-4 py-3">
+            <CogIcon className="h-4 w-4 text-accent" />
+            <span className="text-sm font-semibold text-ink">Settings</span>
+          </div>
+          <p className="px-4 pb-1 pt-2 text-[11px] leading-snug text-slate-400">
+            Show or hide these columns — in the report and its printed / PDF copy.
+          </p>
+          <div className="p-1.5">
+            {COLUMN_OPTIONS.map(([key, label]) => {
+              const on = visibleCols[key];
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setVisibleCols(c => ({ ...c, [key]: !c[key] }))}
+                  className="flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2.5 text-sm text-ink hover:bg-slate-50"
+                >
+                  {label}
+                  <span
+                    className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${on ? 'bg-good' : 'bg-slate-300'}`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                        on ? 'translate-x-[18px]' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <AppShell title="Attendance-based Payroll Controller">
@@ -641,7 +706,7 @@ export default function PayrollPage() {
             </div>
           </div>
 
-          <TableExportBar onExportCsv={exportCsv} />
+          <TableExportBar onExportCsv={exportCsv} leading={columnSettings} />
         </div>
         {/* Print-only masthead — gives the report a proper document header
             (title, the period it covers, headcount, when it was run)
@@ -680,18 +745,18 @@ export default function PayrollPage() {
                 </div>
               </div>
               <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 text-sm">
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Total Hours</dt>
-                  <dd className="text-ink">{fmtHrs(row.hours)}</dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Overtime</dt>
-                  <dd className="text-ink">{fmtHrs(row.overtime)}</dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Break</dt>
-                  <dd className="text-ink">{row.breakMinutes > 0 ? formatHoursMinutes(row.breakMinutes) : '—'}</dd>
-                </div>
+                {visibleCols.totalHours && (
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-wide text-slate-400">Total Hours</dt>
+                    <dd className="text-ink">{fmtHrs(row.hours)}</dd>
+                  </div>
+                )}
+                {visibleCols.overtime && (
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-wide text-slate-400">Overtime</dt>
+                    <dd className="text-ink">{fmtHrs(row.overtime)}</dd>
+                  </div>
+                )}
                 <div>
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Salary</dt>
                   <dd>{salaryCellContent(row)}</dd>
@@ -732,10 +797,9 @@ export default function PayrollPage() {
             <tr className="sticky top-0 z-10 border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <th className="whitespace-nowrap px-3 py-2 font-medium">ID</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Employee</th>
-              <th className="whitespace-nowrap px-3 py-2 font-medium">Worked Days</th>
-              <th className="whitespace-nowrap px-3 py-2 font-medium">Total Hours</th>
-              <th className="whitespace-nowrap px-3 py-2 font-medium">Overtime</th>
-              <th className="whitespace-nowrap px-3 py-2 font-medium">Break</th>
+              {visibleCols.workedDays && <th className="whitespace-nowrap px-3 py-2 font-medium">Worked Days</th>}
+              {visibleCols.totalHours && <th className="whitespace-nowrap px-3 py-2 font-medium">Total Hours</th>}
+              {visibleCols.overtime && <th className="whitespace-nowrap px-3 py-2 font-medium">Overtime</th>}
               <th className="whitespace-nowrap px-3 py-2 font-medium">Late / Early Days</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Salary</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Calculated Salary</th>
@@ -759,13 +823,14 @@ export default function PayrollPage() {
                       {row.name}
                     </Link>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">
-                    {row.days}
-                    {row.paidOffDays > 0 && <span className="text-accent"> (+{row.paidOffDays})</span>}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">{fmtHrs(row.hours)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">{fmtHrs(row.overtime)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-slate-600">{row.breakMinutes > 0 ? formatHoursMinutes(row.breakMinutes) : '—'}</td>
+                  {visibleCols.workedDays && (
+                    <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+                      {row.days}
+                      {row.paidOffDays > 0 && <span className="text-accent"> (+{row.paidOffDays})</span>}
+                    </td>
+                  )}
+                  {visibleCols.totalHours && <td className="whitespace-nowrap px-3 py-2 text-slate-600">{fmtHrs(row.hours)}</td>}
+                  {visibleCols.overtime && <td className="whitespace-nowrap px-3 py-2 text-slate-600">{fmtHrs(row.overtime)}</td>}
                   <td className="whitespace-nowrap px-3 py-2 text-xs">
                     <span className="text-warning-text">{row.lateDays}L</span>
                     {' / '}
@@ -789,7 +854,7 @@ export default function PayrollPage() {
             })}
             {byEmployee.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={10 - hiddenColCount} className="px-4 py-8 text-center text-slate-400">
                   {loading ? 'Loading…' : 'No active employees.'}
                 </td>
               </tr>
@@ -801,16 +866,17 @@ export default function PayrollPage() {
                 <td colSpan={2} className="whitespace-nowrap px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Total
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 text-xs">
-                  <span className="text-good-text">{totals.workedDays}P</span>
-                  {' / '}
-                  <span className="text-accent">{totals.paidOffDays}W</span>
-                  {' / '}
-                  <span className="text-critical-text">{totals.absentDays}A</span>
-                </td>
-                <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.totalHours)}</td>
-                <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.overtimeHours)}</td>
-                <td className="whitespace-nowrap px-3 py-2">{totals.breakMinutes > 0 ? formatHoursMinutes(totals.breakMinutes) : '—'}</td>
+                {visibleCols.workedDays && (
+                  <td className="whitespace-nowrap px-3 py-2 text-xs">
+                    <span className="text-good-text">{totals.workedDays}P</span>
+                    {' / '}
+                    <span className="text-accent">{totals.paidOffDays}W</span>
+                    {' / '}
+                    <span className="text-critical-text">{totals.absentDays}A</span>
+                  </td>
+                )}
+                {visibleCols.totalHours && <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.totalHours)}</td>}
+                {visibleCols.overtime && <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.overtimeHours)}</td>}
                 <td className="whitespace-nowrap px-3 py-2 text-xs">
                   <span className="text-warning-text">{totals.lateDays}L</span>
                   {' / '}
@@ -878,6 +944,15 @@ function CalendarIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <rect x="3" y="5" width="18" height="16" rx="2" />
       <path strokeLinecap="round" d="M3 10h18M8 3v4M16 3v4" />
+    </svg>
+  );
+}
+
+function CogIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   );
 }

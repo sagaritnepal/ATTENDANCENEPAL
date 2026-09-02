@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import * as XLSX from 'xlsx';
 
 /** A real .xlsx, not CSV — CSV-in-Excel on Windows mangled the en-dash in
@@ -28,9 +29,18 @@ export function downloadExcel(filename: string, headers: string[], rows: (string
  * offers that as a destination, so no PDF-generation library is needed.
  * Pairs with the print:hidden / print:overflow-visible classes on AppShell
  * and each table's own scroll wrapper. */
-export default function TableExportBar({ onExportCsv }: { onExportCsv: () => void }) {
+export default function TableExportBar({
+  onExportCsv,
+  leading,
+}: {
+  onExportCsv: () => void;
+  /** Optional control(s) rendered just left of the Print button — e.g. a
+   * report-settings menu. */
+  leading?: ReactNode;
+}) {
   return (
     <div className="ml-auto flex items-center gap-2 print:hidden">
+      {leading}
       <button
         onClick={() => window.print()}
         className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
