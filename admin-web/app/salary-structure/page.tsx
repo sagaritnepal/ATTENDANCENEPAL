@@ -1,11 +1,13 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Avatar from '@/components/Avatar';
 import DatePicker from '@/components/DatePicker';
 import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
+import { computeSalaryFigures } from '@/components/SalaryBreakdown';
 import { formatAdDate, monthDateRange } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { nepalTodayIso } from '@/lib/shift';
@@ -19,8 +21,9 @@ import type { Employee } from '@/lib/types';
  *
  * A date selector switches every figure between the full monthly amount and
  * the per-day amount (monthly ÷ the number of days in the calendar month the
- * picked date falls in). Each row expands to a full per-employee breakdown,
- * and the whole page — every row's breakdown included — prints. */
+ * picked date falls in). Each employee row links to its own detail page
+ * (/salary-structure/[employeeId]) — same pattern as the Payroll report —
+ * carrying the picked date and view along. The list itself prints too. */
 export default function SalaryStructurePage() {
   const { system } = useCalendarSystem();
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -50,11 +53,6 @@ export default function SalaryStructurePage() {
   // calendar month (in whichever system is active) that date falls in.
   const [viewMode, setViewMode] = useState<'monthly' | 'perDay'>('monthly');
   const [asOfDate, setAsOfDate] = useState<string>(() => nepalTodayIso());
-
-  // Per-employee breakdown rows the reader has opened on screen. The print
-  // layout always carries every row's full breakdown (a print-only block
-  // inside each Employee cell) regardless of what's expanded here.
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -114,18 +112,7 @@ export default function SalaryStructurePage() {
           ? true
           : [e.name, e.designation, e.employee_code].filter(Boolean).some(v => (v as string).toLowerCase().includes(term))
       )
-      .map(e => {
-        const basic = e.salary;
-        const allowance = e.allowance ?? 0;
-        if (basic == null) {
-          return { e, basic: null as number | null, allowance, gross: null, pfAmt: null, ssfAmt: null, tdsAmt: null, net: null };
-        }
-        const pfAmt = Math.round((basic * pf) / 100);
-        const ssfAmt = Math.round((basic * ssf) / 100);
-        const tdsAmt = Math.round((basic * tds) / 100);
-        const gross = basic + allowance;
-        return { e, basic, allowance, gross, pfAmt, ssfAmt, tdsAmt, net: gross - pfAmt - ssfAmt - tdsAmt };
-      });
+      .map(e => ({ e, ...computeSalaryFigures(e.salary, e.allowance, pf, ssf, tds) }));
   }, [employees, search, pf, ssf, tds]);
 
   const totals = useMemo(() => {
@@ -150,21 +137,6 @@ export default function SalaryStructurePage() {
     }
     return { basic, allowance, gross, pfAmt, ssfAmt, tdsAmt, net, counted, deductions: pfAmt + ssfAmt + tdsAmt };
   }, [rows]);
-
-  const allExpanded = rows.length > 0 && rows.every(r => expandedIds.has(r.e.id));
-
-  function toggleRow(id: string) {
-    setExpandedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function toggleAll() {
-    setExpandedIds(allExpanded ? new Set() : new Set(rows.map(r => r.e.id)));
-  }
 
   async function saveRates() {
     if (!companyId) return;
@@ -306,6 +278,7 @@ export default function SalaryStructurePage() {
     </div>
   );
 
+  const detailQuery = `?asOf=${asOfDate}&view=${viewMode}`;
   const dateLabel = formatAdDate(asOfDate, system);
   const modeLine = perDay
     ? `Per-day amounts for ${dateLabel} — that month has ${daysInMonth} days`
@@ -389,18 +362,12 @@ export default function SalaryStructurePage() {
                 className="w-48 rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-ink shadow-sm placeholder:text-slate-400 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
               />
             </div>
-            <button
-              onClick={toggleAll}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm hover:bg-slate-50"
-            >
-              {allExpanded ? 'Collapse all' : 'Expand all'}
-            </button>
             <TableExportBar onExportCsv={exportCsv} />
           </div>
         </div>
 
         <div className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs text-slate-500 sm:px-6 print:hidden">
-          {modeLine}
+          {modeLine} · click an employee for their full breakdown
           {!isAdmin && <> · the PF / SSF / TDS rates are read-only for your role — an admin sets them here.</>}
         </div>
 
@@ -433,57 +400,27 @@ export default function SalaryStructurePage() {
               </tr>
             </thead>
             <tbody>
-              {/* Each employee: a summary row, then a breakdown row directly
-                  under it — shown on screen only when expanded, but always
-                  emitted so a printout carries every employee's full detail
-                  (print:table-row overrides `hidden`). */}
-              {rows.map(row => {
-                const { e, basic, allowance, gross, pfAmt, ssfAmt, tdsAmt, net } = row;
-                const open = expandedIds.has(e.id);
-                return (
-                  <Fragment key={e.id}>
-                    <tr className="border-b border-slate-100 align-top hover:bg-slate-50 print:break-inside-avoid">
-                      <td className="px-3 py-2 font-medium text-ink">
-                        <span className="flex items-center gap-2">
-                          <button
-                            onClick={() => toggleRow(e.id)}
-                            title={open ? 'Hide breakdown' : 'Show breakdown'}
-                            className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-accent print:hidden"
-                          >
-                            <ChevronIcon className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} />
-                          </button>
-                          <Avatar name={e.name} photoUrl={e.profile_photo_url} />
-                          <span>
-                            {e.name}
-                            {e.employee_code && <span className="ml-1 text-xs font-normal text-slate-400">#{e.employee_code}</span>}
-                          </span>
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2 text-slate-500">{e.designation || '—'}</td>
-                      {amountCell(e.id, 'salary', basic)}
-                      {amountCell(e.id, 'allowance', allowance)}
-                      <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums text-ink">{shown(gross)}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">{shown(pfAmt)}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">{shown(ssfAmt)}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">{shown(tdsAmt)}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right font-bold tabular-nums text-good-text">{shown(net)}</td>
-                    </tr>
-                    <tr className={`border-b border-slate-100 bg-slate-50/60 print:table-row print:break-inside-avoid ${open ? '' : 'hidden'}`}>
-                      <td colSpan={9} className="px-3 py-3 sm:px-6">
-                        <EmployeeBreakdown
-                          row={row}
-                          pf={pf}
-                          ssf={ssf}
-                          tds={tds}
-                          daysInMonth={daysInMonth}
-                          dateLabel={dateLabel}
-                          system={system}
-                        />
-                      </td>
-                    </tr>
-                  </Fragment>
-                );
-              })}
+              {rows.map(({ e, basic, allowance, gross, pfAmt, ssfAmt, tdsAmt, net }) => (
+                <tr key={e.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                  <td className="whitespace-nowrap px-3 py-2 font-medium text-ink">
+                    <Link href={`/salary-structure/${e.id}${detailQuery}`} className="flex items-center gap-2.5 hover:text-accent hover:underline">
+                      <Avatar name={e.name} photoUrl={e.profile_photo_url} />
+                      <span>
+                        {e.name}
+                        {e.employee_code && <span className="ml-1 text-xs font-normal text-slate-400">#{e.employee_code}</span>}
+                      </span>
+                    </Link>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-slate-500">{e.designation || '—'}</td>
+                  {amountCell(e.id, 'salary', basic)}
+                  {amountCell(e.id, 'allowance', allowance)}
+                  <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums text-ink">{shown(gross)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">{shown(pfAmt)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">{shown(ssfAmt)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">{shown(tdsAmt)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right font-bold tabular-nums text-good-text">{shown(net)}</td>
+                </tr>
+              ))}
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
@@ -513,110 +450,12 @@ export default function SalaryStructurePage() {
       </div>
 
       <p className="mt-3 text-xs text-slate-400">
-        Net Payable = Basic + Allowance − PF − SSF − TDS. Click a Basic or Allowance figure to edit it for that employee; the
-        PF / SSF / TDS rates are company-wide. Per-day figures divide the monthly amount by the number of days in the picked
-        date&apos;s calendar month. The monthly Payroll report reads these figures and is not edited there. Overtime, where
-        earned, is added on top on the Payroll report.
+        Net Payable = Basic + Allowance − PF − SSF − TDS. Click a Basic or Allowance figure to edit it for that employee, or
+        click a name to open that employee&apos;s full salary breakdown. The PF / SSF / TDS rates are company-wide. Per-day
+        figures divide the monthly amount by the number of days in the picked date&apos;s calendar month. The monthly Payroll
+        report reads these figures and is not edited there. Overtime, where earned, is added on top on the Payroll report.
       </p>
     </AppShell>
-  );
-}
-
-/** Full per-employee breakdown — monthly vs per-day columns side by side,
- * plus the employee's payroll-relevant identifiers. Shared by the on-screen
- * expanded row and the print-only block inside the employee cell. */
-function EmployeeBreakdown({
-  row,
-  pf,
-  ssf,
-  tds,
-  daysInMonth,
-  dateLabel,
-  system,
-}: {
-  row: {
-    e: Employee;
-    basic: number | null;
-    allowance: number;
-    gross: number | null;
-    pfAmt: number | null;
-    ssfAmt: number | null;
-    tdsAmt: number | null;
-    net: number | null;
-  };
-  pf: number;
-  ssf: number;
-  tds: number;
-  daysInMonth: number;
-  dateLabel: string;
-  system: 'AD' | 'BS';
-}) {
-  const { e } = row;
-  const meta: [string, string][] = [
-    ['Employee code', e.employee_code || '—'],
-    ['Enroll ID', e.fingerprint_id || '—'],
-    ['Designation', e.designation || '—'],
-    ['Department', e.department || '—'],
-    ['Date of joining', e.date_of_joining ? formatAdDate(e.date_of_joining, system) : '—'],
-    ['PAN no', e.pan_no || '—'],
-    ['SSF no', e.ssf_no || '—'],
-  ];
-
-  const money = (n: number | null, divide: boolean) => {
-    if (n == null) return '—';
-    const v = divide ? n / daysInMonth : n;
-    return v.toLocaleString(undefined, { maximumFractionDigits: divide ? 2 : 0 });
-  };
-
-  const lines: { label: string; value: number | null; sign?: '+' | '−'; strong?: boolean }[] = [
-    { label: 'Basic', value: row.basic },
-    { label: 'Allowance', value: row.allowance, sign: '+' },
-    { label: 'Gross Pay', value: row.gross, strong: true },
-    { label: `PF (${pf}% of basic)`, value: row.pfAmt, sign: '−' },
-    { label: `SSF (${ssf}% of basic)`, value: row.ssfAmt, sign: '−' },
-    { label: `TDS (${tds}% of basic)`, value: row.tdsAmt, sign: '−' },
-    { label: 'Net Payable', value: row.net, strong: true },
-  ];
-
-  return (
-    <div className="grid gap-4 rounded-lg border border-slate-200 bg-white p-3 text-xs sm:grid-cols-2 print:border-slate-300">
-      <div>
-        <div className="mb-1.5 font-semibold uppercase tracking-wide text-slate-400">Employee details</div>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-          {meta.map(([k, v]) => (
-            <div key={k} className="contents">
-              <dt className="text-slate-400">{k}</dt>
-              <dd className="text-ink">{v}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-      <div>
-        <div className="mb-1.5 font-semibold uppercase tracking-wide text-slate-400">Salary breakdown</div>
-        <table className="w-full tabular-nums">
-          <thead>
-            <tr className="text-[10px] uppercase tracking-wide text-slate-400">
-              <th className="py-1 text-left font-medium">Component</th>
-              <th className="py-1 text-right font-medium">Per month</th>
-              <th className="py-1 text-right font-medium">Per day ({dateLabel})</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map(l => (
-              <tr key={l.label} className={l.strong ? 'border-t border-slate-200 font-semibold text-ink' : 'text-slate-600'}>
-                <td className="py-1 text-left">
-                  {l.sign && <span className="mr-0.5 text-slate-400">{l.sign}</span>}
-                  {l.label}
-                </td>
-                <td className="py-1 text-right">{money(l.value, false)}</td>
-                <td className="py-1 text-right">{money(l.value, true)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="mt-1.5 text-[10px] text-slate-400">Per-day = per-month ÷ {daysInMonth} days</p>
-      </div>
-    </div>
   );
 }
 
@@ -634,14 +473,6 @@ function SearchIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <circle cx="11" cy="11" r="7" />
       <path strokeLinecap="round" d="m20 20-3.5-3.5" />
-    </svg>
-  );
-}
-
-function ChevronIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="m9 6 6 6-6 6" />
     </svg>
   );
 }
