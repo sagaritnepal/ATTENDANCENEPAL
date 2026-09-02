@@ -63,9 +63,6 @@ export default function PayrollPage() {
   const [otDefaultsDirty, setOtDefaultsDirty] = useState(false);
   const [savingOtDefaults, setSavingOtDefaults] = useState(false);
   const [dataRange, setDataRange] = useState<{ earliest: Date; latest: Date } | null>(null);
-  // Overtime pay is optional per employee (some employees just aren't paid
-  // extra for it) — on by default, toggled off per row.
-  const [overtimeEnabled, setOvertimeEnabled] = useState<Record<string, boolean>>({});
   const [employeeId, setEmployeeId] = useState('all');
   const [loading, setLoading] = useState(true);
 
@@ -74,14 +71,14 @@ export default function PayrollPage() {
   // The day-1-to-last-day breakdown lives on its own page (not a popup or
   // an inline dropdown — both fought this page's layout) — carries the
   // current period and overtime settings along since that page has no
-  // period picker of its own.
+  // period picker of its own. The per-employee "count overtime pay?" toggle
+  // lives on that page now, not here.
   function detailHref(employeeId: string) {
     const params = new URLSearchParams({
       start,
       end,
       otHoursPerDay: String(otHoursPerDay),
       otMultiplier: String(otMultiplier),
-      otOn: String(overtimeEnabled[employeeId] ?? true),
     });
     return `/payroll/${employeeId}?${params.toString()}`;
   }
@@ -338,7 +335,7 @@ export default function PayrollPage() {
     const totalEmployeeSalary = byEmployee.reduce((s, r) => s + (r.salary ?? 0), 0);
     const totalSalaryPayable = byEmployee.reduce((s, r) => s + (calculatedSalary(r) ?? 0), 0);
     const totalOvertimeSalary = byEmployee.reduce((s, r) => {
-      if (r.salary == null || r.overtime <= 0 || !(overtimeEnabled[r.id] ?? true)) return s;
+      if (r.salary == null || r.overtime <= 0) return s;
       const hourlyRate = r.salary / (daysInRange * otHoursPerDay);
       return s + hourlyRate * otMultiplier * r.overtime;
     }, 0);
@@ -356,7 +353,7 @@ export default function PayrollPage() {
       totalSalaryPayable,
       totalOvertimeSalary,
     };
-  }, [byEmployee, scopedEmployees, daysInRange, elapsedDaysInRange, otHoursPerDay, otMultiplier, overtimeEnabled]);
+  }, [byEmployee, scopedEmployees, daysInRange, elapsedDaysInRange, otHoursPerDay, otMultiplier]);
 
   // Pay is earned per hour actually worked, not per day shown up — a day
   // where someone left after 2 hours pays 2 hours, not a full day's worth.
@@ -376,14 +373,14 @@ export default function PayrollPage() {
     return Math.round(hourlyRate * regularHours + hourlyRate * otHoursPerDay * row.paidOffDays);
   }
 
-  function overtimeSalary(row: { id: string; salary: number | null; overtime: number }): number | null {
+  function overtimeSalary(row: { salary: number | null; overtime: number }): number | null {
     if (row.salary == null) return null;
-    if (row.overtime <= 0 || !(overtimeEnabled[row.id] ?? true)) return 0;
+    if (row.overtime <= 0) return 0;
     const hourlyRate = row.salary / (daysInRange * otHoursPerDay);
     return Math.round(hourlyRate * otMultiplier * row.overtime);
   }
 
-  function totalSalary(row: { id: string; salary: number | null; hours: number; overtime: number; paidOffDays: number }): number | null {
+  function totalSalary(row: { salary: number | null; hours: number; overtime: number; paidOffDays: number }): number | null {
     const calculated = calculatedSalary(row);
     if (calculated == null) return null;
     return calculated + (overtimeSalary(row) ?? 0);
@@ -493,29 +490,6 @@ export default function PayrollPage() {
         <button onClick={() => setEditingSalaryId(row.id)} title="Edit salary" className="text-slate-400 hover:text-accent">
           <EditIcon className="h-3.5 w-3.5" />
         </button>
-      </div>
-    );
-  }
-
-  function overtimeCellContent(row: (typeof byEmployee)[number]) {
-    const otOn = overtimeEnabled[row.id] ?? true;
-    return (
-      <div className="flex items-center justify-start gap-3">
-        <button
-          type="button"
-          onClick={() => setOvertimeEnabled(m => ({ ...m, [row.id]: !otOn }))}
-          title={otOn ? 'Overtime pay counted for this employee' : 'Overtime pay not counted for this employee'}
-          className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors print:hidden ${otOn ? 'bg-good' : 'bg-slate-300'}`}
-        >
-          <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-              otOn ? 'translate-x-[18px]' : 'translate-x-0.5'
-            }`}
-          />
-        </button>
-        <span className={`tabular-nums ${otOn ? 'text-ink' : 'text-slate-400'}`}>
-          {overtimeSalary(row) != null ? overtimeSalary(row)!.toLocaleString() : '—'}
-        </span>
       </div>
     );
   }
@@ -721,9 +695,11 @@ export default function PayrollPage() {
                     {overtimeSalary(row) != null && <span className="text-slate-400"> ({overtimeSalary(row)!.toLocaleString()})</span>}
                   </dd>
                 </div>
-                <div className="col-span-2">
+                <div>
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Overtime Salary</dt>
-                  <dd className="mt-1">{overtimeCellContent(row)}</dd>
+                  <dd className="text-ink tabular-nums">
+                    {overtimeSalary(row) != null ? overtimeSalary(row)!.toLocaleString() : '—'}
+                  </dd>
                 </div>
               </dl>
             </div>
@@ -790,7 +766,9 @@ export default function PayrollPage() {
                     {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
                     {overtimeSalary(row) != null && <span className="text-slate-400"> ({overtimeSalary(row)!.toLocaleString()})</span>}
                   </td>
-                  <td className="whitespace-nowrap pl-2 pr-3 py-2 text-slate-600">{overtimeCellContent(row)}</td>
+                  <td className="whitespace-nowrap pl-2 pr-3 py-2 text-slate-600 tabular-nums">
+                    {overtimeSalary(row) != null ? overtimeSalary(row)!.toLocaleString() : '—'}
+                  </td>
                   <td
                     className={`sticky right-0 z-[1] whitespace-nowrap px-3 py-2 font-bold text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] print:static print:shadow-none ${rowBg}`}
                   >

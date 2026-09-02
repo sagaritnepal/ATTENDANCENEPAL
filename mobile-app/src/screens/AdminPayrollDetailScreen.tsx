@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Switch } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { buildWeeklyPatternByEmployee, formatHoursMinutes, nepalTodayIso, type DailyShiftByDate, type WeeklyPatternByEmployee } from '../lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '../lib/payrollDetail';
@@ -44,6 +44,10 @@ export default function AdminPayrollDetailScreen({ route }: any) {
   // hardcoded 8h/1.5x.
   const [otHoursPerDay, setOtHoursPerDay] = useState(8);
   const [otMultiplier, setOtMultiplier] = useState(1.5);
+  // Overtime pay is optional per employee (some employees just aren't
+  // paid extra for it) — on by default, toggled here on the employee's
+  // own page (moved off the Payroll list).
+  const [otOn, setOtOn] = useState(true);
 
   useEffect(() => {
     fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier }) => {
@@ -136,14 +140,14 @@ export default function AdminPayrollDetailScreen({ route }: any) {
     let baseEarning = 0;
     let overtimeEarning = 0;
     for (const r of dayRows) {
-      const earning = dailySalaryEarning(r, employee?.salary ?? null, daysInRange, otHoursPerDay, otMultiplier, true);
+      const earning = dailySalaryEarning(r, employee?.salary ?? null, daysInRange, otHoursPerDay, otMultiplier, otOn);
       if (earning) {
         baseEarning += earning.base;
         overtimeEarning += earning.overtime;
       }
     }
     return { totalHours, overtimeHours, breakMinutes, presentDays, absentDays, paidOffDays, totalSalary: baseEarning + overtimeEarning, overtimeEarning };
-  }, [dayRows, employee, daysInRange]);
+  }, [dayRows, employee, daysInRange, otHoursPerDay, otMultiplier, otOn]);
 
   function changeMonth(delta: number) {
     let m = month + delta;
@@ -187,6 +191,15 @@ export default function AdminPayrollDetailScreen({ route }: any) {
               <Text style={styles.empMeta}>
                 ID {employee.fingerprint_id ?? '—'} · {employee.designation ?? '—'}
               </Text>
+              <View style={styles.otToggleRow}>
+                <Text style={styles.otToggleLabel}>Overtime Salary</Text>
+                <Switch
+                  value={otOn}
+                  onValueChange={setOtOn}
+                  trackColor={{ false: colors.slate200, true: colors.good }}
+                  style={{ transform: [{ scale: 0.8 }] }}
+                />
+              </View>
             </View>
             {employee.salary != null && (
               <View style={styles.statsRow}>
@@ -232,7 +245,7 @@ export default function AdminPayrollDetailScreen({ route }: any) {
         }
         renderItem={({ item: row, index }) => {
           const earning =
-            row.checkIn || row.paidOff ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, otHoursPerDay, otMultiplier, true) : null;
+            row.checkIn || row.paidOff ? dailySalaryEarning(row, employee?.salary ?? null, daysInRange, otHoursPerDay, otMultiplier, otOn) : null;
           return (
             <View style={[styles.tr, index % 2 === 1 && styles.trAlt]}>
               <Text style={[styles.td, { flex: 0.14 }]}>{formatDdMmYyyy(row.date, system).slice(0, 5)}</Text>
@@ -283,6 +296,19 @@ const styles = StyleSheet.create({
   headerCard: { marginBottom: 12 },
   empName: { fontSize: 17, fontWeight: '700', color: colors.ink },
   empMeta: { fontSize: 12, color: colors.slate500, marginTop: 2 },
+  otToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    backgroundColor: colors.white,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.slate200,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  otToggleLabel: { fontSize: 11, fontWeight: '700', color: colors.slate500, textTransform: 'uppercase' },
   statsRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   statCard: { flex: 1, borderRadius: 10, padding: 10, alignItems: 'center' },
   statLabel: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },

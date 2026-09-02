@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity, Switch, Modal, FlatList } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TextInput, TouchableOpacity, Modal, FlatList } from 'react-native';
 import { supabase } from '../lib/supabase';
 import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '../types';
 import { ATTENDANCE_LOG_COLUMNS, PAYROLL_SUMMARY_COLUMNS } from '../types';
@@ -66,7 +66,6 @@ export default function PayrollScreen({ navigation }: any) {
   const [otMultiplier, setOtMultiplier] = useState('1.5');
   const [otDefaultsDirty, setOtDefaultsDirty] = useState(false);
   const [savingOtDefaults, setSavingOtDefaults] = useState(false);
-  const [overtimeEnabled, setOvertimeEnabled] = useState<Record<string, boolean>>({});
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
@@ -221,7 +220,7 @@ export default function PayrollScreen({ navigation }: any) {
   }
   function overtimeSalary(row: Row): number | null {
     if (row.salary == null || !otHours) return null;
-    if (row.overtime <= 0 || !(overtimeEnabled[row.id] ?? true)) return 0;
+    if (row.overtime <= 0) return 0;
     const hourlyRate = row.salary / (daysInRange * otHours);
     return Math.round(hourlyRate * otMult * row.overtime);
   }
@@ -244,7 +243,7 @@ export default function PayrollScreen({ navigation }: any) {
     const totalOvertimeSalary = byEmployee.reduce((s, r) => s + (overtimeSalary(r) ?? 0), 0);
     return { totalHours, overtimeHours, workedDays, paidOffDays, absentDays, attendancePct, totalEmployeeSalary, totalSalaryPayable, totalOvertimeSalary };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [byEmployee, employees.length, elapsedDaysInRange, otHours, otMult, overtimeEnabled]);
+  }, [byEmployee, employees.length, elapsedDaysInRange, otHours, otMult]);
 
   async function saveSalaryRow(employeeId: string) {
     const draft = pendingSalary[employeeId];
@@ -449,15 +448,7 @@ export default function PayrollScreen({ navigation }: any) {
                 </View>
                 <View style={styles.gridItem}>
                   <Text style={styles.gridLabel}>OT Salary</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Switch
-                      value={overtimeEnabled[item.id] ?? true}
-                      onValueChange={v => setOvertimeEnabled(m => ({ ...m, [item.id]: v }))}
-                      trackColor={{ false: colors.slate200, true: colors.good }}
-                      style={{ transform: [{ scale: 0.8 }] }}
-                    />
-                    <Text style={styles.gridValue}>{overtimeSalary(item) != null ? overtimeSalary(item)!.toLocaleString() : '—'}</Text>
-                  </View>
+                  <Text style={styles.gridValue}>{overtimeSalary(item) != null ? overtimeSalary(item)!.toLocaleString() : '—'}</Text>
                 </View>
               </View>
             </View>
