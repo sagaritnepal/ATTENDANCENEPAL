@@ -26,8 +26,7 @@ import {
   resolveShiftForDate,
   type DailyShiftByDate,
 } from '@/lib/shift';
-import { fetchMyCompanyWeekOffConfig, leaveDatesByEmployee, weekOffDatesInRange, workingDaysInRange } from '@/lib/weekOff';
-import { computeAbsenceAdjustment, DEFAULT_ABSENCE_POLICY, type AbsencePolicy, type AttendanceTotals } from '@/lib/absence';
+import { fetchMyCompanyWeekOffConfig, leaveDatesByEmployee, weekOffDatesInRange } from '@/lib/weekOff';
 import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
 import { ATTENDANCE_LOG_COLUMNS, PAYROLL_SUMMARY_COLUMNS } from '@/lib/types';
 
@@ -61,7 +60,6 @@ export default function PayrollPage() {
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [otHoursPerDay, setOtHoursPerDay] = useState(8);
   const [otMultiplier, setOtMultiplier] = useState(1.5);
-  const [absencePolicy, setAbsencePolicy] = useState<AbsencePolicy>(DEFAULT_ABSENCE_POLICY);
   const [otDefaultsDirty, setOtDefaultsDirty] = useState(false);
   const [savingOtDefaults, setSavingOtDefaults] = useState(false);
   const [dataRange, setDataRange] = useState<{ earliest: Date; latest: Date } | null>(null);
@@ -91,12 +89,11 @@ export default function PayrollPage() {
   // The oldest/newest punch on record — bounds the period dropdown to
   // months that actually have data instead of listing years of empty ones.
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ companyId, weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier, absencePolicy }) => {
+    fetchMyCompanyWeekOffConfig().then(({ companyId, weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier }) => {
       setCompanyId(companyId);
       setWeeklyOffDay(weeklyOffDay);
       setOtHoursPerDay(otHoursPerDay);
       setOtMultiplier(otMultiplier);
-      setAbsencePolicy(absencePolicy);
       // Not date-scoped (a pattern applies to every week), and only ever
       // relevant in 'weekly' roster_mode — see resolveShiftForDate().
       if (rosterMode === 'weekly') {
@@ -201,14 +198,8 @@ export default function PayrollPage() {
   // from the per-employee roster Week Off (dailyShiftByDate), which affects
   // late/early classification but was never actually paid (see calc below).
   const weekOffDateSet = useMemo(() => weekOffDatesInRange(start, end, weeklyOffDay, holidays), [start, end, weeklyOffDay, holidays]);
-  // Paid leave only for the paid-off count — an approved *unpaid* leave is
-  // leave-without-pay and must be docked like an absent day.
-  const leaveByEmployee = useMemo(() => leaveDatesByEmployee(leaveRequests, { paidOnly: true }), [leaveRequests]);
+  const leaveByEmployee = useMemo(() => leaveDatesByEmployee(leaveRequests), [leaveRequests]);
   const weeklyPattern = useMemo(() => buildWeeklyPatternByEmployee(weeklyPatternRows), [weeklyPatternRows]);
-  const workingDays = useMemo(
-    () => workingDaysInRange(start, end, weeklyOffDay, holidays),
-    [start, end, weeklyOffDay, holidays]
-  );
 
   const daysInRange = useMemo(() => (new Date(end).getTime() - new Date(start).getTime()) / 86400000 + 1, [start, end]);
   // For attendance counting only (possibleDays/absentDays below) — a period
@@ -243,7 +234,6 @@ export default function PayrollPage() {
         enrollId: string;
         name: string;
         salary: number | null;
-        allowance: number;
         days: number;
         hours: number;
         overtime: number;
@@ -259,7 +249,6 @@ export default function PayrollPage() {
         enrollId: emp.fingerprint_id ?? '—',
         name: emp.name,
         salary: emp.salary,
-        allowance: emp.allowance ?? 0,
         days: 0,
         hours: 0,
         overtime: 0,
@@ -348,8 +337,11 @@ export default function PayrollPage() {
     const attendancePct = possibleDays ? Math.round((workedDays / possibleDays) * 1000) / 10 : 0;
     const totalEmployeeSalary = byEmployee.reduce((s, r) => s + (r.salary ?? 0), 0);
     const totalSalaryPayable = byEmployee.reduce((s, r) => s + (calculatedSalary(r) ?? 0), 0);
-    const totalAbsence = byEmployee.reduce((s, r) => s + (absenceOf(r) ?? 0), 0);
-    const totalOvertimeSalary = byEmployee.reduce((s, r) => s + (overtimeSalary(r) ?? 0), 0);
+    const totalOvertimeSalary = byEmployee.reduce((s, r) => {
+      if (r.salary == null || r.overtime <= 0 || !(overtimeEnabled[r.id] ?? true)) return s;
+      const hourlyRate = r.salary / (daysInRange * otHoursPerDay);
+      return s + hourlyRate * otMultiplier * r.overtime;
+    }, 0);
     return {
       totalHours,
       overtimeHours,
@@ -362,72 +354,43 @@ export default function PayrollPage() {
       attendancePct,
       totalEmployeeSalary,
       totalSalaryPayable,
-      totalAbsence,
       totalOvertimeSalary,
     };
-  }, [byEmployee, scopedEmployees, daysInRange, workingDays, elapsedDaysInRange, otHoursPerDay, otMultiplier, overtimeEnabled, absencePolicy]);
+  }, [byEmployee, scopedEmployees, daysInRange, elapsedDaysInRange, otHoursPerDay, otMultiplier, overtimeEnabled]);
 
-  // The period's absence deduction + overtime pay for one row, under the
-  // company absence policy. With the default policy this reproduces the
-  // previous per-hour math exactly (see lib/absence.ts).
-  type PayRow = {
-    id: string;
-    salary: number | null;
-    allowance: number;
-    hours: number;
-    overtime: number;
-    paidOffDays: number;
-    days: number;
-  };
-  function rowAdjustment(row: PayRow) {
+  // Pay is earned per hour actually worked, not per day shown up — a day
+  // where someone left after 2 hours pays 2 hours, not a full day's worth.
+  // Overtime hours are already counted inside `hours` (see computeDayStatus),
+  // so they're subtracted back out here and paid separately below at the
+  // overtime multiplier instead of twice at the regular rate.
+  //
+  // paidOffDays (company Week-off / approved Leave with no punch) each add
+  // one full standard day's pay — hourlyRate * otHoursPerDay is exactly
+  // salary / daysInRange, i.e. one clean day of the monthly salary — kept as
+  // a separate term rather than folded into `hours` so "Total Hours" keeps
+  // meaning actual worked hours.
+  function calculatedSalary(row: { salary: number | null; hours: number; overtime: number; paidOffDays: number }): number | null {
     if (row.salary == null) return null;
-    const absentDays = Math.max(0, elapsedDaysInRange - row.days - row.paidOffDays);
-    const totals: AttendanceTotals = {
-      countedDays: elapsedDaysInRange,
-      paidOffDays: row.paidOffDays,
-      absentDays,
-      halfDays: 0, // per-day hours aren't kept on the report's aggregate rows
-      hoursWorked: Math.max(0, row.hours - row.overtime),
-      overtimeHours: row.overtime,
-      lateMinutes: 0,
-      earlyMinutes: 0,
-    };
-    return computeAbsenceAdjustment({
-      salary: row.salary,
-      allowance: row.allowance,
-      policy: absencePolicy,
-      daysInPeriod: daysInRange,
-      workingDaysInPeriod: workingDays,
-      totals,
-      otHoursPerDay,
-      otMultiplier,
-      otOn: overtimeEnabled[row.id] ?? true,
-    });
+    const hourlyRate = row.salary / (daysInRange * otHoursPerDay);
+    const regularHours = Math.max(0, row.hours - row.overtime);
+    return Math.round(hourlyRate * regularHours + hourlyRate * otHoursPerDay * row.paidOffDays);
   }
 
-  function calculatedSalary(row: PayRow): number | null {
-    const adj = rowAdjustment(row);
-    return adj == null ? null : Math.round(adj.earnedBase);
+  function overtimeSalary(row: { id: string; salary: number | null; overtime: number }): number | null {
+    if (row.salary == null) return null;
+    if (row.overtime <= 0 || !(overtimeEnabled[row.id] ?? true)) return 0;
+    const hourlyRate = row.salary / (daysInRange * otHoursPerDay);
+    return Math.round(hourlyRate * otMultiplier * row.overtime);
   }
 
-  function absenceOf(row: PayRow): number | null {
-    const adj = rowAdjustment(row);
-    return adj == null ? null : Math.round(adj.absenceDeduction);
-  }
-
-  function overtimeSalary(row: PayRow): number | null {
-    const adj = rowAdjustment(row);
-    return adj == null ? null : Math.round(adj.overtimePay);
-  }
-
-  function totalSalary(row: PayRow): number | null {
+  function totalSalary(row: { id: string; salary: number | null; hours: number; overtime: number; paidOffDays: number }): number | null {
     const calculated = calculatedSalary(row);
     if (calculated == null) return null;
     return calculated + (overtimeSalary(row) ?? 0);
   }
 
   function exportCsv() {
-    const header = ['ID', 'Employee', 'Worked Days', 'Total Hours', 'Overtime', 'Break', 'Late Days', 'Early Days', 'Salary', 'Absence', 'Calculated Salary', 'Overtime Salary', 'Total Salary'];
+    const header = ['ID', 'Employee', 'Worked Days', 'Total Hours', 'Overtime', 'Break', 'Late Days', 'Early Days', 'Salary', 'Calculated Salary', 'Overtime Salary', 'Total Salary'];
     const lines = byEmployee.map(row => [
       row.enrollId,
       row.name,
@@ -438,7 +401,6 @@ export default function PayrollPage() {
       row.lateDays,
       row.earlyDays,
       row.salary ?? '',
-      absenceOf(row) ?? '',
       calculatedSalary(row) ?? '',
       overtimeSalary(row) ?? '',
       totalSalary(row) ?? '',
@@ -753,12 +715,6 @@ export default function PayrollPage() {
                   <dd>{salaryCellContent(row)}</dd>
                 </div>
                 <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Absence</dt>
-                  <dd className="tabular-nums text-warning-text">
-                    {absenceOf(row) != null && absenceOf(row) !== 0 ? absenceOf(row)!.toLocaleString() : '—'}
-                  </dd>
-                </div>
-                <div>
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Calculated Salary</dt>
                   <dd className="text-ink">
                     {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
@@ -798,7 +754,6 @@ export default function PayrollPage() {
               <th className="whitespace-nowrap px-3 py-2 font-medium">Break</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Late / Early Days</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Salary</th>
-              <th className="whitespace-nowrap px-3 py-2 font-medium text-warning-text">Absence</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Calculated Salary</th>
               <th className="whitespace-nowrap pl-2 pr-3 py-2 font-medium">Overtime Salary</th>
               <th className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-3 py-2 font-medium shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] print:static print:shadow-none">
@@ -831,9 +786,6 @@ export default function PayrollPage() {
                     <span className="text-critical-text">{row.earlyDays}E</span>
                   </td>
                   <td className="whitespace-nowrap px-3 py-2">{salaryCellContent(row)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 tabular-nums text-warning-text">
-                    {absenceOf(row) != null && absenceOf(row) !== 0 ? absenceOf(row)!.toLocaleString() : '—'}
-                  </td>
                   <td className="whitespace-nowrap px-3 py-2 text-slate-600">
                     {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
                     {overtimeSalary(row) != null && <span className="text-slate-400"> ({overtimeSalary(row)!.toLocaleString()})</span>}
@@ -849,7 +801,7 @@ export default function PayrollPage() {
             })}
             {byEmployee.length === 0 && (
               <tr>
-                <td colSpan={12} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={11} className="px-4 py-8 text-center text-slate-400">
                   {loading ? 'Loading…' : 'No active employees.'}
                 </td>
               </tr>
@@ -877,9 +829,6 @@ export default function PayrollPage() {
                   <span className="text-critical-text">{totals.earlyDays}E</span>
                 </td>
                 <td className="whitespace-nowrap px-3 py-2">{totals.totalEmployeeSalary.toLocaleString()}</td>
-                <td className="whitespace-nowrap px-3 py-2 tabular-nums text-warning-text">
-                  {totals.totalAbsence !== 0 ? totals.totalAbsence.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'}
-                </td>
                 <td className="whitespace-nowrap px-3 py-2">
                   {totals.totalSalaryPayable.toLocaleString()} ({totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })})
                 </td>

@@ -3,8 +3,7 @@ import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TextInput, Touch
 import { supabase } from '../lib/supabase';
 import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '../types';
 import { ATTENDANCE_LOG_COLUMNS, PAYROLL_SUMMARY_COLUMNS } from '../types';
-import { fetchMyCompanyWeekOffConfig, leaveDatesByEmployee, weekOffDatesInRange, workingDaysInRange } from '../lib/weekOff';
-import { computeAbsenceAdjustment, DEFAULT_ABSENCE_POLICY, type AbsencePolicy, type AttendanceTotals } from '../lib/absence';
+import { fetchMyCompanyWeekOffConfig, leaveDatesByEmployee, weekOffDatesInRange } from '../lib/weekOff';
 import {
   applyOvernightShiftCorrection,
   buildWeeklyPatternByEmployee,
@@ -31,7 +30,6 @@ type Row = {
   enrollId: string;
   name: string;
   salary: number | null;
-  allowance: number;
   days: number;
   hours: number;
   overtime: number;
@@ -74,15 +72,13 @@ export default function PayrollScreen({ navigation }: any) {
   const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ employee_id: string; weekday: number; shift_id: string | null }[]>([]);
-  const [absencePolicy, setAbsencePolicy] = useState<AbsencePolicy>(DEFAULT_ABSENCE_POLICY);
 
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ companyId, weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier, absencePolicy }) => {
+    fetchMyCompanyWeekOffConfig().then(({ companyId, weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier }) => {
       setCompanyId(companyId);
       setWeeklyOffDay(weeklyOffDay);
       setOtHoursPerDay(String(otHoursPerDay));
       setOtMultiplier(String(otMultiplier));
-      setAbsencePolicy(absencePolicy);
       // Not date-scoped (a pattern applies to every week), and only ever
       // relevant in 'weekly' roster_mode — see resolveShiftForDate().
       if (rosterMode === 'weekly') {
@@ -129,8 +125,7 @@ export default function PayrollScreen({ navigation }: any) {
   useEffect(reload, [start, end]);
 
   const weekOffDateSet = useMemo(() => weekOffDatesInRange(start, end, weeklyOffDay, holidays), [start, end, weeklyOffDay, holidays]);
-  const leaveByEmployee = useMemo(() => leaveDatesByEmployee(leaveRequests, { paidOnly: true }), [leaveRequests]);
-  const workingDays = useMemo(() => workingDaysInRange(start, end, weeklyOffDay, holidays), [start, end, weeklyOffDay, holidays]);
+  const leaveByEmployee = useMemo(() => leaveDatesByEmployee(leaveRequests), [leaveRequests]);
   const weeklyPattern: WeeklyPatternByEmployee = useMemo(() => buildWeeklyPatternByEmployee(weeklyPatternRows), [weeklyPatternRows]);
 
   const dailyShiftByDate: DailyShiftByDate = useMemo(() => {
@@ -163,7 +158,7 @@ export default function PayrollScreen({ navigation }: any) {
     }
     const map = new Map<string, Row>();
     for (const emp of employees) {
-      map.set(emp.id, { id: emp.id, enrollId: emp.fingerprint_id ?? '—', name: emp.name, salary: emp.salary, allowance: emp.allowance ?? 0, days: 0, hours: 0, overtime: 0, breakMinutes: 0, lateDays: 0, earlyDays: 0, paidOffDays: 0 });
+      map.set(emp.id, { id: emp.id, enrollId: emp.fingerprint_id ?? '—', name: emp.name, salary: emp.salary, days: 0, hours: 0, overtime: 0, breakMinutes: 0, lateDays: 0, earlyDays: 0, paidOffDays: 0 });
     }
     const today = nepalTodayIso();
     const logsByEmployeeDay = new Map<string, Map<string, AttendanceLog[]>>();
@@ -218,42 +213,17 @@ export default function PayrollScreen({ navigation }: any) {
   const otHours = Number(otHoursPerDay) || 0;
   const otMult = Number(otMultiplier) || 0;
 
-  function rowAdjustment(row: Row) {
-    if (row.salary == null || !otHours) return null;
-    const absentDays = Math.max(0, elapsedDaysInRange - row.days - row.paidOffDays);
-    const totals: AttendanceTotals = {
-      countedDays: elapsedDaysInRange,
-      paidOffDays: row.paidOffDays,
-      absentDays,
-      halfDays: 0,
-      hoursWorked: Math.max(0, row.hours - row.overtime),
-      overtimeHours: row.overtime,
-      lateMinutes: 0,
-      earlyMinutes: 0,
-    };
-    return computeAbsenceAdjustment({
-      salary: row.salary,
-      allowance: row.allowance,
-      policy: absencePolicy,
-      daysInPeriod: daysInRange,
-      workingDaysInPeriod: workingDays,
-      totals,
-      otHoursPerDay: otHours,
-      otMultiplier: otMult,
-      otOn: overtimeEnabled[row.id] ?? true,
-    });
-  }
   function calculatedSalary(row: Row): number | null {
-    const adj = rowAdjustment(row);
-    return adj == null ? null : Math.round(adj.earnedBase);
-  }
-  function absenceOf(row: Row): number | null {
-    const adj = rowAdjustment(row);
-    return adj == null ? null : Math.round(adj.absenceDeduction);
+    if (row.salary == null || !otHours) return null;
+    const hourlyRate = row.salary / (daysInRange * otHours);
+    const regularHours = Math.max(0, row.hours - row.overtime);
+    return Math.round(hourlyRate * regularHours + hourlyRate * otHours * row.paidOffDays);
   }
   function overtimeSalary(row: Row): number | null {
-    const adj = rowAdjustment(row);
-    return adj == null ? null : Math.round(adj.overtimePay);
+    if (row.salary == null || !otHours) return null;
+    if (row.overtime <= 0 || !(overtimeEnabled[row.id] ?? true)) return 0;
+    const hourlyRate = row.salary / (daysInRange * otHours);
+    return Math.round(hourlyRate * otMult * row.overtime);
   }
   function totalSalary(row: Row): number | null {
     const calculated = calculatedSalary(row);
@@ -271,11 +241,10 @@ export default function PayrollScreen({ navigation }: any) {
     const attendancePct = possibleDays ? Math.round((workedDays / possibleDays) * 1000) / 10 : 0;
     const totalEmployeeSalary = byEmployee.reduce((s, r) => s + (r.salary ?? 0), 0);
     const totalSalaryPayable = byEmployee.reduce((s, r) => s + (calculatedSalary(r) ?? 0), 0);
-    const totalAbsence = byEmployee.reduce((s, r) => s + (absenceOf(r) ?? 0), 0);
     const totalOvertimeSalary = byEmployee.reduce((s, r) => s + (overtimeSalary(r) ?? 0), 0);
-    return { totalHours, overtimeHours, workedDays, paidOffDays, absentDays, attendancePct, totalEmployeeSalary, totalSalaryPayable, totalAbsence, totalOvertimeSalary };
+    return { totalHours, overtimeHours, workedDays, paidOffDays, absentDays, attendancePct, totalEmployeeSalary, totalSalaryPayable, totalOvertimeSalary };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [byEmployee, employees.length, elapsedDaysInRange, daysInRange, workingDays, otHours, otMult, overtimeEnabled, absencePolicy]);
+  }, [byEmployee, employees.length, elapsedDaysInRange, otHours, otMult, overtimeEnabled]);
 
   async function saveSalaryRow(employeeId: string) {
     const draft = pendingSalary[employeeId];
@@ -473,12 +442,6 @@ export default function PayrollScreen({ navigation }: any) {
                       <Text style={styles.gridValue}>{item.salary != null ? item.salary.toLocaleString() : 'Set'}</Text>
                     </TouchableOpacity>
                   )}
-                </View>
-                <View style={styles.gridItem}>
-                  <Text style={styles.gridLabel}>Absence</Text>
-                  <Text style={[styles.gridValue, { color: colors.warningText }]}>
-                    {absenceOf(item) != null && absenceOf(item) !== 0 ? absenceOf(item)!.toLocaleString() : '—'}
-                  </Text>
                 </View>
                 <View style={styles.gridItem}>
                   <Text style={styles.gridLabel}>Calculated</Text>

@@ -7,7 +7,6 @@ import AppShell from '@/components/AppShell';
 import Avatar from '@/components/Avatar';
 import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import { computeSalaryFigures } from '@/components/SalaryBreakdown';
-import { absencePerDay, DEFAULT_ABSENCE_POLICY, type AbsencePolicy } from '@/lib/absence';
 import {
   buildPeriodOptions,
   currentSystemYearMonth,
@@ -16,8 +15,8 @@ import {
   type CalendarPeriod,
 } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { fetchMyCompanyWeekOffConfig, workingDaysInRange } from '@/lib/weekOff';
-import type { CompanyHoliday, Employee } from '@/lib/types';
+import { fetchMyCompanyWeekOffConfig } from '@/lib/weekOff';
+import type { Employee } from '@/lib/types';
 
 /** The one place a company's salary structure is set: the three contribution
  * rates (companies.pf_rate/ssf_rate/tds_rate — one company-wide percentage of
@@ -46,14 +45,6 @@ export default function SalaryStructurePage() {
   const [ssfDraft, setSsfDraft] = useState('11');
   const [tdsDraft, setTdsDraft] = useState('0');
   const [saving, setSaving] = useState(false);
-
-  // Absence deduction policy (companies.absence_*) — saved / draft, same
-  // dirty-bar pattern as the contribution rates.
-  const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
-  const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
-  const [savedPolicy, setSavedPolicy] = useState<AbsencePolicy>(DEFAULT_ABSENCE_POLICY);
-  const [policyDraft, setPolicyDraft] = useState<AbsencePolicy>(DEFAULT_ABSENCE_POLICY);
-  const [savingPolicy, setSavingPolicy] = useState(false);
 
   // Inline per-employee Basic / Allowance editing — one cell at a time, same
   // edit-in-place pattern the Payroll page uses for salary.
@@ -88,18 +79,13 @@ export default function SalaryStructurePage() {
       setIsAdmin(profile?.role === 'admin');
     });
 
-    fetchMyCompanyWeekOffConfig().then(({ companyId, pfRate, ssfRate, tdsRate, weeklyOffDay, absencePolicy }) => {
+    fetchMyCompanyWeekOffConfig().then(({ companyId, pfRate, ssfRate, tdsRate }) => {
       setCompanyId(companyId);
       setSavedRates({ pf: pfRate, ssf: ssfRate, tds: tdsRate });
       setPfDraft(String(pfRate));
       setSsfDraft(String(ssfRate));
       setTdsDraft(String(tdsRate));
-      setWeeklyOffDay(weeklyOffDay);
-      setSavedPolicy(absencePolicy);
-      setPolicyDraft(absencePolicy);
     });
-
-    supabase.from('company_holidays').select('*').then(({ data }) => setHolidays(data ?? []));
 
     supabase
       .from('employees')
@@ -119,12 +105,6 @@ export default function SalaryStructurePage() {
     pfDraft !== String(savedRates.pf) || ssfDraft !== String(savedRates.ssf) || tdsDraft !== String(savedRates.tds);
 
   const daysInMonth = useMemo(() => Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1, [start, end]);
-  const workingDays = useMemo(
-    () => workingDaysInRange(start, end, weeklyOffDay, holidays),
-    [start, end, weeklyOffDay, holidays]
-  );
-
-  const policyDirty = JSON.stringify(policyDraft) !== JSON.stringify(savedPolicy);
 
   const perDay = viewMode === 'perDay';
   const factor = perDay ? 1 / daysInMonth : 1;
@@ -143,13 +123,8 @@ export default function SalaryStructurePage() {
           ? true
           : [e.name, e.designation, e.employee_code].filter(Boolean).some(v => (v as string).toLowerCase().includes(term))
       )
-      .map(e => ({
-        e,
-        ...computeSalaryFigures(e.salary, e.allowance, pf, ssf, tds),
-        absentDay:
-          e.salary == null ? null : absencePerDay(e.salary, e.allowance ?? 0, policyDraft, daysInMonth, workingDays),
-      }));
-  }, [employees, search, pf, ssf, tds, policyDraft, daysInMonth, workingDays]);
+      .map(e => ({ e, ...computeSalaryFigures(e.salary, e.allowance, pf, ssf, tds) }));
+  }, [employees, search, pf, ssf, tds]);
 
   const totals = useMemo(() => {
     let basic = 0,
@@ -159,7 +134,6 @@ export default function SalaryStructurePage() {
       ssfAmt = 0,
       tdsAmt = 0,
       net = 0,
-      absentDay = 0,
       counted = 0;
     for (const r of rows) {
       if (r.basic == null) continue;
@@ -171,9 +145,8 @@ export default function SalaryStructurePage() {
       ssfAmt += r.ssfAmt!;
       tdsAmt += r.tdsAmt!;
       net += r.net!;
-      absentDay += r.absentDay ?? 0;
     }
-    return { basic, allowance, gross, pfAmt, ssfAmt, tdsAmt, net, absentDay, counted, deductions: pfAmt + ssfAmt + tdsAmt };
+    return { basic, allowance, gross, pfAmt, ssfAmt, tdsAmt, net, counted, deductions: pfAmt + ssfAmt + tdsAmt };
   }, [rows]);
 
   async function saveRates() {
@@ -195,26 +168,6 @@ export default function SalaryStructurePage() {
     setPfDraft(String(savedRates.pf));
     setSsfDraft(String(savedRates.ssf));
     setTdsDraft(String(savedRates.tds));
-  }
-
-  async function savePolicy() {
-    if (!companyId) return;
-    setSavingPolicy(true);
-    const { error } = await supabase
-      .from('companies')
-      .update({
-        absence_divisor: policyDraft.divisor,
-        absence_basis: policyDraft.basis,
-        absence_partial: policyDraft.partial,
-        half_day_hours: policyDraft.halfDayHours,
-      })
-      .eq('id', companyId);
-    setSavingPolicy(false);
-    if (error) {
-      alert(`Could not save the absence policy: ${error.message}`);
-      return;
-    }
-    setSavedPolicy(policyDraft);
   }
 
   function startEditCell(id: string, field: 'salary' | 'allowance', current: number | null) {
@@ -298,7 +251,7 @@ export default function SalaryStructurePage() {
 
   function exportCsv() {
     const suffix = perDay ? ' /day' : '';
-    const header = ['Employee', 'Designation', `Basic${suffix}`, `Allowance${suffix}`, `Gross${suffix}`, `1 day absent${suffix}`, `PF (${pf}%)${suffix}`, `SSF (${ssf}%)${suffix}`, `TDS (${tds}%)${suffix}`, `Net Payable${suffix}`];
+    const header = ['Employee', 'Designation', `Basic${suffix}`, `Allowance${suffix}`, `Gross${suffix}`, `PF (${pf}%)${suffix}`, `SSF (${ssf}%)${suffix}`, `TDS (${tds}%)${suffix}`, `Net Payable${suffix}`];
     const cell = (n: number | null) => (n == null ? '' : Number((n * factor).toFixed(perDay ? 2 : 0)));
     const lines = rows.map(r => [
       r.e.name,
@@ -306,7 +259,6 @@ export default function SalaryStructurePage() {
       cell(r.basic),
       r.allowance ? cell(r.allowance) : '',
       cell(r.gross),
-      cell(r.absentDay),
       cell(r.pfAmt),
       cell(r.ssfAmt),
       cell(r.tdsAmt),
@@ -383,92 +335,6 @@ export default function SalaryStructurePage() {
               {saving ? 'Saving…' : 'Save rates'}
             </button>
           </div>
-        </div>
-      )}
-
-      {isAdmin && (
-        <div className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm print:hidden">
-          <div className="flex items-center gap-2.5 border-b border-slate-100 px-4 py-3">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-warning-bg text-warning-text">
-              <ClockOffIcon className="h-4 w-4" />
-            </span>
-            <h3 className="text-sm font-bold text-ink">Absence deduction</h3>
-            <span className="ml-auto text-[11px] font-medium text-slate-400">Company-wide · applied on the Payroll report</span>
-          </div>
-          <div className="flex flex-col gap-3 px-4 py-3">
-            <PolicyRow label="Per-day rate is">
-              <Seg
-                value={policyDraft.divisor}
-                onChange={v => setPolicyDraft(p => ({ ...p, divisor: v as AbsencePolicy['divisor'] }))}
-                options={[
-                  ['calendar', 'Monthly ÷ calendar days'],
-                  ['thirty', 'Monthly ÷ 30'],
-                  ['working', 'Monthly ÷ working days'],
-                ]}
-              />
-            </PolicyRow>
-            <PolicyRow label="Deduct from">
-              <Seg
-                value={policyDraft.basis}
-                onChange={v => setPolicyDraft(p => ({ ...p, basis: v as AbsencePolicy['basis'] }))}
-                options={[
-                  ['basic', 'Basic only'],
-                  ['gross', 'Basic + Allowance'],
-                ]}
-              />
-            </PolicyRow>
-            <PolicyRow label="An absent day counts as">
-              <Seg
-                value={policyDraft.partial}
-                onChange={v => setPolicyDraft(p => ({ ...p, partial: v as AbsencePolicy['partial'] }))}
-                options={[
-                  ['hourly', 'Only the hours short of the shift'],
-                  ['full_day', 'A full day (leave without pay)'],
-                ]}
-              />
-            </PolicyRow>
-            {policyDraft.partial === 'full_day' && (
-              <PolicyRow label="Half-day rule">
-                <span className="flex items-center gap-2 text-xs text-slate-500">
-                  Worked under
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    value={policyDraft.halfDayHours}
-                    onChange={e => setPolicyDraft(p => ({ ...p, halfDayHours: Number(e.target.value) || 0 }))}
-                    className="w-14 rounded-md border border-slate-200 px-1.5 py-1 text-right text-xs font-semibold text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-                  />
-                  h on a working day → deduct half a day (0 = off)
-                </span>
-              </PolicyRow>
-            )}
-            <p className="text-[11px] text-slate-400">
-              Weekly offs, public holidays and approved <b className="font-semibold text-slate-500">paid</b> leave are never
-              deducted. Approved <b className="font-semibold text-slate-500">unpaid</b> leave is deducted like an absent day.
-            </p>
-          </div>
-          {policyDirty && (
-            <div className="flex items-center justify-between border-t border-slate-100 bg-accent/5 px-4 py-2.5">
-              <span className="text-sm font-medium text-ink">Unsaved policy changes</span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setPolicyDraft(savedPolicy)}
-                  disabled={savingPolicy}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-60"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={savePolicy}
-                  disabled={savingPolicy}
-                  className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-accent/90 disabled:opacity-60"
-                >
-                  {savingPolicy ? 'Saving…' : 'Save policy'}
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -549,12 +415,6 @@ export default function SalaryStructurePage() {
                 <th className="whitespace-nowrap px-3 py-2 text-right font-medium">Basic</th>
                 <th className="whitespace-nowrap px-3 py-2 text-right font-medium">Allowance</th>
                 <th className="whitespace-nowrap px-3 py-2 text-right font-medium">Gross</th>
-                <th className="whitespace-nowrap px-3 py-2 text-right font-medium text-warning-text">
-                  1 day absent
-                  <span className="block text-[10px] font-normal normal-case tracking-normal text-slate-400">
-                    {savedPolicy.divisor === 'thirty' ? '÷ 30' : savedPolicy.divisor === 'working' ? '÷ working days' : '÷ calendar days'}
-                  </span>
-                </th>
                 <th className="whitespace-nowrap px-3 py-2 text-right font-medium text-critical-text">
                   {rateHeader('PF', pfDraft, setPfDraft)}
                 </th>
@@ -568,7 +428,7 @@ export default function SalaryStructurePage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ e, basic, allowance, gross, pfAmt, ssfAmt, tdsAmt, net, absentDay }) => (
+              {rows.map(({ e, basic, allowance, gross, pfAmt, ssfAmt, tdsAmt, net }) => (
                 <tr key={e.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                   <td className="whitespace-nowrap px-3 py-2 font-medium text-ink">
                     <Link href={`/salary-structure/${e.id}${detailQuery}`} className="flex items-center gap-2.5 hover:text-accent hover:underline">
@@ -583,9 +443,6 @@ export default function SalaryStructurePage() {
                   {amountCell(e.id, 'salary', basic)}
                   {amountCell(e.id, 'allowance', allowance)}
                   <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums text-ink">{shown(gross)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-warning-text">
-                    {absentDay == null ? '—' : `−${shown(absentDay)}`}
-                  </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">{shown(pfAmt)}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">{shown(ssfAmt)}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">{shown(tdsAmt)}</td>
@@ -594,7 +451,7 @@ export default function SalaryStructurePage() {
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
                     {loading ? 'Loading…' : 'No active employees.'}
                   </td>
                 </tr>
@@ -609,7 +466,6 @@ export default function SalaryStructurePage() {
                   <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{shown(totals.basic)}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{shown(totals.allowance)}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{shown(totals.gross)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-warning-text">−{shown(totals.absentDay)}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{shown(totals.pfAmt)}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{shown(totals.ssfAmt)}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{shown(totals.tdsAmt)}</td>
@@ -631,56 +487,11 @@ export default function SalaryStructurePage() {
   );
 }
 
-function PolicyRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-      <span className="w-44 shrink-0 text-xs font-semibold text-slate-600">{label}</span>
-      {children}
-    </div>
-  );
-}
-
-function Seg({
-  value,
-  onChange,
-  options,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: [string, string][];
-}) {
-  return (
-    <span className="inline-flex overflow-hidden rounded-lg border border-slate-200">
-      {options.map(([v, label], i) => (
-        <button
-          key={v}
-          type="button"
-          onClick={() => onChange(v)}
-          className={`px-3 py-1.5 text-xs font-semibold ${i > 0 ? 'border-l border-slate-200' : ''} ${
-            value === v ? 'bg-accent/10 text-accent' : 'bg-white text-slate-500 hover:bg-slate-50'
-          }`}
-        >
-          {label}
-        </button>
-      ))}
-    </span>
-  );
-}
-
 function StructureIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <rect x="3" y="4" width="18" height="16" rx="2" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 9h18M9 9v11" />
-    </svg>
-  );
-}
-
-function ClockOffIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
-      <circle cx="12" cy="12" r="9" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 2M5 5l14 14" />
     </svg>
   );
 }

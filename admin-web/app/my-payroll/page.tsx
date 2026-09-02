@@ -8,8 +8,7 @@ import { buildPeriodOptions, currentSystemYearMonth, formatDdMmYyyy, systemPerio
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { formatHoursMinutes, nepalTodayIso, type DailyShiftByDate, type WeeklyPatternByEmployee } from '@/lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning, type DayDetail } from '@/lib/payrollDetail';
-import { aggregateAttendance, computeAbsenceAdjustment, DEFAULT_ABSENCE_POLICY, type AbsencePolicy } from '@/lib/absence';
-import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange, workingDaysInRange } from '@/lib/weekOff';
+import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '@/lib/weekOff';
 
 /** Decimal hours -> "Xh Ym". */
 function fmtHrs(hours: number) {
@@ -51,19 +50,17 @@ export default function MyPayrollPage() {
   const [pfRate, setPfRate] = useState(10);
   const [ssfRate, setSsfRate] = useState(11);
   const [tdsRate, setTdsRate] = useState(0);
-  const [absencePolicy, setAbsencePolicy] = useState<AbsencePolicy>(DEFAULT_ABSENCE_POLICY);
 
   const { start, end } = period;
 
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier, pfRate, ssfRate, tdsRate, absencePolicy }) => {
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier, pfRate, ssfRate, tdsRate }) => {
       setWeeklyOffDay(weeklyOffDay);
       setOtHoursPerDay(otHoursPerDay);
       setOtMultiplier(otMultiplier);
       setPfRate(pfRate);
       setSsfRate(ssfRate);
       setTdsRate(tdsRate);
-      setAbsencePolicy(absencePolicy);
       // Not date-scoped (a pattern applies to every week), and only ever
       // relevant in 'weekly' roster_mode — see resolveShiftForDate().
       if (rosterMode === 'weekly' && employeeId) {
@@ -196,9 +193,6 @@ export default function MyPayrollPage() {
     const today = nepalTodayIso();
     const set = weekOffDatesInRange(employee.date_of_joining, today, weeklyOffDay, holidays);
     for (const req of leaveRequests) {
-      // Unpaid leave is leave-without-pay — for pay it behaves like an absence,
-      // so it does not belong in the paid-off set.
-      if (req.leave_type === 'unpaid') continue;
       const cur = new Date(req.start_date + 'T00:00:00Z');
       const endDate = new Date(req.end_date + 'T00:00:00Z');
       while (cur <= endDate) {
@@ -314,40 +308,25 @@ export default function MyPayrollPage() {
     };
   }, [dayRows, employee, daysInRange]);
 
-  const workingDays = useMemo(
-    () => workingDaysInRange(start, end, weeklyOffDay, holidays),
-    [start, end, weeklyOffDay, holidays]
-  );
-
-  // Payslip-style breakdown for the selected period, under the company's
-  // absence policy. Basic / Allowance are the attendance-earned figures;
-  // "Absence" shows the deduction. PF/SSF/TDS are each a % of the earned
-  // Basic at the company-wide rate set on the Salary Structure page.
+  // Payslip-style breakdown for the selected period. Basic Salary is the
+  // attendance-prorated base earning (same figure "Receivable" used to show
+  // before OT); Allowance scales by that same attendance fraction so a
+  // partial/absent period doesn't pay a full allowance. PF/SSF/TDS are each
+  // a % of Basic Salary (not Allowance) — the common convention — at the
+  // company-wide rate set on the admin Salary Structure page.
   const breakdown = useMemo(() => {
     if (employee?.salary == null) return null;
-    const att = aggregateAttendance(dayRows, absencePolicy.halfDayHours);
-    const adj = computeAbsenceAdjustment({
-      salary: employee.salary,
-      allowance: employee.allowance ?? 0,
-      policy: absencePolicy,
-      daysInPeriod: daysInRange,
-      workingDaysInPeriod: workingDays,
-      totals: att,
-      otHoursPerDay,
-      otMultiplier,
-      otOn: true,
-    });
-    const basic = Math.round(adj.earnedBasic);
-    const allowance = Math.round(adj.earnedAllowance);
-    const absence = Math.round(adj.absenceDeduction); // ≤ 0
+    const basic = Math.round(totals.totalSalary - totals.overtimeEarning);
+    const earnedFraction = employee.salary > 0 ? basic / employee.salary : 0;
+    const allowance = Math.round((employee.allowance ?? 0) * earnedFraction);
     const total = basic + allowance;
     const pf = Math.round((basic * pfRate) / 100);
     const ssf = Math.round((basic * ssfRate) / 100);
-    const ot = Math.round(adj.overtimePay);
+    const ot = Math.round(totals.overtimeEarning);
     const tds = Math.round((basic * tdsRate) / 100);
     const totalSalary = total + ot - pf - ssf - tds;
-    return { basic, allowance, absence, total, pf, ssf, ot, tds, totalSalary };
-  }, [employee, dayRows, daysInRange, workingDays, otHoursPerDay, otMultiplier, absencePolicy, pfRate, ssfRate, tdsRate]);
+    return { basic, allowance, total, pf, ssf, ot, tds, totalSalary };
+  }, [employee, totals, pfRate, ssfRate, tdsRate]);
 
   const chartData = useMemo(
     () =>
@@ -375,9 +354,6 @@ export default function MyPayrollPage() {
               <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <SalaryTile label="Basic Salary" value={breakdown.basic} tone="good" />
                 <SalaryTile label="Allowance" value={breakdown.allowance} tone="info" />
-                {breakdown.absence !== 0 && (
-                  <SalaryTile label="Absence" value={Math.abs(breakdown.absence)} tone="warning" negative />
-                )}
                 <SalaryTile label="Total" value={breakdown.total} tone="accent" />
                 <SalaryTile label="PF" value={breakdown.pf} tone="critical" negative />
                 <SalaryTile label="SSF" value={breakdown.ssf} tone="critical" negative />

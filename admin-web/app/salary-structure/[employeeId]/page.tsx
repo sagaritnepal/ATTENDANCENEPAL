@@ -17,9 +17,8 @@ import {
 } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { nepalTodayIso, type DailyShiftByDate, type WeeklyPatternByEmployee } from '@/lib/shift';
-import { buildEmployeeDayRows } from '@/lib/payrollDetail';
-import { aggregateAttendance, computeAbsenceAdjustment, DEFAULT_ABSENCE_POLICY, type AbsencePolicy } from '@/lib/absence';
-import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange, workingDaysInRange } from '@/lib/weekOff';
+import { buildEmployeeDayRows, dailySalaryEarning } from '@/lib/payrollDetail';
+import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '@/lib/weekOff';
 import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
 import { ATTENDANCE_LOG_COLUMNS, PAYROLL_SUMMARY_COLUMNS } from '@/lib/types';
 
@@ -61,12 +60,7 @@ function SalaryStructureEmployeeView() {
 
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [rates, setRates] = useState({ pf: 10, ssf: 11, tds: 0 });
-  const [config, setConfig] = useState({
-    weeklyOffDay: null as number | null,
-    otHoursPerDay: 8,
-    otMultiplier: 1.5,
-    absencePolicy: DEFAULT_ABSENCE_POLICY as AbsencePolicy,
-  });
+  const [config, setConfig] = useState({ weeklyOffDay: null as number | null, otHoursPerDay: 8, otMultiplier: 1.5 });
   const [loading, setLoading] = useState(true);
 
   // Attendance inputs for the period — same set the Payroll detail page
@@ -87,9 +81,9 @@ function SalaryStructureEmployeeView() {
   }, [start, end]);
 
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ pfRate, ssfRate, tdsRate, weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier, absencePolicy }) => {
+    fetchMyCompanyWeekOffConfig().then(({ pfRate, ssfRate, tdsRate, weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier }) => {
       setRates({ pf: pfRate, ssf: ssfRate, tds: tdsRate });
-      setConfig({ weeklyOffDay, otHoursPerDay, otMultiplier, absencePolicy });
+      setConfig({ weeklyOffDay, otHoursPerDay, otMultiplier });
       if (rosterMode === 'weekly') {
         supabase
           .from('employee_weekly_pattern')
@@ -123,7 +117,7 @@ function SalaryStructureEmployeeView() {
   }, [employeeId, start, end]);
 
   const { pf, ssf, tds } = rates;
-  const { weeklyOffDay, otHoursPerDay, otMultiplier, absencePolicy } = config;
+  const { weeklyOffDay, otHoursPerDay, otMultiplier } = config;
 
   const figures = useMemo(
     () => computeSalaryFigures(employee?.salary ?? null, employee?.allowance ?? null, pf, ssf, tds),
@@ -147,12 +141,9 @@ function SalaryStructureEmployeeView() {
   }, [weeklyPatternRows, employeeId]);
 
   const weekOffDates = useMemo(() => weekOffDatesInRange(start, end, weeklyOffDay, holidays), [start, end, weeklyOffDay, holidays]);
-  // Paid leave only — an approved *unpaid* leave day is leave-without-pay, so
-  // for pay it must behave like an absent day (not a paid day off).
   const leaveDates = useMemo(() => {
     const set = new Set<string>();
     for (const req of leaveRequests) {
-      if (req.leave_type === 'unpaid') continue;
       const cur = new Date((req.start_date < start ? start : req.start_date) + 'T00:00:00Z');
       const endDate = new Date((req.end_date > end ? end : req.end_date) + 'T00:00:00Z');
       while (cur <= endDate) {
@@ -163,45 +154,42 @@ function SalaryStructureEmployeeView() {
     return set;
   }, [start, end, leaveRequests]);
 
-  const workingDays = useMemo(
-    () => workingDaysInRange(start, end, weeklyOffDay, holidays),
-    [start, end, weeklyOffDay, holidays]
-  );
-
   const dayRows = useMemo(
     () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate, weekOffDates, leaveDates, weeklyPattern) : []),
     [employee, shifts, summaries, logs, start, end, dailyShiftByDate, weekOffDates, leaveDates, weeklyPattern]
   );
 
-  // The month's net attendance effect on pay under the company's absence
-  // policy: the absence / late / early shortfall (negative) plus overtime pay
-  // (positive). One figure — negative is a net deduction, positive a surplus.
+  // The month's net attendance effect on pay: what a full standard day would
+  // have earned for each elapsed day, minus what was actually earned per hour
+  // worked (absence, late arrival and early departure all cut this below
+  // zero), plus overtime pay earned on top. One figure — negative means a net
+  // deduction, positive means a net surplus.
   const adjustment = useMemo(() => {
     if (employee?.salary == null) return null;
-    const totals = aggregateAttendance(dayRows, absencePolicy.halfDayHours);
-    const adj = computeAbsenceAdjustment({
-      salary: employee.salary,
-      allowance: employee.allowance ?? 0,
-      policy: absencePolicy,
-      daysInPeriod: daysInMonth,
-      workingDaysInPeriod: workingDays,
-      totals,
-      otHoursPerDay,
-      otMultiplier,
-      otOn: true,
-    });
-    return {
-      net: adj.absenceDeduction + adj.overtimePay,
-      shortfall: adj.absenceDeduction,
-      overtime: adj.overtimePay,
-      perDay: adj.perDay,
-      countedDays: totals.countedDays,
-      absentDays: totals.absentDays,
-      halfDays: totals.halfDays,
-      lateMinutes: totals.lateMinutes,
-      earlyMinutes: totals.earlyMinutes,
-    };
-  }, [employee, dayRows, daysInMonth, workingDays, otHoursPerDay, otMultiplier, absencePolicy]);
+    const perStdDay = employee.salary / daysInMonth;
+    let expected = 0;
+    let actualBase = 0;
+    let overtime = 0;
+    let countedDays = 0;
+    let absentDays = 0;
+    let lateMinutes = 0;
+    let earlyMinutes = 0;
+    for (const d of dayRows) {
+      if (d.status === 'Upcoming') continue;
+      countedDays += 1;
+      expected += perStdDay;
+      const earn = dailySalaryEarning(d, employee.salary, daysInMonth, otHoursPerDay, otMultiplier, true);
+      if (earn) {
+        actualBase += earn.base;
+        overtime += earn.overtime;
+      }
+      if (d.status === 'Absent') absentDays += 1;
+      lateMinutes += d.lateMinutes;
+      earlyMinutes += d.earlyMinutes;
+    }
+    const shortfall = actualBase - expected; // ≤ 0 for absence / late / early
+    return { net: shortfall + overtime, shortfall, overtime, countedDays, absentDays, lateMinutes, earlyMinutes };
+  }, [employee, dayRows, daysInMonth, otHoursPerDay, otMultiplier]);
 
   function exportCsv() {
     if (!employee) return;
@@ -310,16 +298,10 @@ function SalaryStructureEmployeeView() {
             <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm shadow-sm print:border-slate-300 print:shadow-none">
               <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
                 Attendance adjustment for {monthLabel}{isCurrentMonth && ' (so far)'}
-                {' · '}
-                {absencePolicy.partial === 'full_day' ? 'full-day' : 'per-hour'} ·{' '}
-                {absencePolicy.divisor === 'thirty' ? '÷30' : absencePolicy.divisor === 'working' ? '÷working days' : '÷calendar days'} ·{' '}
-                {absencePolicy.basis === 'gross' ? 'basic + allowance' : 'basic'}
               </div>
               <dl className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
                 <Row k="Days counted" v={`${adjustment.countedDays} of ${daysInMonth}`} />
-                <Row k="Per-day value" v={round(adjustment.perDay).toLocaleString()} />
                 <Row k="Absent days" v={String(adjustment.absentDays)} />
-                {adjustment.halfDays > 0 && <Row k="Half days" v={String(adjustment.halfDays)} />}
                 <Row k="Late arrival" v={`${round(adjustment.lateMinutes)} min total`} />
                 <Row k="Early departure" v={`${round(adjustment.earlyMinutes)} min total`} />
                 <Row k="Absence / late / early" v={round(adjustment.shortfall).toLocaleString()} tone={adjustment.shortfall < 0 ? 'text-critical-text' : undefined} />
