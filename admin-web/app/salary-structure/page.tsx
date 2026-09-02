@@ -259,12 +259,11 @@ export default function SalaryStructurePage() {
 
   function exportCsv() {
     const suffix = perDay ? ' /day' : '';
-    const header = ['ID', 'Employee', 'Designation', `Basic${suffix}`, `Allowance${suffix}`, `Gross${suffix}`, `PF (${pf}%)${suffix}`, `SSF (${ssf}%)${suffix}`, `TDS (${tds}%)${suffix}`, `Net Payable${suffix}`];
+    const header = ['ID', 'Employee', `Basic${suffix}`, `Allowance${suffix}`, `Gross${suffix}`, `PF (${pf}%)${suffix}`, `SSF (${ssf}%)${suffix}`, `TDS (${tds}%)${suffix}`, `Net Payable${suffix}`];
     const cell = (n: number | null) => (n == null ? '' : Number((n * factor).toFixed(perDay ? 2 : 0)));
     const lines = rows.map(r => [
       r.e.fingerprint_id || '',
       r.e.name,
-      r.e.designation ?? '',
       cell(r.basic),
       r.allowance ? cell(r.allowance) : '',
       cell(r.gross),
@@ -421,7 +420,6 @@ export default function SalaryStructurePage() {
               <tr className="sticky top-0 z-10 border-y border-slate-200 bg-slate-50 align-bottom text-xs uppercase tracking-wide text-slate-500">
                 <th className="whitespace-nowrap px-3 py-2 font-medium">ID</th>
                 <th className="whitespace-nowrap px-3 py-2 font-medium">Employee</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">Designation</th>
                 <th className="whitespace-nowrap px-3 py-2 text-right font-medium">Basic</th>
                 <th className="whitespace-nowrap px-3 py-2 text-right font-medium">Allowance</th>
                 <th className="whitespace-nowrap px-3 py-2 text-right font-medium">Gross</th>
@@ -447,7 +445,6 @@ export default function SalaryStructurePage() {
                       <span>{e.name}</span>
                     </Link>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-slate-500">{e.designation || '—'}</td>
                   {amountCell(e.id, 'salary', basic)}
                   {amountCell(e.id, 'allowance', allowance)}
                   <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums text-ink">{shown(gross)}</td>
@@ -459,7 +456,7 @@ export default function SalaryStructurePage() {
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
                     {loading ? 'Loading…' : 'No active employees.'}
                   </td>
                 </tr>
@@ -468,7 +465,7 @@ export default function SalaryStructurePage() {
             {totals.counted > 0 && (
               <tfoot>
                 <tr className="sticky bottom-0 border-t-2 border-slate-200 bg-slate-50 text-sm font-bold text-ink">
-                  <td colSpan={3} className="whitespace-nowrap px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <td colSpan={2} className="whitespace-nowrap px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Total{perDay && ' / day'} · {totals.counted} staff
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{shown(totals.basic)}</td>
