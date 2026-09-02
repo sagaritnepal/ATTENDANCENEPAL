@@ -1,18 +1,28 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Avatar from '@/components/Avatar';
+import DatePicker from '@/components/DatePicker';
 import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
+import { formatAdDate, monthDateRange } from '@/lib/calendar';
+import { useCalendarSystem } from '@/lib/calendarSystem';
+import { nepalTodayIso } from '@/lib/shift';
 import { fetchMyCompanyWeekOffConfig } from '@/lib/weekOff';
 import type { Employee } from '@/lib/types';
 
 /** The one place a company's salary structure is set: the three contribution
  * rates (companies.pf_rate/ssf_rate/tds_rate — one company-wide percentage of
  * Basic each), plus per-employee Basic and Allowance, editable inline in the
- * table. The monthly Payroll report only reads these figures. */
+ * table. The monthly Payroll report only reads these figures.
+ *
+ * A date selector switches every figure between the full monthly amount and
+ * the per-day amount (monthly ÷ the number of days in the calendar month the
+ * picked date falls in). Each row expands to a full per-employee breakdown,
+ * and the whole page — every row's breakdown included — prints. */
 export default function SalaryStructurePage() {
+  const { system } = useCalendarSystem();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -34,6 +44,17 @@ export default function SalaryStructurePage() {
   const [editingCell, setEditingCell] = useState<{ id: string; field: 'salary' | 'allowance' } | null>(null);
   const [cellDraft, setCellDraft] = useState('');
   const [savingCell, setSavingCell] = useState(false);
+
+  // Monthly (default) vs per-day view. `asOfDate` is an AD YYYY-MM-DD key;
+  // per-day figures divide the monthly amount by the number of days in the
+  // calendar month (in whichever system is active) that date falls in.
+  const [viewMode, setViewMode] = useState<'monthly' | 'perDay'>('monthly');
+  const [asOfDate, setAsOfDate] = useState<string>(() => nepalTodayIso());
+
+  // Per-employee breakdown rows the reader has opened on screen. The print
+  // layout always carries every row's full breakdown (a print-only block
+  // inside each Employee cell) regardless of what's expanded here.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -66,6 +87,24 @@ export default function SalaryStructurePage() {
 
   const dirty =
     pfDraft !== String(savedRates.pf) || ssfDraft !== String(savedRates.ssf) || tdsDraft !== String(savedRates.tds);
+
+  // Number of days in the calendar month `asOfDate` falls in, in the active
+  // AD/BS system — the divisor for every per-day figure.
+  const daysInMonth = useMemo(() => {
+    const [y, m, d] = asOfDate.split('-').map(Number);
+    if (!y || !m || !d) return 30;
+    const { start, end } = monthDateRange(system, { year: y, month: m - 1, day: d });
+    return Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1;
+  }, [asOfDate, system]);
+
+  const perDay = viewMode === 'perDay';
+  const factor = perDay ? 1 / daysInMonth : 1;
+
+  /** Monthly figure -> the number shown, scaled to the active view. */
+  function shown(n: number | null | undefined): string {
+    if (n == null) return '—';
+    return (n * factor).toLocaleString(undefined, { maximumFractionDigits: perDay ? 2 : 0 });
+  }
 
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -111,6 +150,21 @@ export default function SalaryStructurePage() {
     }
     return { basic, allowance, gross, pfAmt, ssfAmt, tdsAmt, net, counted, deductions: pfAmt + ssfAmt + tdsAmt };
   }, [rows]);
+
+  const allExpanded = rows.length > 0 && rows.every(r => expandedIds.has(r.e.id));
+
+  function toggleRow(id: string) {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setExpandedIds(allExpanded ? new Set() : new Set(rows.map(r => r.e.id)));
+  }
 
   async function saveRates() {
     if (!companyId) return;
@@ -164,8 +218,10 @@ export default function SalaryStructurePage() {
   }
 
   // Plain function returning a <td>, not a nested component — see rateHeader.
+  // In per-day view the figure is read-only (you edit the monthly amount in
+  // the monthly view) so the value shown is always scaled by `shown()`.
   const amountCell = (id: string, field: 'salary' | 'allowance', value: number | null) => {
-    if (editingCell?.id === id && editingCell.field === field) {
+    if (!perDay && editingCell?.id === id && editingCell.field === field) {
       return (
         <td className="whitespace-nowrap px-3 py-2 text-right align-top">
           <input
@@ -195,33 +251,37 @@ export default function SalaryStructurePage() {
     return (
       <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-600">
         <span className="inline-flex items-center gap-1.5">
-          <span className={value == null ? 'text-slate-300' : undefined}>{value != null ? value.toLocaleString() : '—'}</span>
-          <button
-            onClick={() => startEditCell(id, field, value)}
-            title={field === 'salary' ? 'Edit basic salary' : 'Edit allowance'}
-            className="text-slate-300 hover:text-accent"
-          >
-            <EditIcon className="h-3.5 w-3.5" />
-          </button>
+          <span className={value == null ? 'text-slate-300' : undefined}>{shown(value)}</span>
+          {!perDay && (
+            <button
+              onClick={() => startEditCell(id, field, value)}
+              title={field === 'salary' ? 'Edit basic salary' : 'Edit allowance'}
+              className="text-slate-300 hover:text-accent print:hidden"
+            >
+              <EditIcon className="h-3.5 w-3.5" />
+            </button>
+          )}
         </span>
       </td>
     );
   };
 
   function exportCsv() {
-    const header = ['Employee', 'Designation', 'Basic', 'Allowance', 'Gross', `PF (${pf}%)`, `SSF (${ssf}%)`, `TDS (${tds}%)`, 'Net Payable'];
+    const suffix = perDay ? ' /day' : '';
+    const header = ['Employee', 'Designation', `Basic${suffix}`, `Allowance${suffix}`, `Gross${suffix}`, `PF (${pf}%)${suffix}`, `SSF (${ssf}%)${suffix}`, `TDS (${tds}%)${suffix}`, `Net Payable${suffix}`];
+    const cell = (n: number | null) => (n == null ? '' : Number((n * factor).toFixed(perDay ? 2 : 0)));
     const lines = rows.map(r => [
       r.e.name,
       r.e.designation ?? '',
-      r.basic ?? '',
-      r.allowance || '',
-      r.gross ?? '',
-      r.pfAmt ?? '',
-      r.ssfAmt ?? '',
-      r.tdsAmt ?? '',
-      r.net ?? '',
+      cell(r.basic),
+      r.allowance ? cell(r.allowance) : '',
+      cell(r.gross),
+      cell(r.pfAmt),
+      cell(r.ssfAmt),
+      cell(r.tdsAmt),
+      cell(r.net),
     ]);
-    downloadExcel('salary_structure.csv', header, lines);
+    downloadExcel(perDay ? `salary_structure_per_day_${asOfDate}.csv` : 'salary_structure.csv', header, lines);
   }
 
   // Plain function returning JSX, not a nested component — a `<RateHeader/>`
@@ -230,7 +290,7 @@ export default function SalaryStructurePage() {
   const rateHeader = (label: string, value: string, onChange: (v: string) => void) => (
     <div className="flex flex-col items-end gap-1">
       <span>{label}</span>
-      <span className="flex items-center gap-1 normal-case tracking-normal">
+      <span className="flex items-center gap-1 normal-case tracking-normal print:hidden">
         <input
           type="number"
           min="0"
@@ -242,27 +302,33 @@ export default function SalaryStructurePage() {
         />
         <span className="text-[10px] font-medium text-slate-400">% of basic</span>
       </span>
+      <span className="hidden text-[10px] font-medium normal-case tracking-normal text-slate-400 print:block">{value}% of basic</span>
     </div>
   );
+
+  const dateLabel = formatAdDate(asOfDate, system);
+  const modeLine = perDay
+    ? `Per-day amounts for ${dateLabel} — that month has ${daysInMonth} days`
+    : 'Full monthly amounts';
 
   return (
     <AppShell title="Salary Structure">
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3 print:hidden">
         <div className="rounded-xl bg-info-bg p-3 shadow-sm ring-1 ring-inset ring-info/10">
-          <span className="text-xs font-medium text-info-text/80">Total Gross Payroll</span>
-          <div className="mt-1 text-base font-bold text-info-text">{totals.gross.toLocaleString()}</div>
-          <div className="mt-0.5 text-[11px] text-info-text/70">Basic {totals.basic.toLocaleString()} · Allowance {totals.allowance.toLocaleString()}</div>
+          <span className="text-xs font-medium text-info-text/80">Total Gross Payroll{perDay && ' / day'}</span>
+          <div className="mt-1 text-base font-bold text-info-text">{shown(totals.gross)}</div>
+          <div className="mt-0.5 text-[11px] text-info-text/70">Basic {shown(totals.basic)} · Allowance {shown(totals.allowance)}</div>
         </div>
         <div className="rounded-xl bg-critical-bg p-3 shadow-sm ring-1 ring-inset ring-critical/10">
-          <span className="text-xs font-medium text-critical-text/80">Total Deductions</span>
-          <div className="mt-1 text-base font-bold text-critical-text">{totals.deductions.toLocaleString()}</div>
+          <span className="text-xs font-medium text-critical-text/80">Total Deductions{perDay && ' / day'}</span>
+          <div className="mt-1 text-base font-bold text-critical-text">{shown(totals.deductions)}</div>
           <div className="mt-0.5 text-[11px] text-critical-text/70">
-            PF {totals.pfAmt.toLocaleString()} · SSF {totals.ssfAmt.toLocaleString()} · TDS {totals.tdsAmt.toLocaleString()}
+            PF {shown(totals.pfAmt)} · SSF {shown(totals.ssfAmt)} · TDS {shown(totals.tdsAmt)}
           </div>
         </div>
         <div className="rounded-xl bg-good-bg p-3 shadow-sm ring-1 ring-inset ring-good/10">
-          <span className="text-xs font-medium text-good-text/80">Total Net Payable</span>
-          <div className="mt-1 text-base font-bold text-good-text">{totals.net.toLocaleString()}</div>
+          <span className="text-xs font-medium text-good-text/80">Total Net Payable{perDay && ' / day'}</span>
+          <div className="mt-1 text-base font-bold text-good-text">{shown(totals.net)}</div>
           <div className="mt-0.5 text-[11px] text-good-text/70">Across {totals.counted} staff on a salary</div>
         </div>
       </div>
@@ -298,6 +364,21 @@ export default function SalaryStructurePage() {
             <h2 className="text-lg font-bold text-ink">Monthly Salary Structure</h2>
           </div>
           <div className="flex flex-wrap items-center gap-2.5">
+            <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 text-xs font-semibold shadow-sm">
+              <button
+                onClick={() => setViewMode('monthly')}
+                className={`px-3 py-2 ${viewMode === 'monthly' ? 'bg-accent text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setViewMode('perDay')}
+                className={`px-3 py-2 ${viewMode === 'perDay' ? 'bg-accent text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+              >
+                Per day
+              </button>
+            </div>
+            <DatePicker value={asOfDate} onChange={d => { setAsOfDate(d); setViewMode('perDay'); }} className="w-44" />
             <div className="relative">
               <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
@@ -308,17 +389,27 @@ export default function SalaryStructurePage() {
                 className="w-48 rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-ink shadow-sm placeholder:text-slate-400 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
               />
             </div>
+            <button
+              onClick={toggleAll}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm hover:bg-slate-50"
+            >
+              {allExpanded ? 'Collapse all' : 'Expand all'}
+            </button>
             <TableExportBar onExportCsv={exportCsv} />
           </div>
         </div>
 
-        {!isAdmin && (
-          <p className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs text-slate-500 sm:px-6 print:hidden">
-            The PF / SSF / TDS rates are read-only for your role — an admin sets them here.
-          </p>
-        )}
+        <div className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs text-slate-500 sm:px-6 print:hidden">
+          {modeLine}
+          {!isAdmin && <> · the PF / SSF / TDS rates are read-only for your role — an admin sets them here.</>}
+        </div>
 
-        <h1 className="hidden px-4 pt-4 text-lg font-bold text-ink print:block sm:px-6">Monthly Salary Structure</h1>
+        <div className="hidden px-4 pt-4 sm:px-6 print:block">
+          <h1 className="text-lg font-bold text-ink">Monthly Salary Structure</h1>
+          <p className="text-xs text-slate-500">
+            {modeLine} · PF {pf}% · SSF {ssf}% · TDS {tds}% of Basic
+          </p>
+        </div>
 
         <div className="max-h-[65vh] overflow-auto print:max-h-none print:overflow-visible">
           <table className="w-full text-left text-sm">
@@ -342,34 +433,57 @@ export default function SalaryStructurePage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ e, gross, pfAmt, ssfAmt, tdsAmt, net }) => (
-                <tr key={e.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                  <td className="whitespace-nowrap px-3 py-2 font-medium text-ink">
-                    <span className="flex items-center gap-2.5">
-                      <Avatar name={e.name} photoUrl={e.profile_photo_url} />
-                      {e.name}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-slate-500">{e.designation || '—'}</td>
-                  {amountCell(e.id, 'salary', e.salary)}
-                  {amountCell(e.id, 'allowance', e.allowance)}
-                  <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums text-ink">
-                    {gross != null ? gross.toLocaleString() : '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">
-                    {pfAmt != null ? pfAmt.toLocaleString() : '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">
-                    {ssfAmt != null ? ssfAmt.toLocaleString() : '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">
-                    {tdsAmt != null ? tdsAmt.toLocaleString() : '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right font-bold tabular-nums text-good-text">
-                    {net != null ? net.toLocaleString() : '—'}
-                  </td>
-                </tr>
-              ))}
+              {/* Each employee: a summary row, then a breakdown row directly
+                  under it — shown on screen only when expanded, but always
+                  emitted so a printout carries every employee's full detail
+                  (print:table-row overrides `hidden`). */}
+              {rows.map(row => {
+                const { e, basic, allowance, gross, pfAmt, ssfAmt, tdsAmt, net } = row;
+                const open = expandedIds.has(e.id);
+                return (
+                  <Fragment key={e.id}>
+                    <tr className="border-b border-slate-100 align-top hover:bg-slate-50 print:break-inside-avoid">
+                      <td className="px-3 py-2 font-medium text-ink">
+                        <span className="flex items-center gap-2">
+                          <button
+                            onClick={() => toggleRow(e.id)}
+                            title={open ? 'Hide breakdown' : 'Show breakdown'}
+                            className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-accent print:hidden"
+                          >
+                            <ChevronIcon className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} />
+                          </button>
+                          <Avatar name={e.name} photoUrl={e.profile_photo_url} />
+                          <span>
+                            {e.name}
+                            {e.employee_code && <span className="ml-1 text-xs font-normal text-slate-400">#{e.employee_code}</span>}
+                          </span>
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-slate-500">{e.designation || '—'}</td>
+                      {amountCell(e.id, 'salary', basic)}
+                      {amountCell(e.id, 'allowance', allowance)}
+                      <td className="whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums text-ink">{shown(gross)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">{shown(pfAmt)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">{shown(ssfAmt)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-critical-text">{shown(tdsAmt)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right font-bold tabular-nums text-good-text">{shown(net)}</td>
+                    </tr>
+                    <tr className={`border-b border-slate-100 bg-slate-50/60 print:table-row print:break-inside-avoid ${open ? '' : 'hidden'}`}>
+                      <td colSpan={9} className="px-3 py-3 sm:px-6">
+                        <EmployeeBreakdown
+                          row={row}
+                          pf={pf}
+                          ssf={ssf}
+                          tds={tds}
+                          daysInMonth={daysInMonth}
+                          dateLabel={dateLabel}
+                          system={system}
+                        />
+                      </td>
+                    </tr>
+                  </Fragment>
+                );
+              })}
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
@@ -382,15 +496,15 @@ export default function SalaryStructurePage() {
               <tfoot>
                 <tr className="sticky bottom-0 border-t-2 border-slate-200 bg-slate-50 text-sm font-bold text-ink">
                   <td colSpan={2} className="whitespace-nowrap px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Total · {totals.counted} staff
+                    Total{perDay && ' / day'} · {totals.counted} staff
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{totals.basic.toLocaleString()}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{totals.allowance.toLocaleString()}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{totals.gross.toLocaleString()}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{totals.pfAmt.toLocaleString()}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{totals.ssfAmt.toLocaleString()}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{totals.tdsAmt.toLocaleString()}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-good-text">{totals.net.toLocaleString()}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{shown(totals.basic)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{shown(totals.allowance)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{shown(totals.gross)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{shown(totals.pfAmt)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{shown(totals.ssfAmt)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{shown(totals.tdsAmt)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-good-text">{shown(totals.net)}</td>
                 </tr>
               </tfoot>
             )}
@@ -400,10 +514,109 @@ export default function SalaryStructurePage() {
 
       <p className="mt-3 text-xs text-slate-400">
         Net Payable = Basic + Allowance − PF − SSF − TDS. Click a Basic or Allowance figure to edit it for that employee; the
-        PF / SSF / TDS rates are company-wide. The monthly Payroll report reads these figures and is not edited there.
-        Overtime, where earned, is added on top on the Payroll report.
+        PF / SSF / TDS rates are company-wide. Per-day figures divide the monthly amount by the number of days in the picked
+        date&apos;s calendar month. The monthly Payroll report reads these figures and is not edited there. Overtime, where
+        earned, is added on top on the Payroll report.
       </p>
     </AppShell>
+  );
+}
+
+/** Full per-employee breakdown — monthly vs per-day columns side by side,
+ * plus the employee's payroll-relevant identifiers. Shared by the on-screen
+ * expanded row and the print-only block inside the employee cell. */
+function EmployeeBreakdown({
+  row,
+  pf,
+  ssf,
+  tds,
+  daysInMonth,
+  dateLabel,
+  system,
+}: {
+  row: {
+    e: Employee;
+    basic: number | null;
+    allowance: number;
+    gross: number | null;
+    pfAmt: number | null;
+    ssfAmt: number | null;
+    tdsAmt: number | null;
+    net: number | null;
+  };
+  pf: number;
+  ssf: number;
+  tds: number;
+  daysInMonth: number;
+  dateLabel: string;
+  system: 'AD' | 'BS';
+}) {
+  const { e } = row;
+  const meta: [string, string][] = [
+    ['Employee code', e.employee_code || '—'],
+    ['Enroll ID', e.fingerprint_id || '—'],
+    ['Designation', e.designation || '—'],
+    ['Department', e.department || '—'],
+    ['Date of joining', e.date_of_joining ? formatAdDate(e.date_of_joining, system) : '—'],
+    ['PAN no', e.pan_no || '—'],
+    ['SSF no', e.ssf_no || '—'],
+  ];
+
+  const money = (n: number | null, divide: boolean) => {
+    if (n == null) return '—';
+    const v = divide ? n / daysInMonth : n;
+    return v.toLocaleString(undefined, { maximumFractionDigits: divide ? 2 : 0 });
+  };
+
+  const lines: { label: string; value: number | null; sign?: '+' | '−'; strong?: boolean }[] = [
+    { label: 'Basic', value: row.basic },
+    { label: 'Allowance', value: row.allowance, sign: '+' },
+    { label: 'Gross Pay', value: row.gross, strong: true },
+    { label: `PF (${pf}% of basic)`, value: row.pfAmt, sign: '−' },
+    { label: `SSF (${ssf}% of basic)`, value: row.ssfAmt, sign: '−' },
+    { label: `TDS (${tds}% of basic)`, value: row.tdsAmt, sign: '−' },
+    { label: 'Net Payable', value: row.net, strong: true },
+  ];
+
+  return (
+    <div className="grid gap-4 rounded-lg border border-slate-200 bg-white p-3 text-xs sm:grid-cols-2 print:border-slate-300">
+      <div>
+        <div className="mb-1.5 font-semibold uppercase tracking-wide text-slate-400">Employee details</div>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+          {meta.map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt className="text-slate-400">{k}</dt>
+              <dd className="text-ink">{v}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+      <div>
+        <div className="mb-1.5 font-semibold uppercase tracking-wide text-slate-400">Salary breakdown</div>
+        <table className="w-full tabular-nums">
+          <thead>
+            <tr className="text-[10px] uppercase tracking-wide text-slate-400">
+              <th className="py-1 text-left font-medium">Component</th>
+              <th className="py-1 text-right font-medium">Per month</th>
+              <th className="py-1 text-right font-medium">Per day ({dateLabel})</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map(l => (
+              <tr key={l.label} className={l.strong ? 'border-t border-slate-200 font-semibold text-ink' : 'text-slate-600'}>
+                <td className="py-1 text-left">
+                  {l.sign && <span className="mr-0.5 text-slate-400">{l.sign}</span>}
+                  {l.label}
+                </td>
+                <td className="py-1 text-right">{money(l.value, false)}</td>
+                <td className="py-1 text-right">{money(l.value, true)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="mt-1.5 text-[10px] text-slate-400">Per-day = per-month ÷ {daysInMonth} days</p>
+      </div>
+    </div>
   );
 }
 
@@ -421,6 +634,14 @@ function SearchIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <circle cx="11" cy="11" r="7" />
       <path strokeLinecap="round" d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+function ChevronIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="m9 6 6 6-6 6" />
     </svg>
   );
 }
