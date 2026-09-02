@@ -92,7 +92,15 @@ export default function SalaryStructurePage() {
       .select('*')
       .eq('status', 'active')
       .then(({ data }) => {
-        setEmployees((data ?? []).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })));
+        // By enroll ID (matches the Employees directory and Payroll report);
+        // employees without one sort to the end.
+        setEmployees(
+          (data ?? []).sort((a, b) => {
+            if (!a.fingerprint_id) return b.fingerprint_id ? 1 : 0;
+            if (!b.fingerprint_id) return -1;
+            return a.fingerprint_id.localeCompare(b.fingerprint_id, undefined, { numeric: true, sensitivity: 'base' });
+          })
+        );
         setLoading(false);
       });
   }, []);
