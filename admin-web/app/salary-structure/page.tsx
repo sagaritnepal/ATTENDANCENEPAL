@@ -5,12 +5,16 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Avatar from '@/components/Avatar';
-import DatePicker from '@/components/DatePicker';
 import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import { computeSalaryFigures } from '@/components/SalaryBreakdown';
-import { formatAdDate, monthDateRange } from '@/lib/calendar';
+import {
+  buildPeriodOptions,
+  currentSystemYearMonth,
+  formatDdMmYyyy,
+  systemPeriod,
+  type CalendarPeriod,
+} from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { nepalTodayIso } from '@/lib/shift';
 import { fetchMyCompanyWeekOffConfig } from '@/lib/weekOff';
 import type { Employee } from '@/lib/types';
 
@@ -19,11 +23,11 @@ import type { Employee } from '@/lib/types';
  * Basic each), plus per-employee Basic and Allowance, editable inline in the
  * table. The monthly Payroll report only reads these figures.
  *
- * A date selector switches every figure between the full monthly amount and
- * the per-day amount (monthly ÷ the number of days in the calendar month the
- * picked date falls in). Each employee row links to its own detail page
- * (/salary-structure/[employeeId]) — same pattern as the Payroll report —
- * carrying the picked date and view along. The list itself prints too. */
+ * The period dropdown (shared with the Payroll page) picks which month the
+ * figures are for — it only matters for the per-day view, which divides each
+ * monthly amount by that month's own day count. Each employee row links to
+ * its own detail page (/salary-structure/[employeeId]) — same pattern as the
+ * Payroll report — carrying the period and view along. */
 export default function SalaryStructurePage() {
   const { system } = useCalendarSystem();
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -48,11 +52,25 @@ export default function SalaryStructurePage() {
   const [cellDraft, setCellDraft] = useState('');
   const [savingCell, setSavingCell] = useState(false);
 
-  // Monthly (default) vs per-day view. `asOfDate` is an AD YYYY-MM-DD key;
-  // per-day figures divide the monthly amount by the number of days in the
-  // calendar month (in whichever system is active) that date falls in.
+  // Monthly (default) vs per-day view. Per-day divides each monthly figure
+  // by the number of days in the selected period's calendar month.
   const [viewMode, setViewMode] = useState<'monthly' | 'perDay'>('monthly');
-  const [asOfDate, setAsOfDate] = useState<string>(() => nepalTodayIso());
+
+  // Same period model the Payroll page uses — a real calendar month in the
+  // active AD/BS system. Resets to "this month" when the AD/BS switch flips.
+  const [period, setPeriod] = useState<CalendarPeriod>(() => {
+    const { year, month } = currentSystemYearMonth(system);
+    return systemPeriod(system, year, month);
+  });
+
+  useEffect(() => {
+    const { year, month } = currentSystemYearMonth(system);
+    setPeriod(systemPeriod(system, year, month));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [system]);
+
+  const periodOptions = useMemo(() => buildPeriodOptions(system, null, period), [system, period]);
+  const { start, end } = period;
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -86,14 +104,7 @@ export default function SalaryStructurePage() {
   const dirty =
     pfDraft !== String(savedRates.pf) || ssfDraft !== String(savedRates.ssf) || tdsDraft !== String(savedRates.tds);
 
-  // Number of days in the calendar month `asOfDate` falls in, in the active
-  // AD/BS system — the divisor for every per-day figure.
-  const daysInMonth = useMemo(() => {
-    const [y, m, d] = asOfDate.split('-').map(Number);
-    if (!y || !m || !d) return 30;
-    const { start, end } = monthDateRange(system, { year: y, month: m - 1, day: d });
-    return Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1;
-  }, [asOfDate, system]);
+  const daysInMonth = useMemo(() => Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1, [start, end]);
 
   const perDay = viewMode === 'perDay';
   const factor = perDay ? 1 / daysInMonth : 1;
@@ -253,7 +264,7 @@ export default function SalaryStructurePage() {
       cell(r.tdsAmt),
       cell(r.net),
     ]);
-    downloadExcel(perDay ? `salary_structure_per_day_${asOfDate}.csv` : 'salary_structure.csv', header, lines);
+    downloadExcel(`salary_structure_${start}_to_${end}${perDay ? '_per_day' : ''}.csv`, header, lines);
   }
 
   // Plain function returning JSX, not a nested component — a `<RateHeader/>`
@@ -278,11 +289,10 @@ export default function SalaryStructurePage() {
     </div>
   );
 
-  const detailQuery = `?asOf=${asOfDate}&view=${viewMode}`;
-  const dateLabel = formatAdDate(asOfDate, system);
+  const detailQuery = `?start=${start}&end=${end}&view=${viewMode}`;
   const modeLine = perDay
-    ? `Per-day amounts for ${dateLabel} — that month has ${daysInMonth} days`
-    : 'Full monthly amounts';
+    ? `Per-day amounts — one day of ${period.label} (${daysInMonth} days)`
+    : `Full monthly amounts · ${period.label}`;
 
   return (
     <AppShell title="Salary Structure">
@@ -351,7 +361,25 @@ export default function SalaryStructurePage() {
                 Per day
               </button>
             </div>
-            <DatePicker value={asOfDate} onChange={d => { setAsOfDate(d); setViewMode('perDay'); }} className="w-44" />
+            <select
+              value={period.key}
+              onChange={e => {
+                const found = periodOptions.find(o => o.key === e.target.value);
+                if (found) setPeriod(found);
+              }}
+              className="rounded-lg border border-accent/30 bg-white px-3 py-2 text-sm font-bold text-ink shadow-sm"
+            >
+              {periodOptions.map(o => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-400 shadow-sm">
+              <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
+              {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
+              <span className="text-slate-400">({daysInMonth}d)</span>
+            </div>
             <div className="relative">
               <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
@@ -372,7 +400,7 @@ export default function SalaryStructurePage() {
         </div>
 
         <div className="hidden px-4 pt-4 sm:px-6 print:block">
-          <h1 className="text-lg font-bold text-ink">Monthly Salary Structure</h1>
+          <h1 className="text-lg font-bold text-ink">Monthly Salary Structure — {period.label}</h1>
           <p className="text-xs text-slate-500">
             {modeLine} · PF {pf}% · SSF {ssf}% · TDS {tds}% of Basic
           </p>
@@ -452,8 +480,8 @@ export default function SalaryStructurePage() {
       <p className="mt-3 text-xs text-slate-400">
         Net Payable = Basic + Allowance − PF − SSF − TDS. Click a Basic or Allowance figure to edit it for that employee, or
         click a name to open that employee&apos;s full salary breakdown. The PF / SSF / TDS rates are company-wide. Per-day
-        figures divide the monthly amount by the number of days in the picked date&apos;s calendar month. The monthly Payroll
-        report reads these figures and is not edited there. Overtime, where earned, is added on top on the Payroll report.
+        figures divide the monthly amount by the number of days in {period.label}. The monthly Payroll report reads these
+        figures and is not edited there. Overtime, where earned, is added on top on the Payroll report.
       </p>
     </AppShell>
   );
@@ -473,6 +501,15 @@ function SearchIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
       <circle cx="11" cy="11" r="7" />
       <path strokeLinecap="round" d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+function CalendarIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path strokeLinecap="round" d="M3 10h18M8 3v4M16 3v4" />
     </svg>
   );
 }

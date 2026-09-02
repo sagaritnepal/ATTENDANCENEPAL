@@ -64,7 +64,7 @@ export default function SalaryBreakdown({
   ssf,
   tds,
   daysInMonth,
-  asOfDate,
+  monthLabel,
   system,
 }: {
   employee: Employee;
@@ -73,10 +73,9 @@ export default function SalaryBreakdown({
   ssf: number;
   tds: number;
   daysInMonth: number;
-  asOfDate: string;
+  monthLabel: string;
   system: CalendarSystem;
 }) {
-  const dateLabel = formatAdDate(asOfDate, system);
   const meta: [string, string][] = [
     ['Employee code', employee.employee_code || '—'],
     ['Enroll ID', employee.fingerprint_id || '—'],
@@ -129,7 +128,7 @@ export default function SalaryBreakdown({
           </tbody>
         </table>
         <p className="mt-2 text-[11px] text-slate-400">
-          Per-day = per-month ÷ {daysInMonth} days ({dateLabel} falls in a {daysInMonth}-day month)
+          Per-day = per-month ÷ {daysInMonth} days ({monthLabel} has {daysInMonth} days)
         </p>
       </div>
     </div>

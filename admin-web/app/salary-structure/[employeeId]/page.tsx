@@ -5,16 +5,18 @@ import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
-import DatePicker from '@/components/DatePicker';
 import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import SalaryBreakdown, { computeSalaryFigures, salaryBreakdownLines } from '@/components/SalaryBreakdown';
-import { formatAdDate, monthDateRange } from '@/lib/calendar';
-import { useCalendarSystem } from '@/lib/calendarSystem';
 import {
-  nepalTodayIso,
-  type DailyShiftByDate,
-  type WeeklyPatternByEmployee,
-} from '@/lib/shift';
+  buildMonth,
+  currentSystemYearMonth,
+  formatDdMmYyyy,
+  systemPeriod,
+  todayAnchor,
+  type CalendarAnchor,
+} from '@/lib/calendar';
+import { useCalendarSystem } from '@/lib/calendarSystem';
+import { nepalTodayIso, type DailyShiftByDate, type WeeklyPatternByEmployee } from '@/lib/shift';
 import { buildEmployeeDayRows, dailySalaryEarning } from '@/lib/payrollDetail';
 import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '@/lib/weekOff';
 import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
@@ -22,6 +24,12 @@ import { ATTENDANCE_LOG_COLUMNS, PAYROLL_SUMMARY_COLUMNS } from '@/lib/types';
 
 function round(n: number) {
   return Math.round(n);
+}
+
+function parseAdAnchor(key: string): CalendarAnchor | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  if (!m) return null;
+  return { year: Number(m[1]), month: Number(m[2]) - 1, day: Number(m[3]) };
 }
 
 export default function SalaryStructureEmployeePage() {
@@ -38,19 +46,25 @@ function SalaryStructureEmployeeView() {
   const searchParams = useSearchParams();
   const employeeId = params.employeeId;
 
-  // Seeded from the list page's link (the date/view the admin was looking
-  // at), then editable here with the page's own date picker.
-  const [asOfDate, setAsOfDate] = useState(() => searchParams.get('asOf') || nepalTodayIso());
-  const listQuery = `?asOf=${asOfDate}&view=${searchParams.get('view') || 'monthly'}`;
+  // The period comes from whichever Salary Structure list link was clicked —
+  // this page has no period picker of its own, same as the Payroll detail
+  // page. Falls back to the current month if opened without one.
+  const fallback = useMemo(() => {
+    const { year, month } = currentSystemYearMonth(system);
+    return systemPeriod(system, year, month);
+  }, [system]);
+  const start = searchParams.get('start') || fallback.start;
+  const end = searchParams.get('end') || fallback.end;
+  const view = searchParams.get('view') || 'monthly';
+  const listQuery = `?start=${start}&end=${end}&view=${view}`;
 
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [rates, setRates] = useState({ pf: 10, ssf: 11, tds: 0 });
-  const [config, setConfig] = useState({ weeklyOffDay: null as number | null, rosterMode: 'monthly' as 'monthly' | 'weekly', otHoursPerDay: 8, otMultiplier: 1.5 });
+  const [config, setConfig] = useState({ weeklyOffDay: null as number | null, otHoursPerDay: 8, otMultiplier: 1.5 });
   const [loading, setLoading] = useState(true);
 
-  // Attendance inputs for the selected month — same set the Payroll
-  // per-employee page loads, used here only to derive the absence / late /
-  // overtime adjustment tile.
+  // Attendance inputs for the period — same set the Payroll detail page
+  // loads, used here only to derive the absence / late / overtime adjustment.
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
@@ -59,16 +73,8 @@ function SalaryStructureEmployeeView() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ weekday: number; shift_id: string | null }[]>([]);
 
-  const { start, end } = useMemo(() => {
-    const [y, m, d] = asOfDate.split('-').map(Number);
-    if (!y || !m || !d) {
-      const today = nepalTodayIso();
-      return { start: today.slice(0, 8) + '01', end: today };
-    }
-    return monthDateRange(system, { year: y, month: m - 1, day: d });
-  }, [asOfDate, system]);
-
   const daysInMonth = useMemo(() => Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1, [start, end]);
+  const monthLabel = useMemo(() => buildMonth(system, parseAdAnchor(start) ?? todayAnchor()).label, [system, start]);
   const isCurrentMonth = useMemo(() => {
     const today = nepalTodayIso();
     return start <= today && today <= end;
@@ -77,7 +83,7 @@ function SalaryStructureEmployeeView() {
   useEffect(() => {
     fetchMyCompanyWeekOffConfig().then(({ pfRate, ssfRate, tdsRate, weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier }) => {
       setRates({ pf: pfRate, ssf: ssfRate, tds: tdsRate });
-      setConfig({ weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier });
+      setConfig({ weeklyOffDay, otHoursPerDay, otMultiplier });
       if (rosterMode === 'weekly') {
         supabase
           .from('employee_weekly_pattern')
@@ -153,11 +159,11 @@ function SalaryStructureEmployeeView() {
     [employee, shifts, summaries, logs, start, end, dailyShiftByDate, weekOffDates, leaveDates, weeklyPattern]
   );
 
-  // The month's net attendance effect on pay: what a full standard day
-  // would have earned for each elapsed day, minus what was actually earned
-  // per hour worked (absence, late arrival and early departure all cut this
-  // below zero), plus overtime pay earned on top. One figure — negative
-  // means a net deduction, positive means a net surplus.
+  // The month's net attendance effect on pay: what a full standard day would
+  // have earned for each elapsed day, minus what was actually earned per hour
+  // worked (absence, late arrival and early departure all cut this below
+  // zero), plus overtime pay earned on top. One figure — negative means a net
+  // deduction, positive means a net surplus.
   const adjustment = useMemo(() => {
     if (employee?.salary == null) return null;
     const perStdDay = employee.salary / daysInMonth;
@@ -185,8 +191,6 @@ function SalaryStructureEmployeeView() {
     return { net: shortfall + overtime, shortfall, overtime, countedDays, absentDays, lateMinutes, earlyMinutes };
   }, [employee, dayRows, daysInMonth, otHoursPerDay, otMultiplier]);
 
-  const dateLabel = formatAdDate(asOfDate, system);
-
   function exportCsv() {
     if (!employee) return;
     const lines: (string | number)[][] = salaryBreakdownLines(figures, pf, ssf, tds).map(l => [
@@ -200,8 +204,8 @@ function SalaryStructureEmployeeView() {
       lines.push(['Net attendance adjustment', round(adjustment.net), Number((adjustment.net / daysInMonth).toFixed(2))]);
     }
     downloadExcel(
-      `salary_structure_${employee.name.replace(/\s+/g, '_')}_${asOfDate}.csv`,
-      ['Component', 'Per month', `Per day (${dateLabel})`],
+      `salary_structure_${employee.name.replace(/\s+/g, '_')}_${start}_to_${end}.csv`,
+      ['Component', 'Per month', `Per day (${monthLabel})`],
       lines
     );
   }
@@ -217,10 +221,7 @@ function SalaryStructureEmployeeView() {
           <BackIcon className="h-4 w-4" />
           Back to Salary Structure
         </Link>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <DatePicker value={asOfDate} onChange={setAsOfDate} className="w-44" />
-          {employee && <TableExportBar onExportCsv={exportCsv} />}
-        </div>
+        {employee && <TableExportBar onExportCsv={exportCsv} />}
       </div>
 
       {loading ? (
@@ -242,9 +243,13 @@ function SalaryStructureEmployeeView() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500 shadow-sm">
-              <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
-              As of {dateLabel} · {daysInMonth}-day month
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="rounded-lg border border-accent/30 bg-white px-3 py-2 text-sm font-bold text-ink shadow-sm">{monthLabel}</div>
+              <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-400 shadow-sm">
+                <CalendarIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
+                {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
+                <span className="text-slate-400">({daysInMonth}d)</span>
+              </div>
             </div>
           </div>
 
@@ -275,7 +280,7 @@ function SalaryStructureEmployeeView() {
           </div>
 
           <h1 className="mb-2 hidden text-lg font-bold text-ink print:block">
-            {employee.name} — Salary Structure (as of {dateLabel})
+            {employee.name} — Salary Structure ({monthLabel})
           </h1>
 
           <SalaryBreakdown
@@ -285,14 +290,14 @@ function SalaryStructureEmployeeView() {
             ssf={ssf}
             tds={tds}
             daysInMonth={daysInMonth}
-            asOfDate={asOfDate}
+            monthLabel={monthLabel}
             system={system}
           />
 
           {adjustment && (
             <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm shadow-sm print:border-slate-300 print:shadow-none">
               <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Attendance adjustment for {dateLabel}&apos;s month{isCurrentMonth && ' (so far)'}
+                Attendance adjustment for {monthLabel}{isCurrentMonth && ' (so far)'}
               </div>
               <dl className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
                 <Row k="Days counted" v={`${adjustment.countedDays} of ${daysInMonth}`} />
@@ -315,7 +320,7 @@ function SalaryStructureEmployeeView() {
             Net Payable = Basic + Allowance − PF − SSF − TDS (the fixed structure). The Attendance box is separate: it is the
             month&apos;s absence / late-arrival / early-departure shortfall (pay is earned per hour actually worked) plus any
             overtime pay earned on top — one figure that goes negative for a net deduction or positive for a net surplus.
-            Per-day figures divide by the {daysInMonth} days in {dateLabel}&apos;s calendar month.
+            Per-day figures divide by the {daysInMonth} days in {monthLabel}.
           </p>
         </>
       )}
