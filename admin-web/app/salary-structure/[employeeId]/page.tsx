@@ -10,9 +10,19 @@ import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import SalaryBreakdown, { computeSalaryFigures, salaryBreakdownLines } from '@/components/SalaryBreakdown';
 import { formatAdDate, monthDateRange } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import { nepalTodayIso } from '@/lib/shift';
-import { fetchMyCompanyWeekOffConfig } from '@/lib/weekOff';
-import type { Employee } from '@/lib/types';
+import {
+  nepalTodayIso,
+  type DailyShiftByDate,
+  type WeeklyPatternByEmployee,
+} from '@/lib/shift';
+import { buildEmployeeDayRows, dailySalaryEarning } from '@/lib/payrollDetail';
+import { fetchMyCompanyWeekOffConfig, weekOffDatesInRange } from '@/lib/weekOff';
+import type { AttendanceLog, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
+import { ATTENDANCE_LOG_COLUMNS, PAYROLL_SUMMARY_COLUMNS } from '@/lib/types';
+
+function round(n: number) {
+  return Math.round(n);
+}
 
 export default function SalaryStructureEmployeePage() {
   return (
@@ -35,50 +45,160 @@ function SalaryStructureEmployeeView() {
 
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [rates, setRates] = useState({ pf: 10, ssf: 11, tds: 0 });
+  const [config, setConfig] = useState({ weeklyOffDay: null as number | null, rosterMode: 'monthly' as 'monthly' | 'weekly', otHoursPerDay: 8, otMultiplier: 1.5 });
   const [loading, setLoading] = useState(true);
 
+  // Attendance inputs for the selected month — same set the Payroll
+  // per-employee page loads, used here only to derive the absence / late /
+  // overtime adjustment tile.
+  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
+  const [logs, setLogs] = useState<AttendanceLog[]>([]);
+  const [dailyShiftRows, setDailyShiftRows] = useState<{ work_date: string; shift_id: string | null }[]>([]);
+  const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ weekday: number; shift_id: string | null }[]>([]);
+
+  const { start, end } = useMemo(() => {
+    const [y, m, d] = asOfDate.split('-').map(Number);
+    if (!y || !m || !d) {
+      const today = nepalTodayIso();
+      return { start: today.slice(0, 8) + '01', end: today };
+    }
+    return monthDateRange(system, { year: y, month: m - 1, day: d });
+  }, [asOfDate, system]);
+
+  const daysInMonth = useMemo(() => Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1, [start, end]);
+  const isCurrentMonth = useMemo(() => {
+    const today = nepalTodayIso();
+    return start <= today && today <= end;
+  }, [start, end]);
+
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ pfRate, ssfRate, tdsRate }) => {
+    fetchMyCompanyWeekOffConfig().then(({ pfRate, ssfRate, tdsRate, weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier }) => {
       setRates({ pf: pfRate, ssf: ssfRate, tds: tdsRate });
+      setConfig({ weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier });
+      if (rosterMode === 'weekly') {
+        supabase
+          .from('employee_weekly_pattern')
+          .select('weekday, shift_id')
+          .eq('employee_id', employeeId)
+          .then(({ data }) => setWeeklyPatternRows(data ?? []));
+      }
     });
-  }, []);
+  }, [employeeId]);
 
   useEffect(() => {
     setLoading(true);
-    supabase
-      .from('employees')
-      .select('*')
-      .eq('id', employeeId)
-      .single()
-      .then(({ data }) => {
-        setEmployee(data ?? null);
-        setLoading(false);
-      });
-  }, [employeeId]);
+    Promise.all([
+      supabase.from('employees').select('*').eq('id', employeeId).single(),
+      supabase.from('shifts').select('*'),
+      supabase.from('payroll_summaries').select(PAYROLL_SUMMARY_COLUMNS).eq('employee_id', employeeId).gte('work_date', start).lte('work_date', end),
+      supabase.from('attendance_logs').select(ATTENDANCE_LOG_COLUMNS).eq('employee_id', employeeId).gte('punch_time', `${start}T00:00:00Z`).lte('punch_time', `${end}T23:59:59Z`),
+      supabase.from('employee_daily_shifts').select('work_date, shift_id').eq('employee_id', employeeId).gte('work_date', start).lte('work_date', end),
+      supabase.from('company_holidays').select('*').gte('holiday_date', start).lte('holiday_date', end),
+      supabase.from('leave_requests').select('*').eq('employee_id', employeeId).eq('status', 'approved').lte('start_date', end).gte('end_date', start),
+    ]).then(([empRes, shiftsRes, summariesRes, logsRes, rosterRes, holidaysRes, leaveRes]) => {
+      setEmployee(empRes.data ?? null);
+      setShifts(shiftsRes.data ?? []);
+      setSummaries(summariesRes.data ?? []);
+      setLogs(logsRes.data ?? []);
+      setDailyShiftRows(rosterRes.data ?? []);
+      setHolidays(holidaysRes.data ?? []);
+      setLeaveRequests(leaveRes.data ?? []);
+      setLoading(false);
+    });
+  }, [employeeId, start, end]);
 
   const { pf, ssf, tds } = rates;
-
-  const daysInMonth = useMemo(() => {
-    const [y, m, d] = asOfDate.split('-').map(Number);
-    if (!y || !m || !d) return 30;
-    const { start, end } = monthDateRange(system, { year: y, month: m - 1, day: d });
-    return Math.round((Date.parse(end) - Date.parse(start)) / 86400000) + 1;
-  }, [asOfDate, system]);
+  const { weeklyOffDay, otHoursPerDay, otMultiplier } = config;
 
   const figures = useMemo(
     () => computeSalaryFigures(employee?.salary ?? null, employee?.allowance ?? null, pf, ssf, tds),
     [employee, pf, ssf, tds]
   );
 
+  const dailyShiftByDate: DailyShiftByDate = useMemo(() => {
+    const map: DailyShiftByDate = new Map();
+    const perDate = new Map<string, string | null>();
+    for (const r of dailyShiftRows) perDate.set(r.work_date, r.shift_id);
+    map.set(employeeId, perDate);
+    return map;
+  }, [dailyShiftRows, employeeId]);
+
+  const weeklyPattern: WeeklyPatternByEmployee = useMemo(() => {
+    const map: WeeklyPatternByEmployee = new Map();
+    const perWeekday = new Map<number, string | null>();
+    for (const r of weeklyPatternRows) perWeekday.set(r.weekday, r.shift_id);
+    map.set(employeeId, perWeekday);
+    return map;
+  }, [weeklyPatternRows, employeeId]);
+
+  const weekOffDates = useMemo(() => weekOffDatesInRange(start, end, weeklyOffDay, holidays), [start, end, weeklyOffDay, holidays]);
+  const leaveDates = useMemo(() => {
+    const set = new Set<string>();
+    for (const req of leaveRequests) {
+      const cur = new Date((req.start_date < start ? start : req.start_date) + 'T00:00:00Z');
+      const endDate = new Date((req.end_date > end ? end : req.end_date) + 'T00:00:00Z');
+      while (cur <= endDate) {
+        set.add(cur.toISOString().slice(0, 10));
+        cur.setUTCDate(cur.getUTCDate() + 1);
+      }
+    }
+    return set;
+  }, [start, end, leaveRequests]);
+
+  const dayRows = useMemo(
+    () => (employee ? buildEmployeeDayRows(employee, shifts, summaries, logs, start, end, dailyShiftByDate, weekOffDates, leaveDates, weeklyPattern) : []),
+    [employee, shifts, summaries, logs, start, end, dailyShiftByDate, weekOffDates, leaveDates, weeklyPattern]
+  );
+
+  // The month's net attendance effect on pay: what a full standard day
+  // would have earned for each elapsed day, minus what was actually earned
+  // per hour worked (absence, late arrival and early departure all cut this
+  // below zero), plus overtime pay earned on top. One figure — negative
+  // means a net deduction, positive means a net surplus.
+  const adjustment = useMemo(() => {
+    if (employee?.salary == null) return null;
+    const perStdDay = employee.salary / daysInMonth;
+    let expected = 0;
+    let actualBase = 0;
+    let overtime = 0;
+    let countedDays = 0;
+    let absentDays = 0;
+    let lateMinutes = 0;
+    let earlyMinutes = 0;
+    for (const d of dayRows) {
+      if (d.status === 'Upcoming') continue;
+      countedDays += 1;
+      expected += perStdDay;
+      const earn = dailySalaryEarning(d, employee.salary, daysInMonth, otHoursPerDay, otMultiplier, true);
+      if (earn) {
+        actualBase += earn.base;
+        overtime += earn.overtime;
+      }
+      if (d.status === 'Absent') absentDays += 1;
+      lateMinutes += d.lateMinutes;
+      earlyMinutes += d.earlyMinutes;
+    }
+    const shortfall = actualBase - expected; // ≤ 0 for absence / late / early
+    return { net: shortfall + overtime, shortfall, overtime, countedDays, absentDays, lateMinutes, earlyMinutes };
+  }, [employee, dayRows, daysInMonth, otHoursPerDay, otMultiplier]);
+
   const dateLabel = formatAdDate(asOfDate, system);
 
   function exportCsv() {
     if (!employee) return;
-    const lines = salaryBreakdownLines(figures, pf, ssf, tds).map(l => [
+    const lines: (string | number)[][] = salaryBreakdownLines(figures, pf, ssf, tds).map(l => [
       l.label,
       l.value == null ? '' : l.value,
       l.value == null ? '' : Number((l.value / daysInMonth).toFixed(2)),
     ]);
+    if (adjustment) {
+      lines.push(['Absence / late / early adjustment', round(adjustment.shortfall), '']);
+      lines.push(['Overtime pay', round(adjustment.overtime), '']);
+      lines.push(['Net attendance adjustment', round(adjustment.net), Number((adjustment.net / daysInMonth).toFixed(2))]);
+    }
     downloadExcel(
       `salary_structure_${employee.name.replace(/\s+/g, '_')}_${asOfDate}.csv`,
       ['Component', 'Per month', `Per day (${dateLabel})`],
@@ -86,11 +206,9 @@ function SalaryStructureEmployeeView() {
     );
   }
 
-  const tiles: { label: string; value: number | null; tone: string }[] = [
-    { label: 'Gross Pay', value: figures.gross, tone: 'bg-info-bg text-info-text ring-info/10' },
-    { label: 'Total Deductions', value: figures.pfAmt == null ? null : figures.pfAmt + figures.ssfAmt! + figures.tdsAmt!, tone: 'bg-critical-bg text-critical-text ring-critical/10' },
-    { label: 'Net Payable', value: figures.net, tone: 'bg-good-bg text-good-text ring-good/10' },
-  ];
+  const deductions = figures.pfAmt == null ? null : figures.pfAmt + figures.ssfAmt! + figures.tdsAmt!;
+  const adjNet = adjustment?.net ?? null;
+  const adjPositive = (adjNet ?? 0) >= 0;
 
   return (
     <AppShell title={employee ? employee.name : 'Salary Structure'}>
@@ -130,16 +248,30 @@ function SalaryStructureEmployeeView() {
             </div>
           </div>
 
-          <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {tiles.map(t => (
-              <div key={t.label} className={`rounded-xl p-3 shadow-sm ring-1 ring-inset ${t.tone}`}>
-                <span className="text-xs font-medium opacity-80">{t.label}</span>
-                <div className="mt-1 text-base font-bold">{t.value != null ? t.value.toLocaleString() : '—'}</div>
-                <div className="mt-0.5 text-[11px] opacity-70">
-                  {t.value != null ? `${(t.value / daysInMonth).toLocaleString(undefined, { maximumFractionDigits: 2 })} / day` : 'No salary set'}
-                </div>
+          <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <SalaryTile label="Gross Pay" value={figures.gross} daysInMonth={daysInMonth} tone="bg-info-bg text-info-text ring-info/10" />
+            <SalaryTile label="Total Deductions" value={deductions} daysInMonth={daysInMonth} tone="bg-critical-bg text-critical-text ring-critical/10" sub="PF + SSF + TDS only" />
+            <div className={`rounded-xl p-3 shadow-sm ring-1 ring-inset ${adjPositive ? 'bg-good-bg text-good-text ring-good/10' : 'bg-critical-bg text-critical-text ring-critical/10'}`}>
+              <span className="text-xs font-medium opacity-80">
+                Attendance {adjPositive ? 'Surplus' : 'Deduction'}
+                {isCurrentMonth && <span className="opacity-70"> · month to date</span>}
+              </span>
+              <div className="mt-1 text-base font-bold">
+                {adjNet == null ? '—' : `${adjNet >= 0 ? '+' : '−'}${Math.abs(round(adjNet)).toLocaleString()}`}
               </div>
-            ))}
+              <div className="mt-0.5 text-[11px] opacity-70">
+                {adjustment == null
+                  ? 'No salary set'
+                  : `Absence/late ${round(adjustment.shortfall).toLocaleString()} · overtime +${round(adjustment.overtime).toLocaleString()}`}
+              </div>
+            </div>
+            <div className="rounded-xl bg-accent/10 p-3 text-accent shadow-sm ring-1 ring-inset ring-accent/10">
+              <span className="text-xs font-medium opacity-80">Projected Take-home</span>
+              <div className="mt-1 text-base font-bold">
+                {figures.net == null ? '—' : round(figures.net + (adjNet ?? 0)).toLocaleString()}
+              </div>
+              <div className="mt-0.5 text-[11px] opacity-70">Net Payable {adjPositive ? '+' : '−'} adjustment</div>
+            </div>
           </div>
 
           <h1 className="mb-2 hidden text-lg font-bold text-ink print:block">
@@ -157,14 +289,71 @@ function SalaryStructureEmployeeView() {
             system={system}
           />
 
+          {adjustment && (
+            <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm shadow-sm print:border-slate-300 print:shadow-none">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Attendance adjustment for {dateLabel}&apos;s month{isCurrentMonth && ' (so far)'}
+              </div>
+              <dl className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
+                <Row k="Days counted" v={`${adjustment.countedDays} of ${daysInMonth}`} />
+                <Row k="Absent days" v={String(adjustment.absentDays)} />
+                <Row k="Late arrival" v={`${round(adjustment.lateMinutes)} min total`} />
+                <Row k="Early departure" v={`${round(adjustment.earlyMinutes)} min total`} />
+                <Row k="Absence / late / early" v={round(adjustment.shortfall).toLocaleString()} tone={adjustment.shortfall < 0 ? 'text-critical-text' : undefined} />
+                <Row k="Overtime pay" v={`+${round(adjustment.overtime).toLocaleString()}`} tone={adjustment.overtime > 0 ? 'text-good-text' : undefined} />
+                <Row
+                  k="Net attendance adjustment"
+                  v={`${adjustment.net >= 0 ? '+' : '−'}${Math.abs(round(adjustment.net)).toLocaleString()}`}
+                  strong
+                  tone={adjustment.net >= 0 ? 'text-good-text' : 'text-critical-text'}
+                />
+              </dl>
+            </div>
+          )}
+
           <p className="mt-3 text-xs text-slate-400">
-            Net Payable = Basic + Allowance − PF − SSF − TDS. Basic and Allowance are set on the Salary Structure list; PF /
-            SSF / TDS are company-wide rates. Per-day figures divide the monthly amount by the {daysInMonth} days in{' '}
-            {dateLabel}&apos;s calendar month. Overtime, where earned, is added on top on the Payroll report.
+            Net Payable = Basic + Allowance − PF − SSF − TDS (the fixed structure). The Attendance box is separate: it is the
+            month&apos;s absence / late-arrival / early-departure shortfall (pay is earned per hour actually worked) plus any
+            overtime pay earned on top — one figure that goes negative for a net deduction or positive for a net surplus.
+            Per-day figures divide by the {daysInMonth} days in {dateLabel}&apos;s calendar month.
           </p>
         </>
       )}
     </AppShell>
+  );
+}
+
+function SalaryTile({
+  label,
+  value,
+  daysInMonth,
+  tone,
+  sub,
+}: {
+  label: string;
+  value: number | null;
+  daysInMonth: number;
+  tone: string;
+  sub?: string;
+}) {
+  return (
+    <div className={`rounded-xl p-3 shadow-sm ring-1 ring-inset ${tone}`}>
+      <span className="text-xs font-medium opacity-80">{label}</span>
+      <div className="mt-1 text-base font-bold">{value != null ? value.toLocaleString() : '—'}</div>
+      <div className="mt-0.5 text-[11px] opacity-70">
+        {value != null ? `${(value / daysInMonth).toLocaleString(undefined, { maximumFractionDigits: 2 })} / day` : 'No salary set'}
+        {sub && value != null && ` · ${sub}`}
+      </div>
+    </div>
+  );
+}
+
+function Row({ k, v, strong, tone }: { k: string; v: string; strong?: boolean; tone?: string }) {
+  return (
+    <div className={`flex justify-between gap-4 ${strong ? 'border-t border-slate-200 pt-1.5 font-semibold' : ''}`}>
+      <dt className="text-slate-500">{k}</dt>
+      <dd className={`tabular-nums ${tone ?? 'text-ink'}`}>{v}</dd>
+    </div>
   );
 }
 
