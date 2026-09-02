@@ -487,7 +487,7 @@ export default function PayrollPage() {
     ) : (
       <div className="flex items-center gap-2">
         <span className="text-ink">{row.salary != null ? row.salary.toLocaleString() : '—'}</span>
-        <button onClick={() => setEditingSalaryId(row.id)} title="Edit salary" className="text-slate-400 hover:text-accent">
+        <button onClick={() => setEditingSalaryId(row.id)} title="Edit salary" className="text-slate-400 hover:text-accent print:hidden">
           <EditIcon className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -643,9 +643,17 @@ export default function PayrollPage() {
 
           <TableExportBar onExportCsv={exportCsv} />
         </div>
-        <h1 className="hidden px-4 pt-4 text-lg font-bold text-ink print:block sm:px-6">
-          {period.label} Salary Report — {formatDdMmYyyy(start, system)} to {formatDdMmYyyy(end, system)}
-        </h1>
+        {/* Print-only masthead — gives the report a proper document header
+            (title, the period it covers, headcount, when it was run)
+            instead of opening straight into a bare table. */}
+        <div className="hidden px-4 pt-2 print:block sm:px-6">
+          <h1 className="text-lg font-bold text-black">{period.label} Salary Report</h1>
+          <p className="mt-1 text-[11px] text-black">
+            Pay period: {formatDdMmYyyy(start, system)} – {formatDdMmYyyy(end, system)} ({daysInRange} days) · {byEmployee.length} employee
+            {byEmployee.length === 1 ? '' : 's'}
+          </p>
+          <p className="text-[11px] text-black">Generated: {formatDdMmYyyy(nepalTodayIso(), system)}</p>
+        </div>
 
         {/* Phones get one card per employee — the 10-column table below
             would otherwise need horizontal scrolling to read anything. */}
@@ -718,12 +726,10 @@ export default function PayrollPage() {
           )}
         </div>
 
-        <div className="mt-4 hidden max-h-[65vh] overflow-auto md:block print:!block print:max-h-none print:overflow-visible">
-        {/* Print shrinks the type ~1.5px and tightens the row padding so the
-            whole roster fits the page instead of overflowing onto a second. */}
-        <table className="w-full text-left text-sm print:text-[12.5px] print:[&_th]:py-1 print:[&_td]:py-1">
+        <div className="print-report mt-4 hidden max-h-[65vh] overflow-auto md:block print:!block print:max-h-none print:overflow-visible">
+        <table className="w-full text-left text-sm">
           <thead>
-            <tr className="sticky top-0 z-10 border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500 print:text-[10.5px]">
+            <tr className="sticky top-0 z-10 border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <th className="whitespace-nowrap px-3 py-2 font-medium">ID</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Employee</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Worked Days</th>
@@ -747,7 +753,9 @@ export default function PayrollPage() {
                   <td className="whitespace-nowrap px-3 py-2 text-slate-600">{row.enrollId}</td>
                   <td className="whitespace-nowrap px-3 py-2 font-medium text-ink">
                     <Link href={detailHref(row.id)} className="flex items-center gap-2.5 hover:text-accent hover:underline">
-                      <Avatar name={row.name} />
+                      <span className="print:hidden">
+                        <Avatar name={row.name} />
+                      </span>
                       {row.name}
                     </Link>
                   </td>
@@ -823,6 +831,17 @@ export default function PayrollPage() {
           )}
         </table>
         </div>
+
+        {/* Print-only sign-off — the last thing that makes it read as a
+            payroll document rather than a table export. */}
+        {byEmployee.length > 0 && (
+          <div className="hidden px-4 pb-6 pt-12 print:block sm:px-6">
+            <div className="flex justify-between gap-12 text-[11px] text-black">
+              <div className="w-52 border-t border-black pt-1 text-center">Prepared by</div>
+              <div className="w-52 border-t border-black pt-1 text-center">Approved by</div>
+            </div>
+          </div>
+        )}
       </div>
     </AppShell>
   );

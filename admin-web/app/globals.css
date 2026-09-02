@@ -81,4 +81,24 @@ html, body {
   tr {
     break-inside: avoid;
   }
+
+  /* ── Payroll Salary Report ──────────────────────────────────────────
+     Printed as a document, not a screen grab: plain near-black text with
+     no status colours, flat white rows, a slightly smaller type size,
+     and none of the screen-only affordances (avatars, edit pencils —
+     those carry print:hidden in the markup). */
+  .print-report table {
+    font-size: 8px !important;
+  }
+  .print-report th,
+  .print-report td,
+  .print-report th *,
+  .print-report td * {
+    color: #0f172a !important;
+    background: #fff !important;
+  }
+  .print-report thead th {
+    background: #f1f5f9 !important;
+    font-weight: 700 !important;
+  }
 }
