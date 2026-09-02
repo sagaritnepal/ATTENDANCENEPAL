@@ -719,9 +719,11 @@ export default function PayrollPage() {
         </div>
 
         <div className="mt-4 hidden max-h-[65vh] overflow-auto md:block print:!block print:max-h-none print:overflow-visible">
-        <table className="w-full text-left text-sm">
+        {/* Print shrinks the type ~1.5px and tightens the row padding so the
+            whole roster fits the page instead of overflowing onto a second. */}
+        <table className="w-full text-left text-sm print:text-[12.5px] print:[&_th]:py-1 print:[&_td]:py-1">
           <thead>
-            <tr className="sticky top-0 z-10 border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+            <tr className="sticky top-0 z-10 border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500 print:text-[10.5px]">
               <th className="whitespace-nowrap px-3 py-2 font-medium">ID</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Employee</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Worked Days</th>
