@@ -36,9 +36,6 @@ type Row = {
   lateMinutes: number;
   earlyMinutes: number;
   overtime: number;
-  /** Completed-break minutes this day — paid, already included in `hours`,
-   * purely a display stat. */
-  breakMinutes: number;
   /** No payroll_summaries row yet (only computed by the nightly job or
    * "Recalculate month" on the Payroll page) — late/early/hours/overtime
    * here are computed live client-side from the raw punches (same math,
@@ -204,7 +201,6 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             lateMinutes: summary.is_late && !emp.attendance_exempt ? summary.late_minutes : 0,
             earlyMinutes: summary.is_early_departure && !emp.attendance_exempt ? summary.early_departure_minutes : 0,
             overtime: summary.overtime_hours,
-            breakMinutes: summary.break_minutes,
           });
         } else if (dayLogs.length > 0) {
           // Not yet processed by compute_payroll_summaries() (runs nightly
@@ -227,7 +223,6 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             lateMinutes: emp.attendance_exempt ? 0 : live.lateMinutes,
             earlyMinutes: emp.attendance_exempt ? 0 : live.earlyMinutes,
             overtime: live.overtimeMinutes / 60,
-            breakMinutes: live.breakMinutes,
             pending: true,
           });
         } else {
@@ -271,7 +266,6 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             lateMinutes: 0,
             earlyMinutes: 0,
             overtime: 0,
-            breakMinutes: 0,
           });
         }
       }
@@ -291,12 +285,11 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
   const totals = useMemo(() => {
     const workHours = rows.reduce((sum, r) => sum + r.hours, 0);
     const overtimeHours = rows.reduce((sum, r) => sum + r.overtime, 0);
-    const breakMinutes = rows.reduce((sum, r) => sum + r.breakMinutes, 0);
     const lateMinutes = rows.reduce((sum, r) => sum + r.lateMinutes, 0);
     const earlyMinutes = rows.reduce((sum, r) => sum + r.earlyMinutes, 0);
     const presentDays = rows.filter(r => r.checkIn).length;
     const absentDays = rows.filter(r => r.status === 'Absent').length;
-    return { workHours, overtimeHours, breakMinutes, lateMinutes, earlyMinutes, presentDays, absentDays };
+    return { workHours, overtimeHours, lateMinutes, earlyMinutes, presentDays, absentDays };
   }, [rows]);
 
   function exportCsv() {
@@ -311,7 +304,6 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
       'Early Out (min)',
       'Total Work Hours',
       'Overtime',
-      'Break',
       'Status',
       'Device',
     ];
@@ -326,7 +318,6 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
       r.earlyMinutes || '',
       r.hours.toFixed(1),
       r.overtime.toFixed(1),
-      r.breakMinutes ? formatHoursMinutes(r.breakMinutes) : '',
       r.status,
       r.device,
     ]);
@@ -430,7 +421,6 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Late / Early</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Work Hours</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Overtime</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Break</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:w-16 print:border print:border-slate-400 print:px-1 print:py-1">Status</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Device</th>
             </tr>
@@ -465,9 +455,6 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                   {fmtHrs(r.overtime)}
                   {r.pending && <span className="ml-1 text-[9px] text-slate-400 print:hidden">(live)</span>}
                 </td>
-                <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">
-                  {r.breakMinutes > 0 ? formatHoursMinutes(r.breakMinutes) : <span className="text-slate-400 print:text-ink">—</span>}
-                </td>
                 <td className="whitespace-nowrap px-2 py-1 print:w-20 print:border print:border-slate-400 print:px-1 print:py-1">
                   <span className="print:hidden">{statusBadge(r)}</span>
                   <span className="hidden print:inline print:text-ink">{r.status}</span>
@@ -477,7 +464,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={10} className="px-4 py-6 text-center text-slate-400">
                   {loading ? 'Loading…' : 'No records in this range.'}
                 </td>
               </tr>
@@ -498,7 +485,6 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                 </td>
                 <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2">{fmtHrs(totals.workHours)}</td>
                 <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2">{fmtHrs(totals.overtimeHours)}</td>
-                <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2">{totals.breakMinutes > 0 ? formatHoursMinutes(totals.breakMinutes) : '—'}</td>
                 <td className="whitespace-nowrap px-2 py-1.5 text-[10px] font-semibold print:w-20 print:whitespace-normal print:border print:border-slate-400 print:px-1 print:text-[10px]">
                   {/* On-screen: one line, colored, joined by " · " — unchanged.
                       Print: stacked on two lines instead, so this cell doesn't

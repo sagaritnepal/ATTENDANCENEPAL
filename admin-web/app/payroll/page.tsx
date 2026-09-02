@@ -68,7 +68,7 @@ export default function PayrollPage() {
   // Optional columns the admin can hide from the report (the cog menu in
   // the report header). A hidden column is dropped from the table AND from
   // the printed / PDF copy — it's simply not rendered, not print:hidden.
-  const [visibleCols, setVisibleCols] = useState({ workedDays: true, totalHours: true, overtime: true });
+  const [visibleCols, setVisibleCols] = useState({ workedDays: true, totalHours: true, overtime: true, lateEarly: true });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
 
@@ -84,7 +84,10 @@ export default function PayrollPage() {
 
   // The Overtime toggle drives two columns (Overtime hours + Overtime Salary).
   const hiddenColCount =
-    (visibleCols.workedDays ? 0 : 1) + (visibleCols.totalHours ? 0 : 1) + (visibleCols.overtime ? 0 : 2);
+    (visibleCols.workedDays ? 0 : 1) +
+    (visibleCols.totalHours ? 0 : 1) +
+    (visibleCols.overtime ? 0 : 2) +
+    (visibleCols.lateEarly ? 0 : 1);
 
   const { start, end } = period;
 
@@ -527,6 +530,7 @@ export default function PayrollPage() {
     ['workedDays', 'Worked Days'],
     ['totalHours', 'Total Hours'],
     ['overtime', 'Overtime'],
+    ['lateEarly', 'Late / Early Days'],
   ] as const;
 
   const columnSettings = (
@@ -823,7 +827,7 @@ export default function PayrollPage() {
               {visibleCols.workedDays && <th className="whitespace-nowrap px-3 py-2 font-medium">Worked Days</th>}
               {visibleCols.totalHours && <th className="whitespace-nowrap px-3 py-2 font-medium">Total Hours</th>}
               {visibleCols.overtime && <th className="whitespace-nowrap px-3 py-2 font-medium">Overtime</th>}
-              <th className="whitespace-nowrap px-3 py-2 font-medium">Late / Early Days</th>
+              {visibleCols.lateEarly && <th className="whitespace-nowrap px-3 py-2 font-medium">Late / Early Days</th>}
               <th className="whitespace-nowrap px-3 py-2 font-medium">Salary</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Calculated Salary</th>
               {visibleCols.overtime && <th className="whitespace-nowrap pl-2 pr-3 py-2 font-medium">Overtime Salary</th>}
@@ -854,11 +858,13 @@ export default function PayrollPage() {
                   )}
                   {visibleCols.totalHours && <td className="whitespace-nowrap px-3 py-2 text-slate-600">{fmtHrs(row.hours)}</td>}
                   {visibleCols.overtime && <td className="whitespace-nowrap px-3 py-2 text-slate-600">{fmtHrs(row.overtime)}</td>}
-                  <td className="whitespace-nowrap px-3 py-2 text-xs">
-                    <span className="text-warning-text">{row.lateDays}L</span>
-                    {' / '}
-                    <span className="text-critical-text">{row.earlyDays}E</span>
-                  </td>
+                  {visibleCols.lateEarly && (
+                    <td className="whitespace-nowrap px-3 py-2 text-xs">
+                      <span className="text-warning-text">{row.lateDays}L</span>
+                      {' / '}
+                      <span className="text-critical-text">{row.earlyDays}E</span>
+                    </td>
+                  )}
                   <td className="whitespace-nowrap px-3 py-2">{salaryCellContent(row)}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-slate-600">
                     {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
@@ -904,11 +910,13 @@ export default function PayrollPage() {
                 )}
                 {visibleCols.totalHours && <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.totalHours)}</td>}
                 {visibleCols.overtime && <td className="whitespace-nowrap px-3 py-2">{fmtHrs(totals.overtimeHours)}</td>}
-                <td className="whitespace-nowrap px-3 py-2 text-xs">
-                  <span className="text-warning-text">{totals.lateDays}L</span>
-                  {' / '}
-                  <span className="text-critical-text">{totals.earlyDays}E</span>
-                </td>
+                {visibleCols.lateEarly && (
+                  <td className="whitespace-nowrap px-3 py-2 text-xs">
+                    <span className="text-warning-text">{totals.lateDays}L</span>
+                    {' / '}
+                    <span className="text-critical-text">{totals.earlyDays}E</span>
+                  </td>
+                )}
                 <td className="whitespace-nowrap px-3 py-2">{totals.totalEmployeeSalary.toLocaleString()}</td>
                 <td className="whitespace-nowrap px-3 py-2">
                   {totals.totalSalaryPayable.toLocaleString()}
