@@ -160,25 +160,35 @@ export default function Sidebar({ role, drawerOpen, onCloseDrawer }: Props) {
                     </Link>
                   )}
                 </div>
-                {hasChildren && isOpen && (
-                  <div className="ml-4 mt-1 flex flex-col gap-1 border-l border-white/10 pl-3">
-                    {childItems.map(c => {
-                      const cActive = pathname === c.href;
-                      const CIcon = c.icon;
-                      return (
-                        <Link
-                          key={c.href}
-                          href={c.href}
-                          onClick={onCloseDrawer}
-                          className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
-                            cActive ? 'bg-sidebar-active font-medium text-accent' : 'text-slate-300 hover:bg-sidebar-active/60 hover:text-white'
-                          }`}
-                        >
-                          <CIcon className="h-4 w-4" active={cActive} />
-                          {c.label}
-                        </Link>
-                      );
-                    })}
+                {hasChildren && (
+                  <div
+                    aria-hidden={!isOpen}
+                    className={`grid transition-all duration-200 ease-out ${
+                      isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+                    }`}
+                  >
+                    <div className="overflow-hidden">
+                      <div className="ml-4 mt-1 flex flex-col gap-1 border-l border-white/10 pl-3">
+                        {childItems.map(c => {
+                          const cActive = pathname === c.href;
+                          const CIcon = c.icon;
+                          return (
+                            <Link
+                              key={c.href}
+                              href={c.href}
+                              onClick={onCloseDrawer}
+                              tabIndex={isOpen ? undefined : -1}
+                              className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+                                cActive ? 'bg-sidebar-active font-medium text-accent' : 'text-slate-300 hover:bg-sidebar-active/60 hover:text-white'
+                              }`}
+                            >
+                              <CIcon className="h-4 w-4" active={cActive} />
+                              {c.label}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
