@@ -159,6 +159,7 @@ function PayrollEmployeeDetailView() {
   const leaveDates = useMemo(() => {
     const set = new Set<string>();
     for (const req of leaveRequests) {
+      if (req.leave_type === 'unpaid') continue; // leave-without-pay is docked like an absence
       const cur = new Date((req.start_date < start ? start : req.start_date) + 'T00:00:00Z');
       const endDate = new Date((req.end_date > end ? end : req.end_date) + 'T00:00:00Z');
       while (cur <= endDate) {

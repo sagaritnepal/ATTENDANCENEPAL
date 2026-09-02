@@ -97,6 +97,7 @@ export default function AdminPayrollDetailScreen({ route }: any) {
   const paidOffDates = useMemo(() => {
     const set = weekOffDatesInRange(start, end, weeklyOffDay, holidays);
     for (const req of leaveRequests) {
+      if (req.leave_type === 'unpaid') continue; // leave-without-pay behaves like an absence
       const cur = new Date((req.start_date < start ? start : req.start_date) + 'T00:00:00Z');
       const endDate = new Date((req.end_date > end ? end : req.end_date) + 'T00:00:00Z');
       while (cur <= endDate) {

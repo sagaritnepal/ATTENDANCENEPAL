@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { CompanyHoliday } from '../types';
+import { DEFAULT_ABSENCE_POLICY, type AbsencePolicy } from './absence';
 
 /** Company-wide Week-off: a recurring weekly day (0=Sunday..6=Saturday, from
  * companies.weekly_off_day) plus ad-hoc dates (company_holidays). Applies to
@@ -35,6 +36,9 @@ export type CompanyWeekOffConfig = {
   pfRate: number;
   ssfRate: number;
   tdsRate: number;
+  /** How an absent day cuts pay (companies.absence_*). Defaults reproduce the
+   * previously hard-coded per-hour / calendar-days / basic-only model. */
+  absencePolicy: AbsencePolicy;
 };
 
 const DEFAULT_CONFIG: CompanyWeekOffConfig = {
@@ -47,6 +51,7 @@ const DEFAULT_CONFIG: CompanyWeekOffConfig = {
   pfRate: 10,
   ssfRate: 11,
   tdsRate: 0,
+  absencePolicy: DEFAULT_ABSENCE_POLICY,
 };
 
 /** The current user's own company_id + weekly_off_day + roster_mode +
@@ -61,7 +66,9 @@ export async function fetchMyCompanyWeekOffConfig(): Promise<CompanyWeekOffConfi
   if (!companyId) return DEFAULT_CONFIG;
   const { data: company } = await supabase
     .from('companies')
-    .select('weekly_off_day, roster_mode, break_enabled, ot_hours_per_day, ot_multiplier, pf_rate, ssf_rate, tds_rate')
+    .select(
+      'weekly_off_day, roster_mode, break_enabled, ot_hours_per_day, ot_multiplier, pf_rate, ssf_rate, tds_rate, absence_divisor, absence_basis, absence_partial, half_day_hours'
+    )
     .eq('id', companyId)
     .single();
   return {
@@ -74,6 +81,12 @@ export async function fetchMyCompanyWeekOffConfig(): Promise<CompanyWeekOffConfi
     pfRate: company?.pf_rate ?? DEFAULT_CONFIG.pfRate,
     ssfRate: company?.ssf_rate ?? DEFAULT_CONFIG.ssfRate,
     tdsRate: company?.tds_rate ?? DEFAULT_CONFIG.tdsRate,
+    absencePolicy: {
+      divisor: (company?.absence_divisor as AbsencePolicy['divisor']) ?? DEFAULT_ABSENCE_POLICY.divisor,
+      basis: (company?.absence_basis as AbsencePolicy['basis']) ?? DEFAULT_ABSENCE_POLICY.basis,
+      partial: (company?.absence_partial as AbsencePolicy['partial']) ?? DEFAULT_ABSENCE_POLICY.partial,
+      halfDayHours: company?.half_day_hours ?? DEFAULT_ABSENCE_POLICY.halfDayHours,
+    },
   };
 }
 
@@ -98,10 +111,15 @@ export function weekOffDatesInRange(
 }
 
 /** employee_id -> Set of 'YYYY-MM-DD' dates covered by an approved leave
- * request, expanded across each request's start_date..end_date. */
-export function leaveDatesByEmployee(leaveRequests: { employee_id: string; start_date: string; end_date: string }[]): Map<string, Set<string>> {
+ * request. `paidOnly` drops `leave_type: 'unpaid'` — a leave-without-pay day
+ * is treated, for pay, exactly like an absent day. */
+export function leaveDatesByEmployee(
+  leaveRequests: { employee_id: string; start_date: string; end_date: string; leave_type?: string | null }[],
+  opts?: { paidOnly?: boolean }
+): Map<string, Set<string>> {
   const map = new Map<string, Set<string>>();
   for (const req of leaveRequests) {
+    if (opts?.paidOnly && req.leave_type === 'unpaid') continue;
     let set = map.get(req.employee_id);
     if (!set) {
       set = new Set();
@@ -115,4 +133,23 @@ export function leaveDatesByEmployee(leaveRequests: { employee_id: string; start
     }
   }
   return map;
+}
+
+/** Days within [start, end] an employee is expected to work: every date minus
+ * company-wide weekly offs and holidays. Feeds the 'working' absence divisor. */
+export function workingDaysInRange(
+  start: string,
+  end: string,
+  weeklyOffDay: number | null,
+  holidays: Pick<CompanyHoliday, 'holiday_date'>[]
+): number {
+  const off = weekOffDatesInRange(start, end, weeklyOffDay, holidays);
+  let n = 0;
+  const cur = new Date(start + 'T00:00:00Z');
+  const endDate = new Date(end + 'T00:00:00Z');
+  while (cur <= endDate) {
+    if (!off.has(cur.toISOString().slice(0, 10))) n += 1;
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return n;
 }
