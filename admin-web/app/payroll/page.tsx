@@ -82,7 +82,9 @@ export default function PayrollPage() {
     return () => document.removeEventListener('mousedown', onDown);
   }, [settingsOpen]);
 
-  const hiddenColCount = [visibleCols.workedDays, visibleCols.totalHours, visibleCols.overtime].filter(v => !v).length;
+  // The Overtime toggle drives two columns (Overtime hours + Overtime Salary).
+  const hiddenColCount =
+    (visibleCols.workedDays ? 0 : 1) + (visibleCols.totalHours ? 0 : 1) + (visibleCols.overtime ? 0 : 2);
 
   const { start, end } = period;
 
@@ -395,22 +397,38 @@ export default function PayrollPage() {
   function totalSalary(row: { salary: number | null; hours: number; overtime: number; paidOffDays: number }): number | null {
     const calculated = calculatedSalary(row);
     if (calculated == null) return null;
-    return calculated + (overtimeSalary(row) ?? 0);
+    // Hiding the Overtime column also takes overtime pay out of the total —
+    // "not shown" means "not counted" for this report.
+    return calculated + (visibleCols.overtime ? overtimeSalary(row) ?? 0 : 0);
   }
 
   function exportCsv() {
-    const header = ['ID', 'Employee', 'Worked Days', 'Total Hours', 'Overtime', 'Late Days', 'Early Days', 'Salary', 'Calculated Salary', 'Overtime Salary', 'Total Salary'];
+    // The export mirrors the on-screen report — columns hidden via the
+    // settings menu are left out here too.
+    const header = [
+      'ID',
+      'Employee',
+      ...(visibleCols.workedDays ? ['Worked Days'] : []),
+      ...(visibleCols.totalHours ? ['Total Hours'] : []),
+      ...(visibleCols.overtime ? ['Overtime'] : []),
+      'Late Days',
+      'Early Days',
+      'Salary',
+      'Calculated Salary',
+      ...(visibleCols.overtime ? ['Overtime Salary'] : []),
+      'Total Salary',
+    ];
     const lines = byEmployee.map(row => [
       row.enrollId,
       row.name,
-      row.days,
-      fmtHrs(row.hours),
-      fmtHrs(row.overtime),
+      ...(visibleCols.workedDays ? [row.days] : []),
+      ...(visibleCols.totalHours ? [fmtHrs(row.hours)] : []),
+      ...(visibleCols.overtime ? [fmtHrs(row.overtime)] : []),
       row.lateDays,
       row.earlyDays,
       row.salary ?? '',
       calculatedSalary(row) ?? '',
-      overtimeSalary(row) ?? '',
+      ...(visibleCols.overtime ? [overtimeSalary(row) ?? ''] : []),
       totalSalary(row) ?? '',
     ]);
     downloadExcel(`payroll_${start}_to_${end}.csv`, header, lines);
@@ -528,7 +546,8 @@ export default function PayrollPage() {
             <span className="text-sm font-semibold text-ink">Settings</span>
           </div>
           <p className="px-4 pb-1 pt-2 text-[11px] leading-snug text-slate-400">
-            Show or hide these columns — in the report and its printed / PDF copy.
+            Show or hide these columns in the report and its printed / PDF copy. Hiding Overtime also drops
+            overtime pay from the totals.
           </p>
           <div className="p-1.5">
             {COLUMN_OPTIONS.map(([key, label]) => {
@@ -765,15 +784,19 @@ export default function PayrollPage() {
                   <dt className="text-[11px] uppercase tracking-wide text-slate-400">Calculated Salary</dt>
                   <dd className="text-ink">
                     {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
-                    {overtimeSalary(row) != null && <span className="text-slate-400"> ({overtimeSalary(row)!.toLocaleString()})</span>}
+                    {visibleCols.overtime && overtimeSalary(row) != null && (
+                      <span className="text-slate-400"> ({overtimeSalary(row)!.toLocaleString()})</span>
+                    )}
                   </dd>
                 </div>
-                <div>
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-400">Overtime Salary</dt>
-                  <dd className="text-ink tabular-nums">
-                    {overtimeSalary(row) != null ? overtimeSalary(row)!.toLocaleString() : '—'}
-                  </dd>
-                </div>
+                {visibleCols.overtime && (
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-wide text-slate-400">Overtime Salary</dt>
+                    <dd className="text-ink tabular-nums">
+                      {overtimeSalary(row) != null ? overtimeSalary(row)!.toLocaleString() : '—'}
+                    </dd>
+                  </div>
+                )}
               </dl>
             </div>
           ))}
@@ -803,7 +826,7 @@ export default function PayrollPage() {
               <th className="whitespace-nowrap px-3 py-2 font-medium">Late / Early Days</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Salary</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Calculated Salary</th>
-              <th className="whitespace-nowrap pl-2 pr-3 py-2 font-medium">Overtime Salary</th>
+              {visibleCols.overtime && <th className="whitespace-nowrap pl-2 pr-3 py-2 font-medium">Overtime Salary</th>}
               <th className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-3 py-2 font-medium shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] print:static print:shadow-none">
                 Total Salary
               </th>
@@ -839,11 +862,15 @@ export default function PayrollPage() {
                   <td className="whitespace-nowrap px-3 py-2">{salaryCellContent(row)}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-slate-600">
                     {calculatedSalary(row) != null ? calculatedSalary(row)!.toLocaleString() : '—'}
-                    {overtimeSalary(row) != null && <span className="text-slate-400"> ({overtimeSalary(row)!.toLocaleString()})</span>}
+                    {visibleCols.overtime && overtimeSalary(row) != null && (
+                      <span className="text-slate-400"> ({overtimeSalary(row)!.toLocaleString()})</span>
+                    )}
                   </td>
-                  <td className="whitespace-nowrap pl-2 pr-3 py-2 text-slate-600 tabular-nums">
-                    {overtimeSalary(row) != null ? overtimeSalary(row)!.toLocaleString() : '—'}
-                  </td>
+                  {visibleCols.overtime && (
+                    <td className="whitespace-nowrap pl-2 pr-3 py-2 text-slate-600 tabular-nums">
+                      {overtimeSalary(row) != null ? overtimeSalary(row)!.toLocaleString() : '—'}
+                    </td>
+                  )}
                   <td
                     className={`sticky right-0 z-[1] whitespace-nowrap px-3 py-2 font-bold text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] print:static print:shadow-none ${rowBg}`}
                   >
@@ -884,13 +911,18 @@ export default function PayrollPage() {
                 </td>
                 <td className="whitespace-nowrap px-3 py-2">{totals.totalEmployeeSalary.toLocaleString()}</td>
                 <td className="whitespace-nowrap px-3 py-2">
-                  {totals.totalSalaryPayable.toLocaleString()} ({totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })})
+                  {totals.totalSalaryPayable.toLocaleString()}
+                  {visibleCols.overtime && ` (${totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })})`}
                 </td>
-                <td className="whitespace-nowrap pl-2 pr-3 py-2">
-                  {totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </td>
+                {visibleCols.overtime && (
+                  <td className="whitespace-nowrap pl-2 pr-3 py-2">
+                    {totals.totalOvertimeSalary.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </td>
+                )}
                 <td className="sticky right-0 z-20 whitespace-nowrap bg-slate-50 px-3 py-2 text-good-text shadow-[-6px_0_6px_-4px_rgba(0,0,0,0.08)] print:static print:shadow-none">
-                  {(totals.totalSalaryPayable + totals.totalOvertimeSalary).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  {(totals.totalSalaryPayable + (visibleCols.overtime ? totals.totalOvertimeSalary : 0)).toLocaleString(undefined, {
+                    maximumFractionDigits: 0,
+                  })}
                 </td>
               </tr>
             </tfoot>
