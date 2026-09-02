@@ -6,7 +6,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
-import PunctualityCell from '@/components/PunctualityCell';
+import TimingPair, { TimingCell, TimingTotal } from '@/components/PunctualityCell';
 import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import StatusText from '@/components/StatusText';
 import { buildMonth, formatAdDate, formatDdMmYyyy, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
@@ -409,7 +409,7 @@ function PayrollEmployeeDetailView() {
                           {d.checkIn ? fmtTime(d.checkIn) : '–:–'} – {d.checkOut ? fmtTime(d.checkOut) : '–:–'}
                         </td>
                         <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight font-medium">
-                          <PunctualityCell
+                          <TimingPair
                             lateMinutes={d.lateMinutes}
                             earlyArrivalMinutes={d.earlyArrivalMinutes}
                             earlyMinutes={d.earlyMinutes}
@@ -442,7 +442,7 @@ function PayrollEmployeeDetailView() {
                         Total
                       </td>
                       <td className="whitespace-normal break-words px-0.5 py-1 font-semibold leading-tight">
-                        <PunctualityCell
+                        <TimingPair
                           lateMinutes={dayTotals.lateMinutes}
                           earlyArrivalMinutes={dayTotals.earlyArrivalMinutes}
                           earlyMinutes={dayTotals.earlyMinutes}
@@ -473,7 +473,8 @@ function PayrollEmployeeDetailView() {
                     <th className="whitespace-nowrap px-3 py-2 font-medium">In / Out</th>
                     <th className="whitespace-nowrap px-3 py-2 font-medium">Total Hours</th>
                     <th className="whitespace-nowrap px-3 py-2 font-medium">Overtime</th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">Late / Early</th>
+                    <th className="whitespace-nowrap px-3 py-2 font-medium">Check-In</th>
+                    <th className="whitespace-nowrap px-3 py-2 font-medium">Check-Out</th>
                     <th className="whitespace-nowrap px-3 py-2 font-medium">Status</th>
                     <th className="whitespace-nowrap px-3 py-2 font-medium">Salary/Day</th>
                     <th className="whitespace-nowrap px-3 py-2 font-medium">My Salary</th>
@@ -497,12 +498,20 @@ function PayrollEmployeeDetailView() {
                           {fmtHrs(d.hours)}{d.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
                         </td>
                         <td className="px-3 py-2 text-slate-600">{fmtHrs(d.overtime)}</td>
-                        <td className="px-3 py-2 text-xs">
-                          <PunctualityCell
+                        <td className="whitespace-nowrap px-3 py-2 text-xs">
+                          <TimingCell
                             lateMinutes={d.lateMinutes}
-                            earlyArrivalMinutes={d.earlyArrivalMinutes}
+                            earlyMinutes={d.earlyArrivalMinutes}
+                            lateClass="text-warning-text"
+                            earlyClass="text-good-text"
+                          />
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-xs">
+                          <TimingCell
+                            lateMinutes={d.lateDepartureMinutes}
                             earlyMinutes={d.earlyMinutes}
-                            lateDepartureMinutes={d.lateDepartureMinutes}
+                            lateClass="text-info-text"
+                            earlyClass="text-critical-text"
                           />
                         </td>
                         <td className="px-3 py-2">{statusBadge(d)}</td>
@@ -521,7 +530,7 @@ function PayrollEmployeeDetailView() {
                   })}
                   {dayRows.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
+                      <td colSpan={11} className="px-4 py-8 text-center text-slate-400">
                         No days in this period.
                       </td>
                     </tr>
@@ -535,12 +544,20 @@ function PayrollEmployeeDetailView() {
                       </td>
                       <td className="whitespace-nowrap px-3 py-2">{fmtHrs(dayTotals.hours)}</td>
                       <td className="whitespace-nowrap px-3 py-2">{fmtHrs(dayTotals.overtime)}</td>
-                      <td className="px-3 py-2 text-xs">
-                        <PunctualityCell
+                      <td className="whitespace-nowrap px-3 py-2 text-xs">
+                        <TimingTotal
                           lateMinutes={dayTotals.lateMinutes}
-                          earlyArrivalMinutes={dayTotals.earlyArrivalMinutes}
+                          earlyMinutes={dayTotals.earlyArrivalMinutes}
+                          lateClass="text-warning-text"
+                          earlyClass="text-good-text"
+                        />
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-xs">
+                        <TimingTotal
+                          lateMinutes={dayTotals.lateDepartureMinutes}
                           earlyMinutes={dayTotals.earlyMinutes}
-                          lateDepartureMinutes={dayTotals.lateDepartureMinutes}
+                          lateClass="text-info-text"
+                          earlyClass="text-critical-text"
                         />
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-xs font-semibold">

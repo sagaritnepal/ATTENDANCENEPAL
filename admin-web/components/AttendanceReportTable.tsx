@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Badge from '@/components/Badge';
 import DateRangePicker from '@/components/DateRangePicker';
-import PunctualityCell from '@/components/PunctualityCell';
+import { TimingCell, TimingTotal } from '@/components/PunctualityCell';
 import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
@@ -441,7 +441,8 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Employee</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Shift</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">In / Out</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Late / Early</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Check-In</th>
+              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Check-Out</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Work Hours</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Overtime</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:w-16 print:border print:border-slate-400 print:px-1 print:py-1">Status</th>
@@ -460,12 +461,20 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                   {' – '}
                   {r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
                 </td>
-                <td className="px-2 py-1 text-[11px] print:border print:border-slate-400 print:px-2 print:py-1 print:text-[8px]">
-                  <PunctualityCell
+                <td className="whitespace-nowrap px-2 py-1 text-[11px] print:border print:border-slate-400 print:px-2 print:py-1 print:text-[8px]">
+                  <TimingCell
                     lateMinutes={r.lateMinutes}
-                    earlyArrivalMinutes={r.earlyArrivalMinutes}
+                    earlyMinutes={r.earlyArrivalMinutes}
+                    lateClass="text-warning-text print:text-ink"
+                    earlyClass="text-good-text print:text-ink"
+                  />
+                </td>
+                <td className="whitespace-nowrap px-2 py-1 text-[11px] print:border print:border-slate-400 print:px-2 print:py-1 print:text-[8px]">
+                  <TimingCell
+                    lateMinutes={r.lateDepartureMinutes}
                     earlyMinutes={r.earlyMinutes}
-                    lateDepartureMinutes={r.lateDepartureMinutes}
+                    lateClass="text-info-text print:text-ink"
+                    earlyClass="text-critical-text print:text-ink"
                   />
                 </td>
                 <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">
@@ -485,7 +494,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={11} className="px-4 py-6 text-center text-slate-400">
                   {loading ? 'Loading…' : 'No records in this range.'}
                 </td>
               </tr>
@@ -498,12 +507,20 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                   Total
                 </td>
                 <td className="print:border print:border-slate-400" />
-                <td className="px-2 py-1.5 text-[10px] print:border print:border-slate-400 print:px-2 print:text-[10px]">
-                  <PunctualityCell
+                <td className="whitespace-nowrap px-2 py-1.5 text-[10px] print:border print:border-slate-400 print:px-2 print:text-[10px]">
+                  <TimingTotal
                     lateMinutes={totals.lateMinutes}
-                    earlyArrivalMinutes={totals.earlyArrivalMinutes}
+                    earlyMinutes={totals.earlyArrivalMinutes}
+                    lateClass="text-warning-text print:text-ink"
+                    earlyClass="text-good-text print:text-ink"
+                  />
+                </td>
+                <td className="whitespace-nowrap px-2 py-1.5 text-[10px] print:border print:border-slate-400 print:px-2 print:text-[10px]">
+                  <TimingTotal
+                    lateMinutes={totals.lateDepartureMinutes}
                     earlyMinutes={totals.earlyMinutes}
-                    lateDepartureMinutes={totals.lateDepartureMinutes}
+                    lateClass="text-info-text print:text-ink"
+                    earlyClass="text-critical-text print:text-ink"
                   />
                 </td>
                 <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2">{fmtHrs(totals.workHours)}</td>

@@ -1,54 +1,83 @@
-import type { ReactNode } from 'react';
 import { formatHoursMinutes } from '@/lib/shift';
 
-type Props = {
-  /** Check-in after shift start. */
-  lateMinutes: number;
-  /** Check-in before shift start. */
-  earlyArrivalMinutes: number;
-  /** Check-out before shift end. */
+/** One side of a day's punctuality — the check-in OR the check-out — as a
+ * single line: "Late Xh Ym", "Early Xh Ym", or "—". A punch is only ever
+ * one of early / on-time / late, so at most one value is non-zero. */
+export function TimingCell({
+  earlyMinutes,
+  lateMinutes,
+  earlyClass,
+  lateClass,
+}: {
   earlyMinutes: number;
-  /** Check-out after shift end (overlaps overtime). */
-  lateDepartureMinutes: number;
-  className?: string;
-};
+  lateMinutes: number;
+  /** Tailwind text-colour class for the "Early …" state. */
+  earlyClass: string;
+  /** Tailwind text-colour class for the "Late …" state. */
+  lateClass: string;
+}) {
+  if (lateMinutes > 0)
+    return <span className={`font-medium ${lateClass}`}>Late {formatHoursMinutes(lateMinutes)}</span>;
+  if (earlyMinutes > 0)
+    return <span className={`font-medium ${earlyClass}`}>Early {formatHoursMinutes(earlyMinutes)}</span>;
+  return <span className="text-slate-400 print:text-ink">—</span>;
+}
 
-/** The four punch-vs-shift deltas for one day (or a period total), stacked.
- * Used by the Attendance Report and the per-employee payroll breakdown so
- * both read the same way. */
-export default function PunctualityCell({
+/** A period total for one side — unlike a single day, a range can have BOTH
+ * late and early minutes accumulated, so show whichever are non-zero. */
+export function TimingTotal({
+  earlyMinutes,
+  lateMinutes,
+  earlyClass,
+  lateClass,
+}: {
+  earlyMinutes: number;
+  lateMinutes: number;
+  earlyClass: string;
+  lateClass: string;
+}) {
+  if (lateMinutes <= 0 && earlyMinutes <= 0) return <span className="text-slate-400 print:text-ink">—</span>;
+  return (
+    <span className="flex flex-col gap-0.5 leading-tight">
+      {lateMinutes > 0 && <span className={`font-medium ${lateClass}`}>Late {formatHoursMinutes(lateMinutes)}</span>}
+      {earlyMinutes > 0 && <span className={`font-medium ${earlyClass}`}>Early {formatHoursMinutes(earlyMinutes)}</span>}
+    </span>
+  );
+}
+
+/** Both sides stacked with "In" / "Out" labels — for cramped layouts (the
+ * phone breakdown table) that can't afford two separate columns. */
+export default function TimingPair({
   lateMinutes,
   earlyArrivalMinutes,
   earlyMinutes,
   lateDepartureMinutes,
-  className,
-}: Props) {
-  const parts: ReactNode[] = [];
-  if (lateMinutes > 0)
-    parts.push(
-      <span key="li" title="Late check-in" className="font-medium text-warning-text print:text-ink">
-        Late in {formatHoursMinutes(lateMinutes)}
+}: {
+  lateMinutes: number;
+  earlyArrivalMinutes: number;
+  earlyMinutes: number;
+  lateDepartureMinutes: number;
+}) {
+  return (
+    <span className="flex flex-col gap-0.5 leading-tight">
+      <span className="flex gap-1">
+        <span className="text-slate-400 print:text-ink">In</span>
+        <TimingCell
+          lateMinutes={lateMinutes}
+          earlyMinutes={earlyArrivalMinutes}
+          lateClass="text-warning-text print:text-ink"
+          earlyClass="text-good-text print:text-ink"
+        />
       </span>
-    );
-  if (earlyArrivalMinutes > 0)
-    parts.push(
-      <span key="ei" title="Early check-in" className="font-medium text-good-text print:text-ink">
-        Early in {formatHoursMinutes(earlyArrivalMinutes)}
+      <span className="flex gap-1">
+        <span className="text-slate-400 print:text-ink">Out</span>
+        <TimingCell
+          lateMinutes={lateDepartureMinutes}
+          earlyMinutes={earlyMinutes}
+          lateClass="text-info-text print:text-ink"
+          earlyClass="text-critical-text print:text-ink"
+        />
       </span>
-    );
-  if (earlyMinutes > 0)
-    parts.push(
-      <span key="eo" title="Early check-out" className="font-medium text-critical-text print:text-ink">
-        Early out {formatHoursMinutes(earlyMinutes)}
-      </span>
-    );
-  if (lateDepartureMinutes > 0)
-    parts.push(
-      <span key="lo" title="Late check-out" className="font-medium text-info-text print:text-ink">
-        Late out {formatHoursMinutes(lateDepartureMinutes)}
-      </span>
-    );
-
-  if (parts.length === 0) return <span className={`text-slate-400 print:text-ink ${className ?? ''}`}>—</span>;
-  return <span className={`flex flex-col gap-0.5 leading-tight ${className ?? ''}`}>{parts}</span>;
+    </span>
+  );
 }
