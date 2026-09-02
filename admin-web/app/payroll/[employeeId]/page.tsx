@@ -6,6 +6,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import Badge from '@/components/Badge';
+import PunctualityCell from '@/components/PunctualityCell';
 import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import StatusText from '@/components/StatusText';
 import { buildMonth, formatAdDate, formatDdMmYyyy, todayAnchor, type CalendarAnchor } from '@/lib/calendar';
@@ -184,7 +185,9 @@ function PayrollEmployeeDetailView() {
     let hours = 0;
     let overtime = 0;
     let lateMinutes = 0;
+    let earlyArrivalMinutes = 0;
     let earlyMinutes = 0;
+    let lateDepartureMinutes = 0;
     let mySalary = 0;
     let otSalary = 0;
     let totalSalary = 0;
@@ -195,7 +198,9 @@ function PayrollEmployeeDetailView() {
       hours += d.hours;
       overtime += d.overtime;
       lateMinutes += d.lateMinutes;
+      earlyArrivalMinutes += d.earlyArrivalMinutes;
       earlyMinutes += d.earlyMinutes;
+      lateDepartureMinutes += d.lateDepartureMinutes;
       if (d.checkIn) presentDays += 1;
       else if (d.status === 'Week Off' || d.status === 'Leave') paidOffDays += 1;
       else if (d.status !== 'Upcoming') absentDays += 1;
@@ -206,7 +211,7 @@ function PayrollEmployeeDetailView() {
         totalSalary += earning.total;
       }
     }
-    return { hours, overtime, lateMinutes, earlyMinutes, mySalary, otSalary, totalSalary, presentDays, absentDays, paidOffDays };
+    return { hours, overtime, lateMinutes, earlyArrivalMinutes, earlyMinutes, lateDepartureMinutes, mySalary, otSalary, totalSalary, presentDays, absentDays, paidOffDays };
   }, [dayRows, employee, daysInRange, otHoursPerDay, otMultiplier, otOn]);
 
 
@@ -214,7 +219,7 @@ function PayrollEmployeeDetailView() {
 
   function exportCsv() {
     if (!employee) return;
-    const header = ['Date', 'In', 'Out', 'Total Hours', 'Overtime', 'Late (min)', 'Early (min)', 'Status', 'Salary/Day', 'My Salary', 'OT Salary', 'Total Salary'];
+    const header = ['Date', 'In', 'Out', 'Total Hours', 'Overtime', 'Late In (min)', 'Early In (min)', 'Early Out (min)', 'Late Out (min)', 'Status', 'Salary/Day', 'My Salary', 'OT Salary', 'Total Salary'];
     const lines = dayRows.map(d => {
       const earning = dailySalaryEarning(d, employee.salary, daysInRange, otHoursPerDay, otMultiplier, otOn);
       return [
@@ -224,7 +229,9 @@ function PayrollEmployeeDetailView() {
         d.hours.toFixed(1),
         d.overtime.toFixed(1),
         d.lateMinutes || '',
+        d.earlyArrivalMinutes || '',
         d.earlyMinutes || '',
+        d.lateDepartureMinutes || '',
         d.checkIn ? 'Present' : d.status,
         salaryPerDay != null ? Math.round(salaryPerDay) : '',
         earning ? Math.round(earning.base) : '',
@@ -402,10 +409,12 @@ function PayrollEmployeeDetailView() {
                           {d.checkIn ? fmtTime(d.checkIn) : '–:–'} – {d.checkOut ? fmtTime(d.checkOut) : '–:–'}
                         </td>
                         <td className="whitespace-normal break-words px-0.5 py-0.5 leading-tight font-medium">
-                          {d.lateMinutes === 0 && d.earlyMinutes === 0 && <span className="text-slate-300">—</span>}
-                          {d.lateMinutes > 0 && <span className="text-warning-text">L {formatHoursMinutes(d.lateMinutes)}</span>}
-                          {d.lateMinutes > 0 && d.earlyMinutes > 0 && ' · '}
-                          {d.earlyMinutes > 0 && <span className="text-critical-text">E {formatHoursMinutes(d.earlyMinutes)}</span>}
+                          <PunctualityCell
+                            lateMinutes={d.lateMinutes}
+                            earlyArrivalMinutes={d.earlyArrivalMinutes}
+                            earlyMinutes={d.earlyMinutes}
+                            lateDepartureMinutes={d.lateDepartureMinutes}
+                          />
                         </td>
                         <td className="truncate px-0.5 py-0.5 font-medium">
                           <StatusText checkIn={d.checkIn} status={d.status} />
@@ -433,10 +442,12 @@ function PayrollEmployeeDetailView() {
                         Total
                       </td>
                       <td className="whitespace-normal break-words px-0.5 py-1 font-semibold leading-tight">
-                        {dayTotals.lateMinutes > 0 && <span className="text-warning-text">L {formatHoursMinutes(dayTotals.lateMinutes)}</span>}
-                        {dayTotals.lateMinutes > 0 && dayTotals.earlyMinutes > 0 && ' · '}
-                        {dayTotals.earlyMinutes > 0 && <span className="text-critical-text">E {formatHoursMinutes(dayTotals.earlyMinutes)}</span>}
-                        {dayTotals.lateMinutes === 0 && dayTotals.earlyMinutes === 0 && '—'}
+                        <PunctualityCell
+                          lateMinutes={dayTotals.lateMinutes}
+                          earlyArrivalMinutes={dayTotals.earlyArrivalMinutes}
+                          earlyMinutes={dayTotals.earlyMinutes}
+                          lateDepartureMinutes={dayTotals.lateDepartureMinutes}
+                        />
                       </td>
                       <td className="truncate px-0.5 py-1 font-semibold text-[9px]">
                         <span className="text-good-text">{dayTotals.presentDays}P</span> / <span className="text-accent">{dayTotals.paidOffDays}W</span> / <span className="text-critical-text">{dayTotals.absentDays}A</span>
@@ -486,11 +497,13 @@ function PayrollEmployeeDetailView() {
                           {fmtHrs(d.hours)}{d.pending && <span className="ml-1 text-[10px] text-slate-400">(live)</span>}
                         </td>
                         <td className="px-3 py-2 text-slate-600">{fmtHrs(d.overtime)}</td>
-                        <td className="whitespace-nowrap px-3 py-2">
-                          {d.lateMinutes === 0 && d.earlyMinutes === 0 && <span className="text-slate-400">—</span>}
-                          {d.lateMinutes > 0 && <span className="font-medium text-warning-text">L {formatHoursMinutes(d.lateMinutes)}</span>}
-                          {d.lateMinutes > 0 && d.earlyMinutes > 0 && ' · '}
-                          {d.earlyMinutes > 0 && <span className="font-medium text-critical-text">E {formatHoursMinutes(d.earlyMinutes)}</span>}
+                        <td className="px-3 py-2 text-xs">
+                          <PunctualityCell
+                            lateMinutes={d.lateMinutes}
+                            earlyArrivalMinutes={d.earlyArrivalMinutes}
+                            earlyMinutes={d.earlyMinutes}
+                            lateDepartureMinutes={d.lateDepartureMinutes}
+                          />
                         </td>
                         <td className="px-3 py-2">{statusBadge(d)}</td>
                         <td className="px-3 py-2 text-slate-600">
@@ -522,11 +535,13 @@ function PayrollEmployeeDetailView() {
                       </td>
                       <td className="whitespace-nowrap px-3 py-2">{fmtHrs(dayTotals.hours)}</td>
                       <td className="whitespace-nowrap px-3 py-2">{fmtHrs(dayTotals.overtime)}</td>
-                      <td className="whitespace-nowrap px-3 py-2 text-xs">
-                        {dayTotals.lateMinutes > 0 && <span className="text-warning-text">L {formatHoursMinutes(dayTotals.lateMinutes)}</span>}
-                        {dayTotals.lateMinutes > 0 && dayTotals.earlyMinutes > 0 && ' · '}
-                        {dayTotals.earlyMinutes > 0 && <span className="text-critical-text">E {formatHoursMinutes(dayTotals.earlyMinutes)}</span>}
-                        {dayTotals.lateMinutes === 0 && dayTotals.earlyMinutes === 0 && '—'}
+                      <td className="px-3 py-2 text-xs">
+                        <PunctualityCell
+                          lateMinutes={dayTotals.lateMinutes}
+                          earlyArrivalMinutes={dayTotals.earlyArrivalMinutes}
+                          earlyMinutes={dayTotals.earlyMinutes}
+                          lateDepartureMinutes={dayTotals.lateDepartureMinutes}
+                        />
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-xs font-semibold">
                         <span className="text-good-text">{dayTotals.presentDays}P</span>

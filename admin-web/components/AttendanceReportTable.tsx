@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Badge from '@/components/Badge';
 import DateRangePicker from '@/components/DateRangePicker';
+import PunctualityCell from '@/components/PunctualityCell';
 import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
@@ -11,6 +12,7 @@ import {
   applyOvernightShiftCorrection,
   buildWeeklyPatternByEmployee,
   computeDayStatusForResolvedShift,
+  edgePunctuality,
   formatHoursMinutes,
   isWeekOff,
   nepalDateKey,
@@ -34,7 +36,9 @@ type Row = {
   hours: number;
   status: 'Present' | 'Late' | 'Absent' | 'Upcoming' | 'Week Off' | 'Leave' | 'Exempt';
   lateMinutes: number;
+  earlyArrivalMinutes: number;
   earlyMinutes: number;
+  lateDepartureMinutes: number;
   overtime: number;
   /** No payroll_summaries row yet (only computed by the nightly job or
    * "Recalculate month" on the Payroll page) — late/early/hours/overtime
@@ -186,6 +190,13 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
           ? 'Week Off'
           : `${resolved.name} (${resolved.start_time.slice(0, 5)}–${resolved.end_time.slice(0, 5)})`;
 
+        // Early-arrival / late-departure aren't stored on the summary row —
+        // derive them live from check_in/check_out against the shift.
+        const edges =
+          isWeekOff(resolved) || emp.attendance_exempt
+            ? { earlyArrivalMinutes: 0, lateDepartureMinutes: 0 }
+            : edgePunctuality(summary?.check_in ?? null, summary?.check_out ?? null, resolved);
+
         if (summary) {
           out.push({
             key: `${emp.id}-${day}`,
@@ -199,7 +210,9 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             hours: summary.total_hours,
             status: summary.is_late && !emp.attendance_exempt ? 'Late' : 'Present',
             lateMinutes: summary.is_late && !emp.attendance_exempt ? summary.late_minutes : 0,
+            earlyArrivalMinutes: edges.earlyArrivalMinutes,
             earlyMinutes: summary.is_early_departure && !emp.attendance_exempt ? summary.early_departure_minutes : 0,
+            lateDepartureMinutes: edges.lateDepartureMinutes,
             overtime: summary.overtime_hours,
           });
         } else if (dayLogs.length > 0) {
@@ -221,7 +234,9 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             hours: live.totalMinutes / 60,
             status: live.isLate && !emp.attendance_exempt ? 'Late' : 'Present',
             lateMinutes: emp.attendance_exempt ? 0 : live.lateMinutes,
+            earlyArrivalMinutes: emp.attendance_exempt ? 0 : live.earlyArrivalMinutes,
             earlyMinutes: emp.attendance_exempt ? 0 : live.earlyMinutes,
+            lateDepartureMinutes: emp.attendance_exempt ? 0 : live.lateDepartureMinutes,
             overtime: live.overtimeMinutes / 60,
             pending: true,
           });
@@ -264,7 +279,9 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                     ? 'Exempt'
                     : 'Absent',
             lateMinutes: 0,
+            earlyArrivalMinutes: 0,
             earlyMinutes: 0,
+            lateDepartureMinutes: 0,
             overtime: 0,
           });
         }
@@ -286,10 +303,12 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
     const workHours = rows.reduce((sum, r) => sum + r.hours, 0);
     const overtimeHours = rows.reduce((sum, r) => sum + r.overtime, 0);
     const lateMinutes = rows.reduce((sum, r) => sum + r.lateMinutes, 0);
+    const earlyArrivalMinutes = rows.reduce((sum, r) => sum + r.earlyArrivalMinutes, 0);
     const earlyMinutes = rows.reduce((sum, r) => sum + r.earlyMinutes, 0);
+    const lateDepartureMinutes = rows.reduce((sum, r) => sum + r.lateDepartureMinutes, 0);
     const presentDays = rows.filter(r => r.checkIn).length;
     const absentDays = rows.filter(r => r.status === 'Absent').length;
-    return { workHours, overtimeHours, lateMinutes, earlyMinutes, presentDays, absentDays };
+    return { workHours, overtimeHours, lateMinutes, earlyArrivalMinutes, earlyMinutes, lateDepartureMinutes, presentDays, absentDays };
   }, [rows]);
 
   function exportCsv() {
@@ -300,8 +319,10 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
       'Shift',
       'Check-In',
       'Check-Out',
-      'Late By (min)',
+      'Late In (min)',
+      'Early In (min)',
       'Early Out (min)',
+      'Late Out (min)',
       'Total Work Hours',
       'Overtime',
       'Status',
@@ -315,7 +336,9 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
       r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour12: false }) : '',
       r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour12: false }) : '',
       r.lateMinutes || '',
+      r.earlyArrivalMinutes || '',
       r.earlyMinutes || '',
+      r.lateDepartureMinutes || '',
       r.hours.toFixed(1),
       r.overtime.toFixed(1),
       r.status,
@@ -437,15 +460,13 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                   {' – '}
                   {r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
                 </td>
-                <td className="whitespace-nowrap px-2 py-1 print:border print:border-slate-400 print:px-2 print:py-1 print:text-[8px]">
-                  {r.lateMinutes === 0 && r.earlyMinutes === 0 && <span className="text-slate-400 print:text-ink">—</span>}
-                  {r.lateMinutes > 0 && (
-                    <span className="font-medium text-warning-text print:text-ink">L {formatHoursMinutes(r.lateMinutes)}</span>
-                  )}
-                  {r.lateMinutes > 0 && r.earlyMinutes > 0 && ' · '}
-                  {r.earlyMinutes > 0 && (
-                    <span className="font-medium text-critical-text print:text-ink">E {formatHoursMinutes(r.earlyMinutes)}</span>
-                  )}
+                <td className="px-2 py-1 text-[11px] print:border print:border-slate-400 print:px-2 print:py-1 print:text-[8px]">
+                  <PunctualityCell
+                    lateMinutes={r.lateMinutes}
+                    earlyArrivalMinutes={r.earlyArrivalMinutes}
+                    earlyMinutes={r.earlyMinutes}
+                    lateDepartureMinutes={r.lateDepartureMinutes}
+                  />
                 </td>
                 <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">
                   {fmtHrs(r.hours)}
@@ -477,11 +498,13 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                   Total
                 </td>
                 <td className="print:border print:border-slate-400" />
-                <td className="whitespace-nowrap px-2 py-1.5 text-[10px] print:border print:border-slate-400 print:px-2 print:text-[10px]">
-                  {totals.lateMinutes > 0 && <span className="text-warning-text print:text-ink">L {formatHoursMinutes(totals.lateMinutes)}</span>}
-                  {totals.lateMinutes > 0 && totals.earlyMinutes > 0 && ' · '}
-                  {totals.earlyMinutes > 0 && <span className="text-critical-text print:text-ink">E {formatHoursMinutes(totals.earlyMinutes)}</span>}
-                  {totals.lateMinutes === 0 && totals.earlyMinutes === 0 && '—'}
+                <td className="px-2 py-1.5 text-[10px] print:border print:border-slate-400 print:px-2 print:text-[10px]">
+                  <PunctualityCell
+                    lateMinutes={totals.lateMinutes}
+                    earlyArrivalMinutes={totals.earlyArrivalMinutes}
+                    earlyMinutes={totals.earlyMinutes}
+                    lateDepartureMinutes={totals.lateDepartureMinutes}
+                  />
                 </td>
                 <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2">{fmtHrs(totals.workHours)}</td>
                 <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2">{fmtHrs(totals.overtimeHours)}</td>

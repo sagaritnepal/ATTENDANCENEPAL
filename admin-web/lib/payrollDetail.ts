@@ -2,6 +2,7 @@ import type { AttendanceLog, Employee, PayrollSummary, Shift } from './types';
 import {
   applyOvernightShiftCorrection,
   computeDayStatusForResolvedShift,
+  edgePunctuality,
   isWeekOff,
   nepalDateKey,
   nepalTodayIso,
@@ -19,8 +20,14 @@ export type DayDetail = {
   /** Completed-break minutes this day — paid, already included in `hours`,
    * purely a display stat (see computeBreakMinutes() in lib/shift.ts). */
   breakMinutes: number;
+  /** Check-in vs shift start: minutes late (arrived after) / minutes early
+   * (arrived before). Both 0 on a punchless day. */
   lateMinutes: number;
+  earlyArrivalMinutes: number;
+  /** Check-out vs shift end: minutes early (left before) / minutes late
+   * (left after — overlaps overtime). Both 0 on a punchless day. */
   earlyMinutes: number;
+  lateDepartureMinutes: number;
   status: 'Present' | 'Late' | 'Absent' | 'Upcoming' | 'Week Off' | 'Leave';
   /** No payroll_summaries row yet (only computed by the nightly job or
    * "Recalculate month" on the Payroll page) — computed live client-side
@@ -81,6 +88,13 @@ export function buildEmployeeDayRows(
     // today live instead of trusting a possibly-stale summary.
     const summary = day === today ? undefined : summaries.find(s => s.employee_id === employee.id && s.work_date === day);
     if (summary) {
+      // Early-arrival / late-departure aren't stored on the summary row, so
+      // derive them live from its check_in/check_out against the shift.
+      const resolvedForEdges = resolveShiftForDate(employee, shifts, day, dailyShiftByDate, weekOffDates, weeklyPattern);
+      const edges =
+        employee.attendance_exempt || isWeekOff(resolvedForEdges)
+          ? { earlyArrivalMinutes: 0, lateDepartureMinutes: 0 }
+          : edgePunctuality(summary.check_in, summary.check_out, resolvedForEdges);
       return {
         date: day,
         checkIn: summary.check_in,
@@ -89,7 +103,9 @@ export function buildEmployeeDayRows(
         overtime: Number(summary.overtime_hours),
         breakMinutes: summary.break_minutes,
         lateMinutes: summary.is_late && !employee.attendance_exempt ? summary.late_minutes : 0,
+        earlyArrivalMinutes: edges.earlyArrivalMinutes,
         earlyMinutes: summary.is_early_departure && !employee.attendance_exempt ? summary.early_departure_minutes : 0,
+        lateDepartureMinutes: edges.lateDepartureMinutes,
         status: summary.is_late && !employee.attendance_exempt ? 'Late' : 'Present',
       };
     }
@@ -100,7 +116,7 @@ export function buildEmployeeDayRows(
       // Upcoming/Absent distinction below. Leave wins the label if both
       // happen to match the same date; either way it's paid the same.
       if (leaveDates?.has(day)) {
-        return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, breakMinutes: 0, lateMinutes: 0, earlyMinutes: 0, status: 'Leave', paidOff: true };
+        return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, breakMinutes: 0, lateMinutes: 0, earlyArrivalMinutes: 0, earlyMinutes: 0, lateDepartureMinutes: 0, status: 'Leave', paidOff: true };
       }
       // A per-employee Week Off picked on the Weekly/Monthly Roster (a
       // employee_daily_shifts row with shift_id null) is a deliberate
@@ -108,12 +124,12 @@ export function buildEmployeeDayRows(
       // — so check it the same way a day WITH punches already does below,
       // instead of only weekOffDates (company-wide only).
       if (weekOffDates?.has(day) || isWeekOff(resolveShiftForDate(employee, shifts, day, dailyShiftByDate, weekOffDates, weeklyPattern))) {
-        return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, breakMinutes: 0, lateMinutes: 0, earlyMinutes: 0, status: 'Week Off', paidOff: true };
+        return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, breakMinutes: 0, lateMinutes: 0, earlyArrivalMinutes: 0, earlyMinutes: 0, lateDepartureMinutes: 0, status: 'Week Off', paidOff: true };
       }
       // A day that hasn't happened yet isn't "Absent" — it just hasn't
       // occurred. Only mark days up to and including today that way.
       const status = day > today ? ('Upcoming' as const) : ('Absent' as const);
-      return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, breakMinutes: 0, lateMinutes: 0, earlyMinutes: 0, status };
+      return { date: day, checkIn: null, checkOut: null, hours: 0, overtime: 0, breakMinutes: 0, lateMinutes: 0, earlyArrivalMinutes: 0, earlyMinutes: 0, lateDepartureMinutes: 0, status };
     }
     const resolved = resolveShiftForDate(employee, shifts, day, dailyShiftByDate, weekOffDates, weeklyPattern);
     const live = computeDayStatusForResolvedShift(dayLogs, resolved);
@@ -125,7 +141,9 @@ export function buildEmployeeDayRows(
       overtime: live.overtimeMinutes / 60,
       breakMinutes: live.breakMinutes,
       lateMinutes: employee.attendance_exempt ? 0 : live.lateMinutes,
+      earlyArrivalMinutes: employee.attendance_exempt ? 0 : live.earlyArrivalMinutes,
       earlyMinutes: employee.attendance_exempt ? 0 : live.earlyMinutes,
+      lateDepartureMinutes: employee.attendance_exempt ? 0 : live.lateDepartureMinutes,
       status: live.isLate && !employee.attendance_exempt ? 'Late' : 'Present',
       pending: true,
     };

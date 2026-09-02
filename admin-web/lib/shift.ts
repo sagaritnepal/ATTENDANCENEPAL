@@ -121,8 +121,14 @@ export type DayStatus = {
   isEarly: boolean;
   checkIn: AttendanceLog;
   checkOut: AttendanceLog | null;
+  /** Minutes the check-in was AFTER shift start (0 if on time / early). */
   lateMinutes: number;
+  /** Minutes the check-out was BEFORE shift end (0 if on time / late). */
   earlyMinutes: number;
+  /** Minutes the check-in was BEFORE shift start (0 if on time / late). */
+  earlyArrivalMinutes: number;
+  /** Minutes the check-out was AFTER shift end (0 if on time / early). */
+  lateDepartureMinutes: number;
   /** Worked minutes this day — 0 until there's both an in and an out. */
   totalMinutes: number;
   /** Minutes worked beyond the shift's duration — 0 unless totalMinutes exceeds it. */
@@ -263,10 +269,18 @@ export function computeDayStatus(
   const inMin = punchMinuteOfDay(checkIn.punch_time);
   const isLate = inMin > shiftStartMin + shift.grace_minutes;
   const lateMinutes = isLate ? inMin - shiftStartMin : 0;
+  // Arrived ahead of the shift. Clamped: a value beyond half a day is a
+  // minute-of-day wrap artefact on an overnight shift, not a real early-in.
+  const rawEarlyArrival = inMin < shiftStartMin ? shiftStartMin - inMin : 0;
+  const earlyArrivalMinutes = rawEarlyArrival > 720 ? 0 : rawEarlyArrival;
 
   const outMin = hasOut ? punchMinuteOfDay(checkOut!.punch_time) : null;
   const isEarly = outMin !== null && outMin < shiftEndMin;
   const earlyMinutes = isEarly ? shiftEndMin - outMin! : 0;
+  // Stayed past the shift end (overlaps the Overtime column, shown here too
+  // as a punctuality signal). Same overnight-wrap clamp as early arrival.
+  const rawLateDeparture = outMin !== null && outMin > shiftEndMin ? outMin - shiftEndMin : 0;
+  const lateDepartureMinutes = rawLateDeparture > 720 ? 0 : rawLateDeparture;
 
   const shiftDurationMin =
     shiftEndMin > shiftStartMin ? shiftEndMin - shiftStartMin : 24 * 60 - shiftStartMin + shiftEndMin;
@@ -284,10 +298,38 @@ export function computeDayStatus(
     checkOut: hasOut ? checkOut : null,
     lateMinutes,
     earlyMinutes,
+    earlyArrivalMinutes,
+    lateDepartureMinutes,
     totalMinutes,
     overtimeMinutes,
     breakMinutes: computeBreakMinutes(logs),
   };
+}
+
+/** Early-arrival / late-departure minutes computed straight from two ISO
+ * punch timestamps against a shift — for callers that have a finalized
+ * payroll_summaries row (its check_in/check_out) rather than raw punches.
+ * Same overnight-wrap clamp as computeDayStatus(). */
+export function edgePunctuality(
+  checkInIso: string | null,
+  checkOutIso: string | null,
+  shift: Pick<Shift, 'start_time' | 'end_time'>
+): { earlyArrivalMinutes: number; lateDepartureMinutes: number } {
+  const shiftStartMin = toMinutes(shift.start_time);
+  const shiftEndMin = toMinutes(shift.end_time);
+  let earlyArrivalMinutes = 0;
+  let lateDepartureMinutes = 0;
+  if (checkInIso) {
+    const inMin = punchMinuteOfDay(checkInIso);
+    const raw = inMin < shiftStartMin ? shiftStartMin - inMin : 0;
+    earlyArrivalMinutes = raw > 720 ? 0 : raw;
+  }
+  if (checkOutIso) {
+    const outMin = punchMinuteOfDay(checkOutIso);
+    const raw = outMin > shiftEndMin ? outMin - shiftEndMin : 0;
+    lateDepartureMinutes = raw > 720 ? 0 : raw;
+  }
+  return { earlyArrivalMinutes, lateDepartureMinutes };
 }
 
 /** Same as computeDayStatus(), but for a ResolvedShift that might be
@@ -311,6 +353,8 @@ export function computeDayStatusForResolvedShift(logs: AttendanceLog[], resolved
       checkOut: hasOut ? checkOut : null,
       lateMinutes: 0,
       earlyMinutes: 0,
+      earlyArrivalMinutes: 0,
+      lateDepartureMinutes: 0,
       totalMinutes,
       overtimeMinutes: totalMinutes,
       breakMinutes: computeBreakMinutes(logs),
