@@ -361,7 +361,6 @@ export default function PayrollPage() {
       totalHours,
       overtimeHours,
       workedDays,
-      paidOffDays,
       absentDays,
       lateDays,
       earlyDays,
@@ -756,7 +755,7 @@ export default function PayrollPage() {
                       {row.name}
                     </Link>
                     <div className="text-xs text-slate-500">
-                      ID {row.enrollId} · {row.days} days{row.paidOffDays > 0 && ` · ${row.paidOffDays} paid off`} · {row.lateDays} late · {row.earlyDays} early
+                      ID {row.enrollId} · {row.days} days · {row.lateDays} late · {row.earlyDays} early
                     </div>
                   </div>
                 </div>
@@ -811,8 +810,6 @@ export default function PayrollPage() {
             <div className="flex items-center justify-center gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold">
               <span className="text-good-text">{totals.workedDays} present days</span>
               <span className="text-slate-300">·</span>
-              <span className="text-accent">{totals.paidOffDays} paid week-off/leave days</span>
-              <span className="text-slate-300">·</span>
               <span className="text-critical-text">{totals.absentDays} absent days</span>
             </div>
           )}
@@ -851,10 +848,7 @@ export default function PayrollPage() {
                     </Link>
                   </td>
                   {visibleCols.workedDays && (
-                    <td className="whitespace-nowrap px-3 py-2 text-slate-600">
-                      {row.days}
-                      {row.paidOffDays > 0 && <span className="text-accent"> (+{row.paidOffDays})</span>}
-                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-slate-600">{row.days}</td>
                   )}
                   {visibleCols.totalHours && <td className="whitespace-nowrap px-3 py-2 text-slate-600">{fmtHrs(row.hours)}</td>}
                   {visibleCols.overtime && <td className="whitespace-nowrap px-3 py-2 text-slate-600">{fmtHrs(row.overtime)}</td>}
@@ -902,8 +896,6 @@ export default function PayrollPage() {
                 {visibleCols.workedDays && (
                   <td className="whitespace-nowrap px-3 py-2 text-xs">
                     <span className="text-good-text">{totals.workedDays}P</span>
-                    {' / '}
-                    <span className="text-accent">{totals.paidOffDays}W</span>
                     {' / '}
                     <span className="text-critical-text">{totals.absentDays}A</span>
                   </td>
