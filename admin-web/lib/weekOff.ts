@@ -36,14 +36,6 @@ export type CompanyWeekOffConfig = {
   pfRate: number;
   ssfRate: number;
   tdsRate: number;
-  /** Which payroll report this company sees. 'standard' is the
-   * attendance-based report everyone gets; 'staff_salary_sheet' is a
-   * fixed-salary variant for one customer (companies.payroll_format,
-   * 20260903100000_company_payroll_format.sql). */
-  payrollFormat: 'standard' | 'staff_salary_sheet';
-  /** Flat monthly allowance added to every employee's basic in the
-   * staff_salary_sheet format (companies.dearness_allowance). 0 otherwise. */
-  dearnessAllowance: number;
 };
 
 const DEFAULT_CONFIG: CompanyWeekOffConfig = {
@@ -56,8 +48,6 @@ const DEFAULT_CONFIG: CompanyWeekOffConfig = {
   pfRate: 10,
   ssfRate: 11,
   tdsRate: 0,
-  payrollFormat: 'standard',
-  dearnessAllowance: 0,
 };
 
 /** The current user's own company_id + weekly_off_day + roster_mode +
@@ -76,13 +66,6 @@ export async function fetchMyCompanyWeekOffConfig(): Promise<CompanyWeekOffConfi
     .select('weekly_off_day, roster_mode, break_enabled, ot_hours_per_day, ot_multiplier, pf_rate, ssf_rate, tds_rate')
     .eq('id', companyId)
     .single();
-  // Kept in its own query so a not-yet-applied migration degrades to the
-  // standard format instead of breaking the whole config fetch.
-  const { data: fmt } = await supabase
-    .from('companies')
-    .select('payroll_format, dearness_allowance')
-    .eq('id', companyId)
-    .single();
   return {
     companyId,
     weeklyOffDay: company?.weekly_off_day ?? null,
@@ -93,8 +76,6 @@ export async function fetchMyCompanyWeekOffConfig(): Promise<CompanyWeekOffConfi
     pfRate: company?.pf_rate ?? DEFAULT_CONFIG.pfRate,
     ssfRate: company?.ssf_rate ?? DEFAULT_CONFIG.ssfRate,
     tdsRate: company?.tds_rate ?? DEFAULT_CONFIG.tdsRate,
-    payrollFormat: (fmt?.payroll_format as CompanyWeekOffConfig['payrollFormat']) ?? 'standard',
-    dearnessAllowance: fmt?.dearness_allowance ?? 0,
   };
 }
 

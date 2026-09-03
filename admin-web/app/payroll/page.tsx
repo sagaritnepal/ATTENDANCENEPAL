@@ -7,6 +7,7 @@ import AppShell from '@/components/AppShell';
 import Avatar from '@/components/Avatar';
 import StaffSalarySheet from '@/components/StaffSalarySheet';
 import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
+import { fetchCompanyPayrollFormat, type PayrollFormat } from '@/lib/payrollFormat';
 import {
   buildPeriodOptions,
   currentSystemYearMonth,
@@ -66,9 +67,9 @@ export default function PayrollPage() {
   const [dataRange, setDataRange] = useState<{ earliest: Date; latest: Date } | null>(null);
   const [employeeId, setEmployeeId] = useState('all');
   const [loading, setLoading] = useState(true);
-  // Null until the company config resolves. One customer runs a completely
-  // different fixed-salary report (StaffSalarySheet) instead of this one.
-  const [payroll, setPayroll] = useState<{ format: 'standard' | 'staff_salary_sheet'; dearness: number } | null>(null);
+  // Null until resolved. One customer runs a completely different
+  // fixed-salary report (StaffSalarySheet) instead of this one.
+  const [payroll, setPayroll] = useState<{ format: PayrollFormat; dearnessAllowance: number } | null>(null);
   // Optional columns the admin can hide from the report (the cog menu in
   // the report header). A hidden column is dropped from the table AND from
   // the printed / PDF copy — it's simply not rendered, not print:hidden.
@@ -110,15 +111,20 @@ export default function PayrollPage() {
     return `/payroll/${employeeId}?${params.toString()}`;
   }
 
+  // One customer runs a fixed-salary report instead of this one — resolved
+  // on its own so nothing shared changes for everybody else.
+  useEffect(() => {
+    fetchCompanyPayrollFormat().then(setPayroll);
+  }, []);
+
   // The oldest/newest punch on record — bounds the period dropdown to
   // months that actually have data instead of listing years of empty ones.
   useEffect(() => {
-    fetchMyCompanyWeekOffConfig().then(({ companyId, weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier, payrollFormat, dearnessAllowance }) => {
+    fetchMyCompanyWeekOffConfig().then(({ companyId, weeklyOffDay, rosterMode, otHoursPerDay, otMultiplier }) => {
       setCompanyId(companyId);
       setWeeklyOffDay(weeklyOffDay);
       setOtHoursPerDay(otHoursPerDay);
       setOtMultiplier(otMultiplier);
-      setPayroll({ format: payrollFormat, dearness: dearnessAllowance });
       // Not date-scoped (a pattern applies to every week), and only ever
       // relevant in 'weekly' roster_mode — see resolveShiftForDate().
       if (rosterMode === 'weekly') {
@@ -586,15 +592,12 @@ export default function PayrollPage() {
     </div>
   );
 
-  if (payroll === null) {
-    return (
-      <AppShell title="Attendance-based Payroll Controller">
-        <p className="text-center text-sm text-slate-400">Loading…</p>
-      </AppShell>
-    );
-  }
-  if (payroll.format === 'staff_salary_sheet') {
-    return <StaffSalarySheet dearnessAllowance={payroll.dearness} />;
+  // Standard companies never hit this branch — `payroll` resolves to
+  // { format: 'standard' } and the normal report below renders throughout,
+  // unchanged. Only the one customer with payroll_format = 'staff_salary_sheet'
+  // gets swapped over (after a brief flash of this page while it resolves).
+  if (payroll?.format === 'staff_salary_sheet') {
+    return <StaffSalarySheet dearnessAllowance={payroll.dearnessAllowance} />;
   }
 
   return (

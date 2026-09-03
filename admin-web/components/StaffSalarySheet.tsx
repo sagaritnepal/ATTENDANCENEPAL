@@ -184,7 +184,11 @@ export default function StaffSalarySheet({ dearnessAllowance }: { dearnessAllowa
     downloadExcel(`staff_salary_sheet_${period.key}.csv`, header, lines);
   }
 
-  const th = 'whitespace-nowrap px-2.5 py-2 text-right align-bottom text-[11px] font-semibold uppercase leading-tight tracking-wide text-slate-500';
+  // No text-align in the base class — Tailwind emits `text-right` after
+  // `text-center`/`text-left` in the sheet, so a shared `text-right` here
+  // would beat a per-column override. Each th/td sets its own alignment.
+  const th = 'whitespace-nowrap px-2.5 py-2 align-bottom text-[11px] font-semibold uppercase leading-tight tracking-wide text-slate-500';
+  const thNum = `${th} text-right`;
   const td = 'whitespace-nowrap px-2.5 py-1.5 text-right tabular-nums text-slate-700';
 
   return (
@@ -262,35 +266,35 @@ export default function StaffSalarySheet({ dearnessAllowance }: { dearnessAllowa
                 <th className={`${th} w-10 text-center`}>S.No.</th>
                 <th className={`${th} min-w-[10rem] text-left`}>Employee Name</th>
                 <th className={`${th} min-w-[9rem] text-left`}>Designation</th>
-                <th className={th}>
+                <th className={thNum}>
                   Basic Salary<br />
                   83/84
                 </th>
-                <th className={th}>
+                <th className={thNum}>
                   Dearness<br />
                   Allowance
                 </th>
-                <th className={th}>
+                <th className={thNum}>
                   SSF 20%<br />
                   of Basic
                 </th>
-                <th className={th}>
+                <th className={thNum}>
                   Monthly Gross<br />
                   Salary (MGS)
                 </th>
-                <th className={th}>
+                <th className={thNum}>
                   SSF by Employer<br />
                   20% of Basic
                 </th>
-                <th className={th}>
+                <th className={thNum}>
                   SSF by Employee<br />
                   11% — Deduction
                 </th>
-                <th className={th}>
+                <th className={thNum}>
                   Total SSF<br />
                   Payable
                 </th>
-                <th className={th}>Net Monthly</th>
+                <th className={thNum}>Net Monthly</th>
               </tr>
             </thead>
             <tbody>
