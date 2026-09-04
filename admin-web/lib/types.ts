@@ -240,9 +240,6 @@ export type PayrollSummary = {
   is_early_departure: boolean;
   early_departure_minutes: number;
   overtime_hours: number;
-  /** Completed-break minutes for this day (20260820100000_break_punches.sql)
-   * — paid, NOT subtracted from total_hours/overtime_hours, display only. */
-  break_minutes: number;
   manually_corrected: boolean;
   overtime_approved: boolean;
   computed_at: string;
@@ -252,4 +249,4 @@ export type PayrollSummary = {
  * PayrollSummary fields, so `select(PAYROLL_SUMMARY_COLUMNS)` is identical to
  * `select('*')` for the code but future-proof against wide columns. */
 export const PAYROLL_SUMMARY_COLUMNS =
-  'id, employee_id, work_date, shift_name, check_in, check_out, total_hours, is_late, late_minutes, is_early_departure, early_departure_minutes, overtime_hours, break_minutes, manually_corrected, overtime_approved, computed_at';
+  'id, employee_id, work_date, shift_name, check_in, check_out, total_hours, is_late, late_minutes, is_early_departure, early_departure_minutes, overtime_hours, manually_corrected, overtime_approved, computed_at';

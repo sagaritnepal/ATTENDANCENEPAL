@@ -93,9 +93,6 @@ export type PayrollSummary = {
   check_out: string | null;
   total_hours: number;
   overtime_hours: number;
-  /** Completed-break minutes for this day — paid, NOT subtracted from
-   * total_hours/overtime_hours, display only. */
-  break_minutes: number;
   is_late: boolean;
   late_minutes: number;
   is_early_departure: boolean;
@@ -122,7 +119,7 @@ export const ATTENDANCE_LOG_COLUMNS = 'id, employee_id, device_id, punch_time, p
 
 /** Columns to request for a fetched PayrollSummary — exactly the type's fields. */
 export const PAYROLL_SUMMARY_COLUMNS =
-  'id, employee_id, work_date, check_in, check_out, total_hours, overtime_hours, break_minutes, is_late, late_minutes, is_early_departure, early_departure_minutes';
+  'id, employee_id, work_date, check_in, check_out, total_hours, overtime_hours, is_late, late_minutes, is_early_departure, early_departure_minutes';
 
 export type TaskStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'rejected';
 export type TaskSource = 'assigned' | 'self';

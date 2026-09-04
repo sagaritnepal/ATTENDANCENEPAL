@@ -59,13 +59,11 @@ export default function CheckInScreen({ navigation }: any) {
   const [correctionError, setCorrectionError] = useState<string | null>(null);
   const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
   const [todayHoliday, setTodayHoliday] = useState<CompanyHoliday | null>(null);
-  const [breakEnabled, setBreakEnabled] = useState(false);
 
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
-    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, breakEnabled }) => {
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay }) => {
       setWeeklyOffDay(weeklyOffDay);
-      setBreakEnabled(breakEnabled);
     });
     supabase.from('company_holidays').select('*').eq('holiday_date', today).maybeSingle().then(({ data }) => setTodayHoliday((data as CompanyHoliday) ?? null));
   }, []);
@@ -317,16 +315,6 @@ export default function CheckInScreen({ navigation }: any) {
             <TouchableOpacity style={[styles.punchBtn, { backgroundColor: colors.good }]} disabled={!employeeId} onPress={() => openPunchModal('1')}>
               <Text style={styles.punchBtnText}>📍 Check Out</Text>
             </TouchableOpacity>
-            {breakEnabled && (
-              <>
-                <TouchableOpacity style={[styles.punchBtn, { backgroundColor: '#f59e0b' }]} disabled={!employeeId} onPress={() => openPunchModal('2')}>
-                  <Text style={styles.punchBtnText}>☕ Start Break</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.punchBtn, { backgroundColor: '#d97706' }]} disabled={!employeeId} onPress={() => openPunchModal('3')}>
-                  <Text style={styles.punchBtnText}>☕ End Break</Text>
-                </TouchableOpacity>
-              </>
-            )}
             <TouchableOpacity style={[styles.punchBtn, { backgroundColor: colors.good }]} onPress={() => setView('fix')}>
               <Text style={styles.punchBtnText}>🔧 Fix a Missed Punch</Text>
             </TouchableOpacity>

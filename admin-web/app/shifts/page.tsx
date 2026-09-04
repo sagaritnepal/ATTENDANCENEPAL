@@ -8,7 +8,6 @@ import Badge from '@/components/Badge';
 import WeeklyRosterGrid from '@/components/WeeklyRosterGrid';
 import WeeklyPatternGrid from '@/components/WeeklyPatternGrid';
 import MonthlyRosterGrid from '@/components/MonthlyRosterGrid';
-import BreakEnabledSwitch from '@/components/BreakEnabledSwitch';
 import { useConfirm } from '@/components/ConfirmDialog';
 import type { Employee, Shift } from '@/lib/types';
 import { resolveShift, formatShiftHours } from '@/lib/shift';
@@ -84,7 +83,6 @@ function ShiftsView() {
   const [tab, setTab] = useState<'templates' | 'roster' | 'monthly'>(initialTab);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [rosterMode, setRosterMode] = useState<RosterMode>('monthly');
-  const [breakEnabled, setBreakEnabled] = useState(false);
 
   function reload() {
     supabase.from('shifts').select('*').then(({ data }) => setShifts(data ?? []));
@@ -93,10 +91,9 @@ function ShiftsView() {
       .from('employee_daily_shifts')
       .select('employee_id')
       .then(({ data }) => setRosterEmployeeIds(new Set((data ?? []).map(r => r.employee_id))));
-    fetchMyCompanyWeekOffConfig().then(({ companyId, rosterMode, breakEnabled }) => {
+    fetchMyCompanyWeekOffConfig().then(({ companyId, rosterMode }) => {
       setCompanyId(companyId);
       setRosterMode(rosterMode);
-      setBreakEnabled(breakEnabled);
     });
   }
   useEffect(reload, []);
@@ -204,7 +201,6 @@ function ShiftsView() {
           ))}
         </div>
         <div className="flex items-center gap-3">
-          <BreakEnabledSwitch companyId={companyId} enabled={breakEnabled} onChange={setBreakEnabled} />
           {tab === 'templates' && (
             <button
               onClick={() => {

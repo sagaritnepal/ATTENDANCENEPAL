@@ -38,7 +38,6 @@ type Row = {
   lateMinutes: number;
   earlyMinutes: number;
   overtime: number;
-  breakMinutes: number;
 };
 
 const COLS = [
@@ -50,7 +49,6 @@ const COLS = [
   { key: 'lateEarly', label: 'Late/Early', width: 90 },
   { key: 'hours', label: 'Work Hrs', width: 64 },
   { key: 'overtime', label: 'OT', width: 56 },
-  { key: 'break', label: 'Break', width: 56 },
   { key: 'status', label: 'Status', width: 64 },
   { key: 'device', label: 'Device', width: 110 },
 ] as const;
@@ -209,7 +207,6 @@ export default function HistoryScreen() {
             lateMinutes: summary.is_late ? summary.late_minutes : 0,
             earlyMinutes: summary.is_early_departure ? summary.early_departure_minutes : 0,
             overtime: summary.overtime_hours,
-            breakMinutes: summary.break_minutes,
           });
         } else if (dayLogs.length > 0) {
           const live = computeDayStatusForResolvedShift(dayLogs, resolved);
@@ -227,7 +224,6 @@ export default function HistoryScreen() {
             lateMinutes: live.lateMinutes,
             earlyMinutes: live.earlyMinutes,
             overtime: live.overtimeMinutes / 60,
-            breakMinutes: live.breakMinutes,
           });
         } else {
           out.push({
@@ -244,7 +240,6 @@ export default function HistoryScreen() {
             lateMinutes: 0,
             earlyMinutes: 0,
             overtime: 0,
-            breakMinutes: 0,
           });
         }
       }
@@ -258,19 +253,18 @@ export default function HistoryScreen() {
   const totals = useMemo(() => {
     const workHours = rows.reduce((sum, r) => sum + r.hours, 0);
     const overtimeHours = rows.reduce((sum, r) => sum + r.overtime, 0);
-    const breakMinutes = rows.reduce((sum, r) => sum + r.breakMinutes, 0);
     const lateMinutes = rows.reduce((sum, r) => sum + r.lateMinutes, 0);
     const earlyMinutes = rows.reduce((sum, r) => sum + r.earlyMinutes, 0);
     const presentDays = rows.filter(r => r.checkIn).length;
     const absentDays = rows.filter(r => !r.checkIn && r.status !== 'Upcoming').length;
-    return { workHours, overtimeHours, breakMinutes, lateMinutes, earlyMinutes, presentDays, absentDays };
+    return { workHours, overtimeHours, lateMinutes, earlyMinutes, presentDays, absentDays };
   }, [rows]);
 
   const cols = isAdmin ? COLS : EMPLOYEE_COLS;
   const tableWidth = cols.reduce((s, c) => s + c.width, 0);
 
   async function exportCsv() {
-    const header = ['Date', 'ID', 'Employee', 'Shift', 'Check-In', 'Check-Out', 'Late By (min)', 'Early Out (min)', 'Total Work Hours', 'Overtime', 'Break', 'Status', 'Device'];
+    const header = ['Date', 'ID', 'Employee', 'Shift', 'Check-In', 'Check-Out', 'Late By (min)', 'Early Out (min)', 'Total Work Hours', 'Overtime', 'Status', 'Device'];
     const lines = rows.map(r =>
       [
         r.date,
@@ -283,7 +277,6 @@ export default function HistoryScreen() {
         r.earlyMinutes || '',
         r.hours.toFixed(1),
         r.overtime.toFixed(1),
-        r.breakMinutes ? formatHoursMinutes(r.breakMinutes) : '',
         r.status,
         r.device,
       ]
@@ -367,7 +360,6 @@ export default function HistoryScreen() {
                 </Text>
                 <Text style={[styles.td, { width: 64 }]}>{fmtHrs(item.hours)}</Text>
                 <Text style={[styles.td, { width: 56, color: colors.infoText }]}>{fmtHrs(item.overtime)}</Text>
-                <Text style={[styles.td, { width: 56 }]}>{item.breakMinutes > 0 ? formatHoursMinutes(item.breakMinutes) : '—'}</Text>
                 <Text
                   style={[
                     styles.td,
@@ -402,7 +394,6 @@ export default function HistoryScreen() {
                   </Text>
                   <Text style={[styles.tf, { width: 64 }]}>{fmtHrs(totals.workHours)}</Text>
                   <Text style={[styles.tf, { width: 56, color: colors.infoText }]}>{fmtHrs(totals.overtimeHours)}</Text>
-                  <Text style={[styles.tf, { width: 56 }]}>{totals.breakMinutes > 0 ? formatHoursMinutes(totals.breakMinutes) : '—'}</Text>
                   <Text style={[styles.tf, { width: 64 }]} />
                   <Text style={[styles.tf, { width: 110 }]} />
                 </View>

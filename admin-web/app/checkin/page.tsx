@@ -8,7 +8,6 @@ import DatePicker from '@/components/DatePicker';
 import { formatAdDate, localDateKey } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
 import { nepalDateTimeToUtcMs, punchTypeLabel, selectDayPunches } from '@/lib/shift';
-import { fetchMyCompanyWeekOffConfig } from '@/lib/weekOff';
 import type { AttendanceGpsRequest, AttendanceLog, CorrectionRequest, LeaveRequest, LeaveType } from '@/lib/types';
 import { ATTENDANCE_LOG_COLUMNS } from '@/lib/types';
 
@@ -72,7 +71,6 @@ export default function CheckInPage() {
   const { system } = useCalendarSystem();
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [view, setView] = useState<View>('menu');
-  const [breakEnabled, setBreakEnabled] = useState(false);
 
   // Live check-in/out state
   const [busy, setBusy] = useState(false);
@@ -104,7 +102,6 @@ export default function CheckInPage() {
         .single();
       setEmployeeId(profile?.employee_id ?? null);
     });
-    fetchMyCompanyWeekOffConfig().then(({ breakEnabled }) => setBreakEnabled(breakEnabled));
   }, []);
 
   useEffect(() => {
@@ -362,24 +359,6 @@ export default function CheckInPage() {
             >
               📍 Check Out
             </button>
-            {breakEnabled && (
-              <>
-                <button
-                  onClick={() => openPunchModal('2')}
-                  disabled={!employeeId}
-                  className="rounded-xl bg-amber-500 py-4 text-base font-semibold text-white shadow-sm hover:bg-amber-600 disabled:opacity-50"
-                >
-                  ☕ Start Break
-                </button>
-                <button
-                  onClick={() => openPunchModal('3')}
-                  disabled={!employeeId}
-                  className="rounded-xl bg-amber-600 py-4 text-base font-semibold text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
-                >
-                  ☕ End Break
-                </button>
-              </>
-            )}
             <button
               onClick={() => setView('fix')}
               className="rounded-xl bg-green-600 py-4 text-base font-semibold text-white shadow-sm hover:bg-green-700"

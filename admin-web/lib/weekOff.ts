@@ -15,11 +15,6 @@ export type CompanyWeekOffConfig = {
    * employee_weekly_pattern is consulted instead (see resolveShiftForDate in
    * lib/shift.ts). Defaults to 'monthly' when there's no company yet. */
   rosterMode: RosterMode;
-  /** Self-serve per-company toggle (companies.break_enabled,
-   * 20260820100000_break_punches.sql) — whether Start Break/End Break
-   * buttons show up on the self-checkin screen. Defaults to false when
-   * there's no company yet, same as every other flag here. */
-  breakEnabled: boolean;
   /** Overtime policy (companies.ot_hours_per_day/ot_multiplier,
    * 20260825160000_company_overtime_settings.sql) — the admin-set default
    * a "standard day" and OT pay rate use everywhere overtime pay is
@@ -42,7 +37,6 @@ const DEFAULT_CONFIG: CompanyWeekOffConfig = {
   companyId: null,
   weeklyOffDay: null,
   rosterMode: 'monthly',
-  breakEnabled: false,
   otHoursPerDay: 8,
   otMultiplier: 1.5,
   pfRate: 10,
@@ -51,7 +45,7 @@ const DEFAULT_CONFIG: CompanyWeekOffConfig = {
 };
 
 /** The current user's own company_id + weekly_off_day + roster_mode +
- * break_enabled + overtime policy. Reads go through `profiles` first
+ * overtime policy + contribution rates. Reads go through `profiles` first
  * (RLS-scoped to the caller's own row) to find company_id, then `companies`
  * itself (RLS-scoped to id = my_company_id(), see
  * 20260814180000_companies_rls_policies.sql). */
@@ -63,14 +57,13 @@ export async function fetchMyCompanyWeekOffConfig(): Promise<CompanyWeekOffConfi
   if (!companyId) return DEFAULT_CONFIG;
   const { data: company } = await supabase
     .from('companies')
-    .select('weekly_off_day, roster_mode, break_enabled, ot_hours_per_day, ot_multiplier, pf_rate, ssf_rate, tds_rate')
+    .select('weekly_off_day, roster_mode, ot_hours_per_day, ot_multiplier, pf_rate, ssf_rate, tds_rate')
     .eq('id', companyId)
     .single();
   return {
     companyId,
     weeklyOffDay: company?.weekly_off_day ?? null,
     rosterMode: (company?.roster_mode as RosterMode) ?? 'monthly',
-    breakEnabled: company?.break_enabled ?? false,
     otHoursPerDay: company?.ot_hours_per_day ?? DEFAULT_CONFIG.otHoursPerDay,
     otMultiplier: company?.ot_multiplier ?? DEFAULT_CONFIG.otMultiplier,
     pfRate: company?.pf_rate ?? DEFAULT_CONFIG.pfRate,

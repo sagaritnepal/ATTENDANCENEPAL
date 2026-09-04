@@ -354,7 +354,6 @@ export default function DashboardScreen({ navigation }: any) {
           const emp = employeeLookup[item.employee_id];
           const name = emp?.name ?? 'Unknown';
           const isIn = item.punch_type === '0';
-          const isBreak = item.punch_type === '2' || item.punch_type === '3';
           return (
             <View style={styles.row}>
               {emp?.profile_photo_url && !photoFailed.has(item.employee_id) ? (
@@ -374,8 +373,8 @@ export default function DashboardScreen({ navigation }: any) {
                   {new Date(item.punch_time).toLocaleTimeString()} · {item.method}
                 </Text>
               </View>
-              <View style={[styles.typeBadge, isIn ? styles.typeInBg : isBreak ? styles.typeBreakBg : styles.typeOutBg]}>
-                <Text style={isIn ? styles.typeInText : isBreak ? styles.typeBreakText : styles.typeOutText}>
+              <View style={[styles.typeBadge, isIn ? styles.typeInBg : styles.typeOutBg]}>
+                <Text style={isIn ? styles.typeInText : styles.typeOutText}>
                   {punchTypeLabel(item.punch_type)}
                 </Text>
               </View>
@@ -447,10 +446,8 @@ const styles = StyleSheet.create({
   typeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   typeInBg: { backgroundColor: colors.goodBg },
   typeOutBg: { backgroundColor: colors.infoBg },
-  typeBreakBg: { backgroundColor: colors.warningBg },
   typeInText: { fontSize: 11, fontWeight: '700', color: colors.goodText },
   typeOutText: { fontSize: 11, fontWeight: '700', color: colors.infoText },
-  typeBreakText: { fontSize: 11, fontWeight: '700', color: colors.warningText },
   empty: { textAlign: 'center', marginTop: 40, color: colors.slate400 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', padding: 20 },
   detailSheet: { backgroundColor: colors.white, borderRadius: 16, padding: 20, maxHeight: '75%' },

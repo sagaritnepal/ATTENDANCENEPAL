@@ -139,33 +139,17 @@ export type DayStatus = {
   earlyMinutes: number;
   totalMinutes: number;
   overtimeMinutes: number;
-  /** Minutes spent on completed breaks this day — paid, NOT subtracted from
-   * totalMinutes/overtimeMinutes, purely a display stat. See computeBreakMinutes(). */
-  breakMinutes: number;
 };
 
 /** Punch type -> the label shown everywhere a single punch is rendered.
- * '2'/'3' match ZKTeco's own break-out/break-in status codes (see
- * 20260820100000_break_punches.sql). */
+ * Only '0'/'1' are produced now; legacy '2'/'3' (break punches, since
+ * removed) fall through to Check In. */
 export function punchTypeLabel(punchType: string): string {
-  switch (punchType) {
-    case '0':
-      return 'Check In';
-    case '1':
-      return 'Check Out';
-    case '2':
-      return 'Start Break';
-    case '3':
-      return 'End Break';
-    default:
-      return 'Check In';
-  }
+  return punchType === '1' ? 'Check Out' : 'Check In';
 }
 
-/** Break punches ('2'/'3') are filtered out before check-in/out selection —
- * they must never be eligible for the "no explicit check-out yet, fall back
- * to the day's last punch" branch, or an in-progress day (checked in, on
- * break, not checked out yet) would show the break-end punch as checkout. */
+/** Legacy break punches ('2'/'3', no longer created) are filtered out first —
+ * one could otherwise be mistaken for the day's check-out. */
 export function selectDayPunches(logs: AttendanceLog[]): { checkIn: AttendanceLog; checkOut: AttendanceLog | null } {
   const sorted = logs
     .filter(l => l.punch_type !== '2' && l.punch_type !== '3')
@@ -178,26 +162,6 @@ export function selectDayPunches(logs: AttendanceLog[]): { checkIn: AttendanceLo
       ? sorted[sorted.length - 1]
       : null;
   return { checkIn, checkOut: checkOut !== checkIn ? checkOut : null };
-}
-
-/** One calendar day's punches -> total completed-break minutes. Mirrors the
- * identical pairing walk in compute_payroll_summaries()
- * (20260820110000_break_minutes_payroll.sql) so live and finalized numbers agree. */
-export function computeBreakMinutes(logs: AttendanceLog[]): number {
-  const breakPunches = logs
-    .filter(l => l.punch_type === '2' || l.punch_type === '3')
-    .sort((a, b) => a.punch_time.localeCompare(b.punch_time));
-  let total = 0;
-  let breakStart: string | null = null;
-  for (const punch of breakPunches) {
-    if (punch.punch_type === '2') {
-      breakStart = punch.punch_time;
-    } else if (punch.punch_type === '3' && breakStart) {
-      total += Math.round((new Date(punch.punch_time).getTime() - new Date(breakStart).getTime()) / 60000);
-      breakStart = null;
-    }
-  }
-  return total;
 }
 
 export function computeDayStatus(
@@ -235,7 +199,6 @@ export function computeDayStatus(
     earlyMinutes,
     totalMinutes,
     overtimeMinutes,
-    breakMinutes: computeBreakMinutes(logs),
   };
 }
 
@@ -257,7 +220,6 @@ export function computeDayStatusForResolvedShift(logs: AttendanceLog[], resolved
       earlyMinutes: 0,
       totalMinutes,
       overtimeMinutes: totalMinutes,
-      breakMinutes: computeBreakMinutes(logs),
     };
   }
   return computeDayStatus(logs, resolved);
