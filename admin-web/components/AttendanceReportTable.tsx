@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Badge from '@/components/Badge';
 import DateRangePicker from '@/components/DateRangePicker';
-import { TimingCell, TimingTotal } from '@/components/PunctualityCell';
 import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import { formatAdDate } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
@@ -50,6 +49,52 @@ type Row = {
 /** Decimal hours -> "Xh Ym". */
 function fmtHrs(hours: number) {
   return formatHoursMinutes(Math.round(hours * 60));
+}
+
+/** Punch timestamp -> "HH:MM" (24h). */
+function fmtPunch(iso: string | null) {
+  return iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–';
+}
+
+/** The In / Out cell — each time coloured by how it landed vs the shift:
+ * check-in amber if late / teal if early, check-out red if left early /
+ * blue if left late. Plain slate when on time. Prints black. */
+function InOutCell({ row }: { row: Row }) {
+  const inClass =
+    row.lateMinutes > 0
+      ? 'font-medium text-warning-text print:text-ink'
+      : row.earlyArrivalMinutes > 0
+        ? 'font-medium text-good-text print:text-ink'
+        : 'print:text-ink';
+  const inTitle =
+    row.lateMinutes > 0
+      ? `In ${formatHoursMinutes(row.lateMinutes)} late`
+      : row.earlyArrivalMinutes > 0
+        ? `In ${formatHoursMinutes(row.earlyArrivalMinutes)} early`
+        : undefined;
+  const outClass =
+    row.earlyMinutes > 0
+      ? 'font-medium text-critical-text print:text-ink'
+      : row.lateDepartureMinutes > 0
+        ? 'font-medium text-info-text print:text-ink'
+        : 'print:text-ink';
+  const outTitle =
+    row.earlyMinutes > 0
+      ? `Out ${formatHoursMinutes(row.earlyMinutes)} early`
+      : row.lateDepartureMinutes > 0
+        ? `Out ${formatHoursMinutes(row.lateDepartureMinutes)} late`
+        : undefined;
+  return (
+    <>
+      <span className={inClass} title={inTitle}>
+        {fmtPunch(row.checkIn)}
+      </span>
+      {' – '}
+      <span className={outClass} title={outTitle}>
+        {fmtPunch(row.checkOut)}
+      </span>
+    </>
+  );
 }
 
 function isoDaysAgo(n: number) {
@@ -302,13 +347,9 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
   const totals = useMemo(() => {
     const workHours = rows.reduce((sum, r) => sum + r.hours, 0);
     const overtimeHours = rows.reduce((sum, r) => sum + r.overtime, 0);
-    const lateMinutes = rows.reduce((sum, r) => sum + r.lateMinutes, 0);
-    const earlyArrivalMinutes = rows.reduce((sum, r) => sum + r.earlyArrivalMinutes, 0);
-    const earlyMinutes = rows.reduce((sum, r) => sum + r.earlyMinutes, 0);
-    const lateDepartureMinutes = rows.reduce((sum, r) => sum + r.lateDepartureMinutes, 0);
     const presentDays = rows.filter(r => r.checkIn).length;
     const absentDays = rows.filter(r => r.status === 'Absent').length;
-    return { workHours, overtimeHours, lateMinutes, earlyArrivalMinutes, earlyMinutes, lateDepartureMinutes, presentDays, absentDays };
+    return { workHours, overtimeHours, presentDays, absentDays };
   }, [rows]);
 
   function exportCsv() {
@@ -319,10 +360,8 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
       'Shift',
       'Check-In',
       'Check-Out',
-      'Late In (min)',
-      'Early In (min)',
+      'Late By (min)',
       'Early Out (min)',
-      'Late Out (min)',
       'Total Work Hours',
       'Overtime',
       'Status',
@@ -336,9 +375,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
       r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour12: false }) : '',
       r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour12: false }) : '',
       r.lateMinutes || '',
-      r.earlyArrivalMinutes || '',
       r.earlyMinutes || '',
-      r.lateDepartureMinutes || '',
       r.hours.toFixed(1),
       r.overtime.toFixed(1),
       r.status,
@@ -441,8 +478,6 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Employee</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Shift</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">In / Out</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Check-In</th>
-              <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Check-Out</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Work Hours</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:border print:border-slate-400 print:px-1 print:py-1">Overtime</th>
               <th className="whitespace-nowrap px-2 py-1.5 font-medium print:w-16 print:border print:border-slate-400 print:px-1 print:py-1">Status</th>
@@ -457,25 +492,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                 <td className="whitespace-nowrap px-2 py-1 font-medium text-ink print:border print:border-slate-400 print:px-2 print:py-1">{r.employeeName}</td>
                 <td className="px-2 py-1 whitespace-nowrap text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">{r.shiftLabel}</td>
                 <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">
-                  {r.checkIn ? new Date(r.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
-                  {' – '}
-                  {r.checkOut ? new Date(r.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '–:–'}
-                </td>
-                <td className="whitespace-nowrap px-2 py-1 text-[11px] print:border print:border-slate-400 print:px-2 print:py-1 print:text-[8px]">
-                  <TimingCell
-                    lateMinutes={r.lateMinutes}
-                    earlyMinutes={r.earlyArrivalMinutes}
-                    lateClass="text-warning-text print:text-ink"
-                    earlyClass="text-good-text print:text-ink"
-                  />
-                </td>
-                <td className="whitespace-nowrap px-2 py-1 text-[11px] print:border print:border-slate-400 print:px-2 print:py-1 print:text-[8px]">
-                  <TimingCell
-                    lateMinutes={r.lateDepartureMinutes}
-                    earlyMinutes={r.earlyMinutes}
-                    lateClass="text-info-text print:text-ink"
-                    earlyClass="text-critical-text print:text-ink"
-                  />
+                  <InOutCell row={r} />
                 </td>
                 <td className="whitespace-nowrap px-2 py-1 text-slate-600 print:border print:border-slate-400 print:px-2 print:py-1 print:text-ink">
                   {fmtHrs(r.hours)}
@@ -494,7 +511,7 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={9} className="px-4 py-6 text-center text-slate-400">
                   {loading ? 'Loading…' : 'No records in this range.'}
                 </td>
               </tr>
@@ -507,22 +524,6 @@ export default function AttendanceReportTable({ initialEmployeeId }: { initialEm
                   Total
                 </td>
                 <td className="print:border print:border-slate-400" />
-                <td className="whitespace-nowrap px-2 py-1.5 text-[10px] print:border print:border-slate-400 print:px-2 print:text-[10px]">
-                  <TimingTotal
-                    lateMinutes={totals.lateMinutes}
-                    earlyMinutes={totals.earlyArrivalMinutes}
-                    lateClass="text-warning-text print:text-ink"
-                    earlyClass="text-good-text print:text-ink"
-                  />
-                </td>
-                <td className="whitespace-nowrap px-2 py-1.5 text-[10px] print:border print:border-slate-400 print:px-2 print:text-[10px]">
-                  <TimingTotal
-                    lateMinutes={totals.lateDepartureMinutes}
-                    earlyMinutes={totals.earlyMinutes}
-                    lateClass="text-info-text print:text-ink"
-                    earlyClass="text-critical-text print:text-ink"
-                  />
-                </td>
                 <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2">{fmtHrs(totals.workHours)}</td>
                 <td className="whitespace-nowrap px-2 py-1.5 print:border print:border-slate-400 print:px-2">{fmtHrs(totals.overtimeHours)}</td>
                 <td className="whitespace-nowrap px-2 py-1.5 text-[10px] font-semibold print:w-20 print:whitespace-normal print:border print:border-slate-400 print:px-1 print:text-[10px]">
