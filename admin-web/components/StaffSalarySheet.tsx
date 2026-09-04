@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
@@ -69,6 +70,15 @@ export default function StaffSalarySheet() {
   }, [system]);
 
   const periodOptions = useMemo(() => buildPeriodOptions(system, null, period), [system, period]);
+
+  // Opening an employee row drills into the shared per-employee day-by-day
+  // breakdown page (app/payroll/[employeeId]) — same page the standard
+  // Payroll report links to. This sheet carries no overtime settings, so
+  // that page falls back to its own 8h/1.5x defaults.
+  function detailHref(id: string) {
+    const params = new URLSearchParams({ start: period.start, end: period.end });
+    return `/payroll/${id}?${params.toString()}`;
+  }
 
   const branchName = useMemo(() => {
     const m = new Map<string, string>();
@@ -317,7 +327,11 @@ export default function StaffSalarySheet() {
                 ) : (
                   <tr key={item.row.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                     <td className="px-2.5 py-1.5 text-center tabular-nums text-slate-400">{item.sno}</td>
-                    <td className="whitespace-nowrap px-2.5 py-1.5 text-left font-medium text-ink">{item.row.name}</td>
+                    <td className="whitespace-nowrap px-2.5 py-1.5 text-left font-medium text-ink">
+                      <Link href={detailHref(item.row.id)} className="hover:text-accent hover:underline print:no-underline print:text-ink">
+                        {item.row.name}
+                      </Link>
+                    </td>
                     <td className={td}>{money(item.row.basic)}</td>
                     <td className={td}>{money(item.row.dearness)}</td>
                     <td className={td}>{money(item.row.ssfBasis)}</td>
