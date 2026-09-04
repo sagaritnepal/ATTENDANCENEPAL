@@ -195,6 +195,18 @@ export default function StaffSalarySheet() {
 
   return (
     <AppShell title="Payroll Report">
+      {/* 11 columns need landscape — scoped here so it only affects THIS
+          report's print, leaving every other page's orientation toggle
+          alone. The global @media-print table rules are otherwise tuned
+          for portrait and far too tight for this sheet, so relax them. */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html:
+            '@media print{@page{size:A4 landscape;margin:9mm}' +
+            '.ssheet{font-size:9px !important}' +
+            '.ssheet th,.ssheet td{padding:4px 7px !important}}',
+        }}
+      />
       {/* summary tiles — every figure is a total off the sheet below */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 print:hidden">
         <div className="rounded-xl bg-info-bg p-3.5 shadow-sm ring-1 ring-inset ring-info/10">
@@ -219,7 +231,7 @@ export default function StaffSalarySheet() {
         </div>
       </div>
 
-      <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white pb-2 shadow-sm print:border-0 print:shadow-none">
+      <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white pb-2 shadow-sm print:overflow-visible print:border-0 print:shadow-none">
         <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-accent/10 via-accent/5 to-transparent px-4 py-4 sm:px-6 print:hidden">
           <div className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-white">
@@ -262,7 +274,7 @@ export default function StaffSalarySheet() {
         </div>
 
         <div className="mt-4 overflow-x-auto pb-2 print:overflow-visible">
-          <table className="w-full text-right text-[12.5px]">
+          <table className="ssheet w-full text-right text-[12.5px]">
             <thead>
               <tr className="border-y border-slate-200 bg-slate-50">
                 <th className={`${th} w-10 text-center`}>S.No.</th>
