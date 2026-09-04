@@ -20,7 +20,6 @@ function money(n: number) {
 type SheetRow = {
   id: string;
   name: string;
-  designation: string;
   basic: number;
   dearness: number;
   ssfBasis: number; // 20% of basic — the "SSF (20% of basic)" build-up column
@@ -90,7 +89,6 @@ export default function StaffSalarySheet() {
         return {
           id: e.id,
           name: e.name,
-          designation: e.designation ?? '—',
           branch: e.branch_id ? branchName.get(e.branch_id) ?? 'Unassigned' : 'Unassigned',
           basic,
           dearness,
@@ -152,7 +150,6 @@ export default function StaffSalarySheet() {
       'S.No.',
       'Branch',
       'Employee Name',
-      'Designation',
       'Basic Salary',
       'Dearness Allowance',
       'SSF 20% of Basic',
@@ -171,7 +168,6 @@ export default function StaffSalarySheet() {
           n,
           g.branch,
           r.name,
-          r.designation,
           r.basic.toFixed(2),
           r.dearness.toFixed(2),
           r.ssfBasis.toFixed(2),
@@ -279,7 +275,6 @@ export default function StaffSalarySheet() {
               <tr className="border-y border-slate-200 bg-slate-50">
                 <th className={`${th} w-10 text-center`}>S.No.</th>
                 <th className={`${th} min-w-[10rem] text-left`}>Employee Name</th>
-                <th className={`${th} min-w-[9rem] text-left`}>Designation</th>
                 <th className={thNum}>
                   Basic Salary<br />
                   83/84
@@ -315,7 +310,7 @@ export default function StaffSalarySheet() {
               {renderItems.map(item =>
                 item.kind === 'group' ? (
                   <tr key={`g-${item.branch}`} className="bg-slate-100">
-                    <td colSpan={11} className="px-2.5 py-1.5 text-left text-xs font-bold uppercase tracking-wide text-ink">
+                    <td colSpan={10} className="px-2.5 py-1.5 text-left text-xs font-bold uppercase tracking-wide text-ink">
                       {item.branch}
                     </td>
                   </tr>
@@ -323,7 +318,6 @@ export default function StaffSalarySheet() {
                   <tr key={item.row.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                     <td className="px-2.5 py-1.5 text-center tabular-nums text-slate-400">{item.sno}</td>
                     <td className="whitespace-nowrap px-2.5 py-1.5 text-left font-medium text-ink">{item.row.name}</td>
-                    <td className="whitespace-nowrap px-2.5 py-1.5 text-left text-slate-500">{item.row.designation}</td>
                     <td className={td}>{money(item.row.basic)}</td>
                     <td className={td}>{money(item.row.dearness)}</td>
                     <td className={td}>{money(item.row.ssfBasis)}</td>
@@ -337,14 +331,14 @@ export default function StaffSalarySheet() {
               )}
               {!loading && allRows.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
                     No active employees with a salary set.
                   </td>
                 </tr>
               )}
               {loading && (
                 <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
                     Loading…
                   </td>
                 </tr>
@@ -353,7 +347,7 @@ export default function StaffSalarySheet() {
             {allRows.length > 0 && (
               <tfoot>
                 <tr className="border-t-2 border-slate-300 bg-slate-50 text-[12.5px] font-bold text-ink">
-                  <td colSpan={3} className="px-2.5 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <td colSpan={2} className="px-2.5 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Total
                   </td>
                   <td className="px-2.5 py-2.5 text-right tabular-nums">{money(grand.basic)}</td>
