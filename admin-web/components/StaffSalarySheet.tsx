@@ -1,13 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import AppShell from '@/components/AppShell';
 import TableExportBar, { downloadExcel } from '@/components/TableExportBar';
 import { buildPeriodOptions, currentSystemYearMonth, formatDdMmYyyy, systemPeriod, type CalendarPeriod } from '@/lib/calendar';
 import { useCalendarSystem } from '@/lib/calendarSystem';
-import type { Branch, Employee } from '@/lib/types';
+import { buildEmployeeDayRows } from '@/lib/payrollDetail';
+import { buildWeeklyPatternByEmployee, formatHoursMinutes, nepalTodayIso, type DailyShiftByDate } from '@/lib/shift';
+import { fetchMyCompanyWeekOffConfig, leaveDatesByEmployee, weekOffDatesInRange } from '@/lib/weekOff';
+import type { AttendanceLog, Branch, CompanyHoliday, Employee, LeaveRequest, PayrollSummary, Shift } from '@/lib/types';
+import { ATTENDANCE_LOG_COLUMNS, PAYROLL_SUMMARY_COLUMNS } from '@/lib/types';
 
 // Nepal SSF: employer contributes 20% of basic, employee 11% of basic. These
 // are statutory and fixed, so they live here rather than as company config.
@@ -17,6 +21,24 @@ const SSF_EMPLOYEE_RATE = 0.11;
 function money(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
+/** Decimal hours -> "Xh Ym", same as the standard Payroll report. */
+function fmtHrs(hours: number) {
+  return formatHoursMinutes(Math.round(hours * 60));
+}
+
+// Optional attendance columns the admin can hide from the sheet (the cog
+// menu in the report header) — dropped from the table AND the printed / PDF
+// / Excel copy when off, exactly like the standard Payroll report's own
+// column toggles. On by default.
+const ATTENDANCE_COLUMNS = [
+  ['workedDays', 'Worked Days'],
+  ['totalHours', 'Total Hours'],
+  ['overtime', 'Overtime'],
+] as const;
+type AttendanceColKey = (typeof ATTENDANCE_COLUMNS)[number][0];
+
+type AttendanceAgg = { days: number; hours: number; overtime: number; paidOffDays: number };
 
 type SheetRow = {
   id: string;
@@ -50,6 +72,39 @@ export default function StaffSalarySheet() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Attendance for the Worked Days / Total Hours / Overtime columns — the
+  // same payroll_summaries-or-live-from-punches data the standard Payroll
+  // report and the Attendance Report use, reloaded whenever the period
+  // changes. The fixed-salary math above never touches any of this.
+  const [summaries, setSummaries] = useState<PayrollSummary[]>([]);
+  const [logs, setLogs] = useState<AttendanceLog[]>([]);
+  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [dailyShiftRows, setDailyShiftRows] = useState<{ employee_id: string; work_date: string; shift_id: string | null }[]>([]);
+  const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [weeklyOffDay, setWeeklyOffDay] = useState<number | null>(null);
+  const [weeklyPatternRows, setWeeklyPatternRows] = useState<{ employee_id: string; weekday: number; shift_id: string | null }[]>([]);
+
+  // The cog menu — toggles the three attendance columns on/off for the
+  // screen, print and Excel copies alike. On by default.
+  const [visibleCols, setVisibleCols] = useState<Record<AttendanceColKey, boolean>>({
+    workedDays: true,
+    totalHours: true,
+    overtime: true,
+  });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    function onDown(e: MouseEvent) {
+      if (settingsRef.current?.contains(e.target as Node)) return;
+      setSettingsOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [settingsOpen]);
+
   useEffect(() => {
     Promise.all([
       supabase.from('employees').select('*').eq('status', 'active'),
@@ -60,6 +115,37 @@ export default function StaffSalarySheet() {
       setLoading(false);
     });
   }, []);
+
+  useEffect(() => {
+    fetchMyCompanyWeekOffConfig().then(({ weeklyOffDay, rosterMode }) => {
+      setWeeklyOffDay(weeklyOffDay);
+      if (rosterMode === 'weekly') {
+        supabase
+          .from('employee_weekly_pattern')
+          .select('employee_id, weekday, shift_id')
+          .then(({ data }) => setWeeklyPatternRows(data ?? []));
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    const { start, end } = period;
+    Promise.all([
+      supabase.from('payroll_summaries').select(PAYROLL_SUMMARY_COLUMNS).gte('work_date', start).lte('work_date', end),
+      supabase.from('attendance_logs').select(ATTENDANCE_LOG_COLUMNS).gte('punch_time', `${start}T00:00:00Z`).lte('punch_time', `${end}T23:59:59Z`),
+      supabase.from('shifts').select('*'),
+      supabase.from('employee_daily_shifts').select('employee_id, work_date, shift_id').gte('work_date', start).lte('work_date', end),
+      supabase.from('company_holidays').select('*').gte('holiday_date', start).lte('holiday_date', end),
+      supabase.from('leave_requests').select('*').eq('status', 'approved').lte('start_date', end).gte('end_date', start),
+    ]).then(([summariesRes, logsRes, shiftsRes, rosterRes, holidaysRes, leaveRes]) => {
+      setSummaries(summariesRes.data ?? []);
+      setLogs(logsRes.data ?? []);
+      setShifts(shiftsRes.data ?? []);
+      setDailyShiftRows(rosterRes.data ?? []);
+      setHolidays(holidaysRes.data ?? []);
+      setLeaveRequests(leaveRes.data ?? []);
+    });
+  }, [period]);
 
   // Toggling AD/BS resets to "this month" in the newly active system — the
   // salary math is monthly-flat so the period only labels the sheet.
@@ -85,6 +171,57 @@ export default function StaffSalarySheet() {
     for (const b of branches) m.set(b.id, b.name);
     return m;
   }, [branches]);
+
+  const dailyShiftByDate: DailyShiftByDate = useMemo(() => {
+    const map: DailyShiftByDate = new Map();
+    for (const r of dailyShiftRows) {
+      let perDate = map.get(r.employee_id);
+      if (!perDate) {
+        perDate = new Map();
+        map.set(r.employee_id, perDate);
+      }
+      perDate.set(r.work_date, r.shift_id);
+    }
+    return map;
+  }, [dailyShiftRows]);
+
+  // employee_id -> worked days / worked hours / overtime hours / paid days
+  // off for the selected period. Built from buildEmployeeDayRows() (shared
+  // with the standard Payroll report and the per-employee detail page) so
+  // the figures match everywhere. Absent from the fixed-salary math above.
+  const attendanceByEmployee = useMemo(() => {
+    const { start, end } = period;
+    const weekOffDates = weekOffDatesInRange(start, end, weeklyOffDay, holidays);
+    const leaveByEmployee = leaveDatesByEmployee(leaveRequests);
+    const weeklyPattern = buildWeeklyPatternByEmployee(weeklyPatternRows);
+    const map = new Map<string, AttendanceAgg>();
+    for (const emp of employees) {
+      const rows = buildEmployeeDayRows(
+        emp,
+        shifts,
+        summaries,
+        logs,
+        start,
+        end,
+        dailyShiftByDate,
+        weekOffDates,
+        leaveByEmployee.get(emp.id),
+        weeklyPattern
+      );
+      let days = 0;
+      let hours = 0;
+      let overtime = 0;
+      let paidOffDays = 0;
+      for (const d of rows) {
+        if (d.status === 'Present' || d.status === 'Late') days += 1;
+        if (d.paidOff) paidOffDays += 1;
+        hours += d.hours;
+        overtime += d.overtime;
+      }
+      map.set(emp.id, { days, hours, overtime, paidOffDays });
+    }
+    return map;
+  }, [employees, shifts, summaries, logs, dailyShiftByDate, holidays, leaveRequests, weeklyOffDay, weeklyPatternRows, period]);
 
   const groups = useMemo(() => {
     const rows: (SheetRow & { branch: string })[] = employees
@@ -155,11 +292,43 @@ export default function StaffSalarySheet() {
     };
   }, [allRows]);
 
+  const att = (id: string): AttendanceAgg => attendanceByEmployee.get(id) ?? { days: 0, hours: 0, overtime: 0, paidOffDays: 0 };
+
+  // Column footer for the attendance columns — mirrors the standard Payroll
+  // report: Worked Days shows "{present}P / {absent}A", the other two a
+  // straight sum. "Absent" counts only days that have already elapsed, so a
+  // month viewed mid-month doesn't read its remaining days as absences.
+  const attTotals = useMemo(() => {
+    const today = nepalTodayIso();
+    const elapsedEnd = period.end < today ? period.end : today;
+    const elapsedDays =
+      period.start > elapsedEnd ? 0 : (new Date(elapsedEnd).getTime() - new Date(period.start).getTime()) / 86400000 + 1;
+    let days = 0;
+    let hours = 0;
+    let overtime = 0;
+    let paidOffDays = 0;
+    for (const r of allRows) {
+      const a = att(r.id);
+      days += a.days;
+      hours += a.hours;
+      overtime += a.overtime;
+      paidOffDays += a.paidOffDays;
+    }
+    const absentDays = Math.max(0, allRows.length * elapsedDays - days - paidOffDays);
+    return { workedDays: days, hours, overtime, absentDays };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allRows, attendanceByEmployee, period]);
+
+  const visibleAttCols = ATTENDANCE_COLUMNS.filter(([key]) => visibleCols[key]);
+
   function exportCsv() {
     const header = [
       'S.No.',
       'Branch',
       'Employee Name',
+      ...(visibleCols.workedDays ? ['Worked Days'] : []),
+      ...(visibleCols.totalHours ? ['Total Hours'] : []),
+      ...(visibleCols.overtime ? ['Overtime'] : []),
       'Basic Salary',
       'Dearness Allowance',
       'SSF 20% of Basic',
@@ -174,10 +343,14 @@ export default function StaffSalarySheet() {
     for (const g of groups) {
       for (const r of g.list) {
         n += 1;
+        const a = att(r.id);
         lines.push([
           n,
           g.branch,
           r.name,
+          ...(visibleCols.workedDays ? [a.days] : []),
+          ...(visibleCols.totalHours ? [fmtHrs(a.hours)] : []),
+          ...(visibleCols.overtime ? [fmtHrs(a.overtime)] : []),
           r.basic.toFixed(2),
           r.dearness.toFixed(2),
           r.ssfBasis.toFixed(2),
@@ -199,9 +372,59 @@ export default function StaffSalarySheet() {
   const thNum = `${th} text-right`;
   const td = 'whitespace-nowrap px-2.5 py-1.5 text-right tabular-nums text-slate-700';
 
+  const colCount = 10 + visibleAttCols.length;
+
+  const columnSettings = (
+    <div className="relative print:hidden" ref={settingsRef}>
+      <button
+        type="button"
+        onClick={() => setSettingsOpen(v => !v)}
+        title="Report settings"
+        className="flex h-[30px] w-[30px] items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100"
+      >
+        <CogIcon className="h-[18px] w-[18px]" />
+      </button>
+      {settingsOpen && (
+        <div className="absolute right-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+          <div className="flex items-center gap-2 border-b border-slate-100 bg-gradient-to-br from-accent/10 via-accent/5 to-transparent px-4 py-3">
+            <CogIcon className="h-4 w-4 text-accent" />
+            <span className="text-sm font-semibold text-ink">Settings</span>
+          </div>
+          <p className="px-4 pb-1 pt-2 text-[11px] leading-snug text-slate-400">
+            Show or hide these attendance columns in the sheet and its printed / PDF / Excel copy.
+          </p>
+          <div className="p-1.5">
+            {ATTENDANCE_COLUMNS.map(([key, label]) => {
+              const on = visibleCols[key];
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setVisibleCols(c => ({ ...c, [key]: !c[key] }))}
+                  className="flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2.5 text-sm text-ink hover:bg-slate-50"
+                >
+                  {label}
+                  <span
+                    className={`inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${on ? 'bg-good' : 'bg-slate-300'}`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                        on ? 'translate-x-[18px]' : 'translate-x-0.5'
+                      }`}
+                    />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <AppShell title="Payroll Report">
-      {/* 11 columns need landscape — scoped here so it only affects THIS
+      {/* 10–13 columns need landscape — scoped here so it only affects THIS
           report's print, leaving every other page's orientation toggle
           alone. The global @media-print table rules are otherwise tuned
           for portrait and far too tight for this sheet, so relax them. */}
@@ -268,7 +491,7 @@ export default function StaffSalarySheet() {
             </select>
           </div>
 
-          <TableExportBar onExportCsv={exportCsv} />
+          <TableExportBar onExportCsv={exportCsv} leading={columnSettings} />
         </div>
 
         {/* print-only masthead */}
@@ -285,6 +508,19 @@ export default function StaffSalarySheet() {
               <tr className="border-y border-slate-200 bg-slate-50">
                 <th className={`${th} w-10 text-center`}>S.No.</th>
                 <th className={`${th} min-w-[10rem] text-left`}>Employee Name</th>
+                {visibleCols.workedDays && (
+                  <th className={thNum}>
+                    Worked<br />
+                    Days
+                  </th>
+                )}
+                {visibleCols.totalHours && (
+                  <th className={thNum}>
+                    Total<br />
+                    Hours
+                  </th>
+                )}
+                {visibleCols.overtime && <th className={thNum}>Overtime</th>}
                 <th className={thNum}>
                   Basic Salary<br />
                   83/84
@@ -320,7 +556,7 @@ export default function StaffSalarySheet() {
               {renderItems.map(item =>
                 item.kind === 'group' ? (
                   <tr key={`g-${item.branch}`} className="bg-slate-100">
-                    <td colSpan={10} className="px-2.5 py-1.5 text-left text-xs font-bold uppercase tracking-wide text-ink">
+                    <td colSpan={colCount} className="px-2.5 py-1.5 text-left text-xs font-bold uppercase tracking-wide text-ink">
                       {item.branch}
                     </td>
                   </tr>
@@ -332,6 +568,9 @@ export default function StaffSalarySheet() {
                         {item.row.name}
                       </Link>
                     </td>
+                    {visibleCols.workedDays && <td className={td}>{att(item.row.id).days}</td>}
+                    {visibleCols.totalHours && <td className={td}>{fmtHrs(att(item.row.id).hours)}</td>}
+                    {visibleCols.overtime && <td className={td}>{fmtHrs(att(item.row.id).overtime)}</td>}
                     <td className={td}>{money(item.row.basic)}</td>
                     <td className={td}>{money(item.row.dearness)}</td>
                     <td className={td}>{money(item.row.ssfBasis)}</td>
@@ -345,14 +584,14 @@ export default function StaffSalarySheet() {
               )}
               {!loading && allRows.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={colCount} className="px-4 py-8 text-center text-slate-400">
                     No active employees with a salary set.
                   </td>
                 </tr>
               )}
               {loading && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={colCount} className="px-4 py-8 text-center text-slate-400">
                     Loading…
                   </td>
                 </tr>
@@ -364,6 +603,15 @@ export default function StaffSalarySheet() {
                   <td colSpan={2} className="px-2.5 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Total
                   </td>
+                  {visibleCols.workedDays && (
+                    <td className="px-2.5 py-2.5 text-right text-xs tabular-nums">
+                      <span className="text-good-text">{attTotals.workedDays}P</span>
+                      {' / '}
+                      <span className="text-critical-text">{attTotals.absentDays}A</span>
+                    </td>
+                  )}
+                  {visibleCols.totalHours && <td className="px-2.5 py-2.5 text-right tabular-nums">{fmtHrs(attTotals.hours)}</td>}
+                  {visibleCols.overtime && <td className="px-2.5 py-2.5 text-right tabular-nums">{fmtHrs(attTotals.overtime)}</td>}
                   <td className="px-2.5 py-2.5 text-right tabular-nums">{money(grand.basic)}</td>
                   <td className="px-2.5 py-2.5 text-right tabular-nums">{money(grand.dearness)}</td>
                   <td className="px-2.5 py-2.5 text-right tabular-nums">{money(grand.ssfBasis)}</td>
@@ -398,6 +646,15 @@ function SheetIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
       <path d="M14 3v5h5M9 13h6M9 17h6M9 9h2" />
+    </svg>
+  );
+}
+
+function CogIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   );
 }
