@@ -33,12 +33,14 @@ type SheetRow = {
 
 /**
  * The "Staff Salary Sheet" — a fixed-salary payroll report for one customer
- * (companies.payroll_format = 'staff_salary_sheet'). Everyone is paid full
- * basic + a flat dearness allowance every month; there is NO attendance,
- * proration, overtime, PF or TDS. Rendered by app/payroll/page.tsx in place
- * of the standard attendance-based report.
+ * (companies.payroll_format = 'staff_salary_sheet'). Everyone is paid their
+ * full Basic + full Allowance (shown as "Dearness Allowance" here) every
+ * month, with a 20%/11% SSF gross-up. There is NO attendance, proration,
+ * overtime, PF or TDS. Basic and Allowance are set per employee on the
+ * Salary Structure page. Rendered by app/payroll/page.tsx in place of the
+ * standard attendance-based report.
  */
-export default function StaffSalarySheet({ dearnessAllowance }: { dearnessAllowance: number }) {
+export default function StaffSalarySheet() {
   const { system } = useCalendarSystem();
   const [period, setPeriod] = useState<CalendarPeriod>(() => {
     const { year, month } = currentSystemYearMonth(system);
@@ -76,14 +78,14 @@ export default function StaffSalarySheet({ dearnessAllowance }: { dearnessAllowa
   }, [branches]);
 
   const groups = useMemo(() => {
-    const da = dearnessAllowance || 0;
     const rows: (SheetRow & { branch: string })[] = employees
       .filter(e => e.salary != null)
       .map(e => {
         const basic = e.salary!;
+        const dearness = Number(e.allowance ?? 0) || 0;
         const ssfEmployer = basic * SSF_EMPLOYER_RATE;
         const ssfEmployee = basic * SSF_EMPLOYEE_RATE;
-        const mgs = basic + da + ssfEmployer;
+        const mgs = basic + dearness + ssfEmployer;
         const totalSsf = ssfEmployer + ssfEmployee;
         return {
           id: e.id,
@@ -91,7 +93,7 @@ export default function StaffSalarySheet({ dearnessAllowance }: { dearnessAllowa
           designation: e.designation ?? '—',
           branch: e.branch_id ? branchName.get(e.branch_id) ?? 'Unassigned' : 'Unassigned',
           basic,
-          dearness: da,
+          dearness,
           ssfBasis: ssfEmployer,
           mgs,
           ssfEmployer,
@@ -109,7 +111,7 @@ export default function StaffSalarySheet({ dearnessAllowance }: { dearnessAllowa
     return [...byBranch.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([branch, list]) => ({ branch, list: list.sort((a, b) => a.name.localeCompare(b.name)) }));
-  }, [employees, branchName, dearnessAllowance]);
+  }, [employees, branchName]);
 
   const allRows = useMemo(() => groups.flatMap(g => g.list), [groups]);
 
@@ -203,7 +205,7 @@ export default function StaffSalarySheet({ dearnessAllowance }: { dearnessAllowa
         <div className="rounded-xl bg-accent/10 p-3.5 shadow-sm ring-1 ring-inset ring-accent/10">
           <span className="text-xs font-medium text-accent/80">Total Dearness Allowance</span>
           <div className="mt-1 text-lg font-bold tabular-nums text-accent">{money(grand.dearness)}</div>
-          <div className="mt-0.5 text-[11px] text-accent/70">{money(dearnessAllowance || 0)} flat / staff</div>
+          <div className="mt-0.5 text-[11px] text-accent/70">from each employee&rsquo;s Allowance</div>
         </div>
         <div className="rounded-xl bg-warning-bg p-3.5 shadow-sm ring-1 ring-inset ring-warning/10">
           <span className="text-xs font-medium text-warning-text/80">Total SSF Payable</span>

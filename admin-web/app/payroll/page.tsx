@@ -69,7 +69,7 @@ export default function PayrollPage() {
   const [loading, setLoading] = useState(true);
   // Null until resolved. One customer runs a completely different
   // fixed-salary report (StaffSalarySheet) instead of this one.
-  const [payroll, setPayroll] = useState<{ format: PayrollFormat; dearnessAllowance: number } | null>(null);
+  const [payrollFormat, setPayrollFormat] = useState<PayrollFormat | null>(null);
   // Optional columns the admin can hide from the report (the cog menu in
   // the report header). A hidden column is dropped from the table AND from
   // the printed / PDF copy — it's simply not rendered, not print:hidden.
@@ -114,7 +114,7 @@ export default function PayrollPage() {
   // One customer runs a fixed-salary report instead of this one — resolved
   // on its own so nothing shared changes for everybody else.
   useEffect(() => {
-    fetchCompanyPayrollFormat().then(setPayroll);
+    fetchCompanyPayrollFormat().then(setPayrollFormat);
   }, []);
 
   // The oldest/newest punch on record — bounds the period dropdown to
@@ -592,12 +592,12 @@ export default function PayrollPage() {
     </div>
   );
 
-  // Standard companies never hit this branch — `payroll` resolves to
-  // { format: 'standard' } and the normal report below renders throughout,
-  // unchanged. Only the one customer with payroll_format = 'staff_salary_sheet'
-  // gets swapped over (after a brief flash of this page while it resolves).
-  if (payroll?.format === 'staff_salary_sheet') {
-    return <StaffSalarySheet dearnessAllowance={payroll.dearnessAllowance} />;
+  // Standard companies never hit this branch — the format resolves to
+  // 'standard' and the normal report below renders throughout, unchanged.
+  // Only the one customer with payroll_format = 'staff_salary_sheet' gets
+  // swapped over (after a brief flash of this page while it resolves).
+  if (payrollFormat === 'staff_salary_sheet') {
+    return <StaffSalarySheet />;
   }
 
   return (

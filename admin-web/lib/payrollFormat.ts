@@ -8,25 +8,16 @@ import { supabase } from './supabase';
  *   customer via `update companies set payroll_format = 'staff_salary_sheet'`.
  *
  * Deliberately isolated from lib/weekOff.ts's shared config fetch: only the
- * Payroll Report page calls this, and a not-yet-applied migration degrades
- * to 'standard' rather than breaking anything.
+ * Payroll Report page calls this, and a not-yet-applied migration (or no
+ * company) degrades to 'standard' rather than breaking anything.
  */
 export type PayrollFormat = 'standard' | 'staff_salary_sheet';
 
-const FALLBACK = { format: 'standard' as PayrollFormat, dearnessAllowance: 0 };
-
-export async function fetchCompanyPayrollFormat(): Promise<{ format: PayrollFormat; dearnessAllowance: number }> {
+export async function fetchCompanyPayrollFormat(): Promise<PayrollFormat> {
   const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return FALLBACK;
+  if (!auth.user) return 'standard';
   const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', auth.user.id).single();
-  if (!profile?.company_id) return FALLBACK;
-  const { data } = await supabase
-    .from('companies')
-    .select('payroll_format, dearness_allowance')
-    .eq('id', profile.company_id)
-    .single();
-  return {
-    format: (data?.payroll_format as PayrollFormat) ?? 'standard',
-    dearnessAllowance: Number(data?.dearness_allowance ?? 0) || 0,
-  };
+  if (!profile?.company_id) return 'standard';
+  const { data } = await supabase.from('companies').select('payroll_format').eq('id', profile.company_id).single();
+  return (data?.payroll_format as PayrollFormat) ?? 'standard';
 }
